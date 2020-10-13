@@ -3222,24 +3222,42 @@ class G1RedirtyLoggedCardsTask : public AbstractGangTask {
   G1RedirtyCardsQueueSet* _qset;
   G1CollectedHeap* _g1h;
   BufferNode* volatile _nodes;
+  uint batch_size;
 
   void par_apply(RedirtyLoggedCardTableEntryClosure* cl, uint worker_id) {
     size_t buffer_size = _qset->buffer_size();
     BufferNode* next = Atomic::load(&_nodes);
     while (next != NULL) {
-      BufferNode* node = next;
-      next = Atomic::cmpxchg(&_nodes, node, node->next());
-      if (next == node) {
-        cl->apply_to_buffer(node, buffer_size, worker_id);
-        next = node->next();
+      BufferNode* start = next;
+      BufferNode* end = get_batch(start);
+      next = Atomic::cmpxchg(&_nodes, start, end);
+      if (next == start) {
+        uint slide = batch_size;
+        BufferNode* node = start; 
+        while (node != NULL && slide > 0) {
+          cl->apply_to_buffer(node, buffer_size, worker_id);
+          node = node->next();
+          slide--;
+        }
+        next = Atomic::load(&_nodes);
       }
     }
+  }
+  
+  BufferNode* get_batch(BufferNode* start) {
+    BufferNode* next = start;
+    uint slide = batch_size;
+    while (next != NULL && slide > 0) {
+      next = next->next();
+      slide--;
+    }
+    return next;
   }
 
  public:
   G1RedirtyLoggedCardsTask(G1RedirtyCardsQueueSet* qset, G1CollectedHeap* g1h) :
     AbstractGangTask("Redirty Cards"),
-    _qset(qset), _g1h(g1h), _nodes(qset->all_completed_buffers()) { }
+    _qset(qset), _g1h(g1h), _nodes(qset->all_completed_buffers()), batch_size(10) { }
 
   virtual void work(uint worker_id) {
     G1GCPhaseTimes* p = _g1h->phase_times();
