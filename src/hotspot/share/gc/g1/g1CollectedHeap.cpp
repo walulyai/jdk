@@ -3054,6 +3054,13 @@ void G1CollectedHeap::do_collection_pause_at_safepoint_helper(double target_paus
       verify_after_young_collection(verify_type);
 
       gc_epilogue(false);
+      LogTarget(Debug, gc) lt;
+
+      if (lt.is_enabled()) {
+        LogStream ls(lt);
+        MemTracker::report(true, &ls);
+      }
+
     }
 
     // Print the remainder of the GC log output.

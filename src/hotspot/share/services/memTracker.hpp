@@ -308,6 +308,7 @@ class MemTracker : AllStatic {
 
  private:
   static NMT_TrackingLevel init_tracking_level();
+public:
   static void report(bool summary_only, outputStream* output);
 
  private:

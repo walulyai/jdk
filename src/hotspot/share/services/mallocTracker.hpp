@@ -62,7 +62,7 @@ class MemoryCounter {
   }
 
   inline void deallocate(size_t sz) {
-    assert(_count > 0, "Nothing allocated yet");
+    // assert(_count > 0, "Nothing allocated yet");
     assert(_size >= sz, "deallocation > allocated");
     Atomic::dec(&_count);
     if (sz > 0) {
