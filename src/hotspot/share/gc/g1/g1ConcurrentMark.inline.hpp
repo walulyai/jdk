@@ -86,7 +86,7 @@ inline void G1CMMarkStack::iterate(Fn fn) const {
 
   size_t num_chunks = 0;
 
-  TaskQueueEntryChunk* cur = _chunk_list;
+  TaskQueueEntryChunk* cur = _chunk_list.top();
   while (cur != NULL) {
     guarantee(num_chunks <= _chunks_in_chunk_list, "Found " SIZE_FORMAT " oop chunks which is more than there should be", num_chunks);
 
@@ -96,7 +96,7 @@ inline void G1CMMarkStack::iterate(Fn fn) const {
       }
       fn(cur->data[i]);
     }
-    cur = cur->next;
+    cur = cur->next();
     num_chunks++;
   }
 }

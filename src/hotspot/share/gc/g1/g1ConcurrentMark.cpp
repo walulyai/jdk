@@ -69,6 +69,7 @@
 #include "runtime/prefetch.inline.hpp"
 #include "services/memTracker.hpp"
 #include "utilities/align.hpp"
+#include "utilities/globalCounter.inline.hpp"
 #include "utilities/growableArray.hpp"
 
 bool G1CMBitMapClosure::do_addr(HeapWord* const addr) {
@@ -92,8 +93,8 @@ G1CMMarkStack::G1CMMarkStack() :
   _max_chunk_capacity(0),
   _base(NULL),
   _chunk_capacity(0),
-  _chunk_list(),
-  _free_list() {
+  _free_list(),
+  _chunk_list() {
   set_empty();
 }
 
@@ -167,34 +168,22 @@ G1CMMarkStack::~G1CMMarkStack() {
   }
 }
 
-void G1CMMarkStack::add_chunk_to_list(TaskQueueEntryChunk* volatile* list, TaskQueueEntryChunk* elem) {
-  elem->next = *list;
-  *list = elem;
-}
-
 void G1CMMarkStack::add_chunk_to_chunk_list(TaskQueueEntryChunk* elem) {
-  _chunk_list.push(elem);
+  _chunk_list.push(*elem);
   Atomic::inc(&_chunks_in_chunk_list, memory_order_relaxed);
 }
 
 void G1CMMarkStack::add_chunk_to_free_list(TaskQueueEntryChunk* elem) {
   GlobalCounter::write_synchronize();
-  _free_list.push(elem);
-}
-
-G1CMMarkStack::TaskQueueEntryChunk* G1CMMarkStack::remove_chunk_from_list(TaskQueueEntryChunk* volatile* list) {
-  TaskQueueEntryChunk* result = *list;
-  if (result != NULL) {
-    *list = (*list)->next;
-  }
-  return result;
+  _free_list.push(*elem);
 }
 
 G1CMMarkStack::TaskQueueEntryChunk* G1CMMarkStack::remove_chunk_from_chunk_list() {
+  TaskQueueEntryChunk* result = NULL;
   {
     // Pop under critical section to deal with ABA problem
     GlobalCounter::CriticalSection cs(Thread::current());
-    TaskQueueEntryChunk* result = _chunk_list.pop();
+    result = _chunk_list.pop();
   }
   if (result != NULL) {
     Atomic::dec(&_chunks_in_chunk_list, memory_order_relaxed);
@@ -223,7 +212,7 @@ G1CMMarkStack::TaskQueueEntryChunk* G1CMMarkStack::allocate_new_chunk() {
   }
 
   TaskQueueEntryChunk* result = ::new (&_base[cur_idx]) TaskQueueEntryChunk;
-  result->next = NULL;
+  result->set_next(NULL);
   return result;
 }
 

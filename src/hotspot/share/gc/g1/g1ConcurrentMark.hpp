@@ -138,14 +138,14 @@ public:
   static const size_t EntriesPerChunk = 1024 - 1 /* One reference for the next pointer */;
 private:
   struct TaskQueueEntryChunk {
-    TaskQueueEntryChunk* next;
+    TaskQueueEntryChunk* _next;
     G1TaskQueueEntry data[EntriesPerChunk];
 
-    TaskQueueEntryChunk* next() { return next; }
+    TaskQueueEntryChunk* next() { return _next; }
 
-    TaskQueueEntryChunk* next_addr() { return &next; }
+    TaskQueueEntryChunk** next_addr() { return &_next; }
 
-    TaskQueueEntryChunk* set_next(TaskQueueEntryChunk* ptr) { return next = ptr; }
+    TaskQueueEntryChunk* set_next(TaskQueueEntryChunk* ptr) { return _next = ptr; }
   };
 
   static TaskQueueEntryChunk * volatile* next_ptr(TaskQueueEntryChunk& entry) {
@@ -172,12 +172,6 @@ private:
   // Allocate a new chunk from the reserved memory, using the high water mark. Returns
   // NULL if out of memory.
   TaskQueueEntryChunk* allocate_new_chunk();
-
-  // Atomically add the given chunk to the list.
-  void add_chunk_to_list(TaskQueueEntryChunk* volatile* list, TaskQueueEntryChunk* elem);
-  // Atomically remove and return a chunk from the given list. Returns NULL if the
-  // list is empty.
-  TaskQueueEntryChunk* remove_chunk_from_list(TaskQueueEntryChunk* volatile* list);
 
   void add_chunk_to_chunk_list(TaskQueueEntryChunk* elem);
   void add_chunk_to_free_list(TaskQueueEntryChunk* elem);
@@ -213,7 +207,7 @@ private:
 
   // Return whether the chunk list is empty. Racy due to unsynchronized access to
   // _chunk_list.
-  bool is_empty() const { return _chunk_list == NULL; }
+  bool is_empty() const { return _chunk_list.empty(); }
 
   size_t capacity() const  { return _chunk_capacity; }
 
