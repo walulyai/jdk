@@ -91,7 +91,9 @@ bool G1CMBitMapClosure::do_addr(HeapWord* const addr) {
 G1CMMarkStack::G1CMMarkStack() :
   _max_chunk_capacity(0),
   _base(NULL),
-  _chunk_capacity(0) {
+  _chunk_capacity(0),
+  _chunk_list(),
+  _free_list() {
   set_empty();
 }
 
@@ -171,14 +173,13 @@ void G1CMMarkStack::add_chunk_to_list(TaskQueueEntryChunk* volatile* list, TaskQ
 }
 
 void G1CMMarkStack::add_chunk_to_chunk_list(TaskQueueEntryChunk* elem) {
-  MutexLocker x(MarkStackChunkList_lock, Mutex::_no_safepoint_check_flag);
-  add_chunk_to_list(&_chunk_list, elem);
-  _chunks_in_chunk_list++;
+  _chunk_list.push(elem);
+  Atomic::inc(&_chunks_in_chunk_list, memory_order_relaxed);
 }
 
 void G1CMMarkStack::add_chunk_to_free_list(TaskQueueEntryChunk* elem) {
-  MutexLocker x(MarkStackFreeList_lock, Mutex::_no_safepoint_check_flag);
-  add_chunk_to_list(&_free_list, elem);
+  GlobalCounter::write_synchronize();
+  _free_list.push(elem);
 }
 
 G1CMMarkStack::TaskQueueEntryChunk* G1CMMarkStack::remove_chunk_from_list(TaskQueueEntryChunk* volatile* list) {
@@ -190,17 +191,22 @@ G1CMMarkStack::TaskQueueEntryChunk* G1CMMarkStack::remove_chunk_from_list(TaskQu
 }
 
 G1CMMarkStack::TaskQueueEntryChunk* G1CMMarkStack::remove_chunk_from_chunk_list() {
-  MutexLocker x(MarkStackChunkList_lock, Mutex::_no_safepoint_check_flag);
-  TaskQueueEntryChunk* result = remove_chunk_from_list(&_chunk_list);
+  {
+    // Pop under critical section to deal with ABA problem
+    GlobalCounter::CriticalSection cs(Thread::current());
+    TaskQueueEntryChunk* result = _chunk_list.pop();
+  }
   if (result != NULL) {
-    _chunks_in_chunk_list--;
+    Atomic::dec(&_chunks_in_chunk_list, memory_order_relaxed);
   }
   return result;
 }
 
 G1CMMarkStack::TaskQueueEntryChunk* G1CMMarkStack::remove_chunk_from_free_list() {
-  MutexLocker x(MarkStackFreeList_lock, Mutex::_no_safepoint_check_flag);
-  return remove_chunk_from_list(&_free_list);
+  // Pop under critical section to deal with ABA problem
+  GlobalCounter::CriticalSection cs(Thread::current());
+  TaskQueueEntryChunk* result = _free_list.pop();
+  return result;
 }
 
 G1CMMarkStack::TaskQueueEntryChunk* G1CMMarkStack::allocate_new_chunk() {
@@ -257,8 +263,8 @@ bool G1CMMarkStack::par_pop_chunk(G1TaskQueueEntry* ptr_arr) {
 void G1CMMarkStack::set_empty() {
   _chunks_in_chunk_list = 0;
   _hwm = 0;
-  _chunk_list = NULL;
-  _free_list = NULL;
+  _chunk_list.pop_all();
+  _free_list.pop_all();
 }
 
 G1CMRootMemRegions::G1CMRootMemRegions(uint const max_regions) :

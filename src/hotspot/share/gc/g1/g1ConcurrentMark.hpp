@@ -38,6 +38,7 @@
 #include "memory/allocation.hpp"
 #include "utilities/compilerWarnings.hpp"
 #include "utilities/numberSeq.hpp"
+#include "utilities/lockFreeStack.hpp"
 
 class ConcurrentGCTimer;
 class G1ConcurrentMarkThread;
@@ -139,7 +140,19 @@ private:
   struct TaskQueueEntryChunk {
     TaskQueueEntryChunk* next;
     G1TaskQueueEntry data[EntriesPerChunk];
+
+    TaskQueueEntryChunk* next() { return next; }
+
+    TaskQueueEntryChunk* next_addr() { return &next; }
+
+    TaskQueueEntryChunk* set_next(TaskQueueEntryChunk* ptr) { return next = ptr; }
   };
+
+  static TaskQueueEntryChunk * volatile* next_ptr(TaskQueueEntryChunk& entry) {
+    return entry.next_addr();
+  }
+
+  typedef LockFreeStack<TaskQueueEntryChunk, &next_ptr> Stack;
 
   size_t _max_chunk_capacity;    // Maximum number of TaskQueueEntryChunk elements on the stack.
 
@@ -147,9 +160,9 @@ private:
   size_t _chunk_capacity;        // Current maximum number of TaskQueueEntryChunk elements.
 
   char _pad0[DEFAULT_CACHE_LINE_SIZE];
-  TaskQueueEntryChunk* volatile _free_list;  // Linked list of free chunks that can be allocated by users.
-  char _pad1[DEFAULT_CACHE_LINE_SIZE - sizeof(TaskQueueEntryChunk*)];
-  TaskQueueEntryChunk* volatile _chunk_list; // List of chunks currently containing data.
+  Stack _free_list;  // Linked list of free chunks that can be allocated by users.
+  char _pad1[DEFAULT_CACHE_LINE_SIZE - sizeof(Stack)];
+  Stack _chunk_list; // List of chunks currently containing data.
   volatile size_t _chunks_in_chunk_list;
   char _pad2[DEFAULT_CACHE_LINE_SIZE - sizeof(TaskQueueEntryChunk*) - sizeof(size_t)];
 
