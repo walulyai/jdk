@@ -43,6 +43,32 @@ enum G1GCType {
 
 class G1GCTypeHelper {
  public:
+
+  static bool is_young_only_pause(G1GCType type) {
+    assert(type != FullGC, "must be");
+    assert(type != Remark, "must be");
+    assert(type != Cleanup, "must be");
+    return type == ConcurrentStartUndoGC ||
+           type == ConcurrentStartMarkGC ||
+           type == LastYoungGC ||
+           type == YoungOnlyGC;
+  }
+
+  static bool is_mixed_pause(G1GCType type) {
+    assert(type != FullGC, "must be");
+    assert(type != Remark, "must be");
+    assert(type != Cleanup, "must be");
+    return type == MixedGC;
+  }
+
+  static bool is_last_young_pause(G1GCType type) {
+    return type == LastYoungGC;
+  }
+
+  static bool is_concurrent_start_pause(G1GCType type) {
+    return type == ConcurrentStartMarkGC || type == ConcurrentStartUndoGC;
+  }
+
   static const char* to_string(G1GCType type) {
     switch(type) {
       case YoungOnlyGC:

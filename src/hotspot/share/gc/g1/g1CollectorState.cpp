@@ -25,31 +25,6 @@
 #include "precompiled.hpp"
 #include "gc/g1/g1CollectorState.hpp"
 
-bool G1CollectorState::is_young_only_pause(G1GCType type) {
-  assert(type != FullGC, "must be");
-  assert(type != Remark, "must be");
-  assert(type != Cleanup, "must be");
-  return type == ConcurrentStartUndoGC ||
-         type == ConcurrentStartMarkGC ||
-         type == LastYoungGC ||
-         type == YoungOnlyGC;
-}
-
-bool G1CollectorState::is_mixed_pause(G1GCType type) {
-  assert(type != FullGC, "must be");
-  assert(type != Remark, "must be");
-  assert(type != Cleanup, "must be");
-  return type == MixedGC;
-}
-
-bool G1CollectorState::is_last_young_pause(G1GCType type) {
-  return type == LastYoungGC;
-}
-
-bool G1CollectorState::is_concurrent_start_pause(G1GCType type) {
-  return type == ConcurrentStartMarkGC || type == ConcurrentStartUndoGC;
-}
-
 G1GCType G1CollectorState::young_gc_pause_type_detailed(bool concurrent_operation_is_full_mark) const {
   assert(!in_full_gc(), "must be");
   if (in_concurrent_start_gc()) {

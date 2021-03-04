@@ -110,10 +110,6 @@ public:
   bool mark_or_rebuild_in_progress() const { return _mark_or_rebuild_in_progress; }
   bool clearing_next_bitmap() const { return _clearing_next_bitmap; }
 
-  static bool is_young_only_pause(G1GCType gc_type);
-  static bool is_mixed_pause(G1GCType gc_type);
-  static bool is_last_young_pause(G1GCType gc_type);
-  static bool is_concurrent_start_pause(G1GCType gc_type);
   // Calculate PauseKind from internal state.
   G1GCType young_gc_pause_type_detailed(bool concurrent_operation_is_full_mark) const;
   G1GCType young_gc_pause_type() const;
