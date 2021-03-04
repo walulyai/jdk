@@ -37,8 +37,6 @@ G1GCType G1CollectorState::young_gc_pause_type_detailed(bool concurrent_operatio
     assert(!in_concurrent_start_gc(), "must be");
     assert(!in_young_gc_before_mixed(), "must be");
     return MixedGC;
-  } else if (mark_or_rebuild_in_progress()) {
-    return DuringMarkOrRebuild;
   } else {
     assert(!in_concurrent_start_gc(), "must be");
     assert(!in_young_gc_before_mixed(), "must be");
@@ -48,6 +46,10 @@ G1GCType G1CollectorState::young_gc_pause_type_detailed(bool concurrent_operatio
 
 G1GCType G1CollectorState::young_gc_pause_type() const {
   assert(!in_full_gc(), "must be");
+
+  if (mark_or_rebuild_in_progress()) {
+    return DuringMarkOrRebuild;
+  }
 
   G1GCType type = young_gc_pause_type_detailed(false);
 

@@ -1218,6 +1218,7 @@ void G1Policy::update_time_to_mixed_tracking(G1GCType gc_type,
       _concurrent_start_to_mixed.record_mixed_gc_start(start);
       break;
     default:
+      log_error(gc)("ShouldNotReachHere %s", G1GCTypeHelper::to_string(gc_type));
       ShouldNotReachHere();
   }
 }
