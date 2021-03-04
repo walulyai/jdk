@@ -28,10 +28,10 @@
 #include "utilities/debug.hpp"
 
 enum G1GCType {
-  YoungOnlyGC, // Normal
-  ConcurrentStartMarkGC, // ConcurrentStart
+  YoungOnlyGC,
+  ConcurrentStartMarkGC,
   DuringMarkOrRebuild,
-  MixedGC,  // Mixed
+  MixedGC,
   G1YCTypeEndSentinel,
   LastYoungGC,
   ConcurrentStartUndoGC,
