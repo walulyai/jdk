@@ -25,7 +25,7 @@
 #ifndef SHARE_GC_G1_G1COLLECTORSTATE_HPP
 #define SHARE_GC_G1_G1COLLECTORSTATE_HPP
 
-#include "gc/g1/g1YCTypes.hpp"
+#include "gc/g1/g1GCTypes.hpp"
 #include "utilities/globalDefinitions.hpp"
 
 // State of the G1 collection.
@@ -110,17 +110,14 @@ public:
   bool mark_or_rebuild_in_progress() const { return _mark_or_rebuild_in_progress; }
   bool clearing_next_bitmap() const { return _clearing_next_bitmap; }
 
-  G1YCType yc_type() const {
-    if (in_concurrent_start_gc()) {
-      return ConcurrentStart;
-    } else if (mark_or_rebuild_in_progress()) {
-      return DuringMarkOrRebuild;
-    } else if (in_young_only_phase()) {
-      return Normal;
-    } else {
-      return Mixed;
-    }
-  }
+  static bool is_young_only_pause(G1GCType gc_type);
+  static bool is_mixed_pause(G1GCType gc_type);
+  static bool is_last_young_pause(G1GCType gc_type);
+  static bool is_concurrent_start_pause(G1GCType gc_type);
+  // Calculate PauseKind from internal state.
+  G1GCType young_gc_pause_type_detailed(bool concurrent_operation_is_full_mark) const;
+  G1GCType young_gc_pause_type() const;
+
 };
 
 #endif // SHARE_GC_G1_G1COLLECTORSTATE_HPP

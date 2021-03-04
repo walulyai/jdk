@@ -26,7 +26,6 @@
 #include "gc/g1/g1EvacuationInfo.hpp"
 #include "gc/g1/g1HeapRegionTraceType.hpp"
 #include "gc/g1/g1Trace.hpp"
-#include "gc/g1/g1YCTypes.hpp"
 #include "gc/shared/gcHeapSummary.hpp"
 #include "jfr/jfrEvents.hpp"
 #if INCLUDE_JFR
@@ -53,7 +52,7 @@ public:
     writer.write_count(nof_entries);
     for (u4 i = 0; i < nof_entries; ++i) {
       writer.write_key(i);
-      writer.write(G1YCTypeHelper::to_string((G1YCType)i));
+      writer.write(G1GCTypeHelper::to_string((G1GCType)i));
     }
   }
 };
@@ -72,7 +71,7 @@ void G1NewTracer::initialize() {
   JFR_ONLY(register_jfr_type_constants());
 }
 
-void G1NewTracer::report_yc_type(G1YCType type) {
+void G1NewTracer::report_yc_type(G1GCType type) {
   _g1_young_gc_info.set_type(type);
 }
 

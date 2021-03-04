@@ -1,0 +1,64 @@
+/*
+ * Copyright (c) 2021, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
+ *
+ */
+
+#ifndef SHARE_GC_G1_G1GCTYPES_HPP
+#define SHARE_GC_G1_G1GCTYPES_HPP
+
+#include "utilities/debug.hpp"
+
+enum G1GCType {
+  YoungOnlyGC, // Normal
+  ConcurrentStartMarkGC, // ConcurrentStart
+  DuringMarkOrRebuild,
+  MixedGC,  // Mixed
+  G1YCTypeEndSentinel,
+  LastYoungGC,
+  ConcurrentStartUndoGC,
+  Cleanup,
+  Remark,
+  FullGC,
+  G1GCTypeEndSentinel
+};
+
+class G1GCTypeHelper {
+ public:
+  static const char* to_string(G1GCType type) {
+    switch(type) {
+      case YoungOnlyGC:
+      case LastYoungGC: return "Normal";
+      case ConcurrentStartUndoGC:
+      case ConcurrentStartMarkGC: return "Concurrent Start";
+      case DuringMarkOrRebuild: return "During Mark";
+      case Cleanup: return "Cleanup";
+      case Remark: return "Remark";
+      case MixedGC: return "Mixed";
+      case FullGC: return "Full";
+      default: ShouldNotReachHere(); return NULL;
+    }
+  }
+};
+
+
+#endif // SHARE_GC_G1_G1GCTYPES_HPP
+
