@@ -87,6 +87,4 @@ class G1GCTypeHelper {
 
 };
 
-
 #endif // SHARE_GC_G1_G1GCTYPES_HPP
-
