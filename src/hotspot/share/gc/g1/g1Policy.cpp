@@ -1197,7 +1197,7 @@ void G1Policy::update_time_to_mixed_tracking(G1GCType gc_type,
       break;
     case Cleanup:
     case Remark:
-    case YoungOnlyGC:
+    case NormalYoungGC:
     case LastYoungGC:
       _concurrent_start_to_mixed.add_pause(end - start);
       break;

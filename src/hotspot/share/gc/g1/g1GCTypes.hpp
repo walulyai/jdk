@@ -28,7 +28,7 @@
 #include "utilities/debug.hpp"
 
 enum G1GCType {
-  YoungOnlyGC,
+  NormalYoungGC,
   ConcurrentStartMarkGC,
   DuringMarkOrRebuild,
   MixedGC,
@@ -51,7 +51,7 @@ class G1GCTypeHelper {
     return type == ConcurrentStartUndoGC ||
            type == ConcurrentStartMarkGC ||
            type == LastYoungGC ||
-           type == YoungOnlyGC;
+           type == NormalYoungGC;
   }
 
   static bool is_mixed_pause(G1GCType type) {
@@ -71,7 +71,7 @@ class G1GCTypeHelper {
 
   static const char* to_string(G1GCType type) {
     switch(type) {
-      case YoungOnlyGC:
+      case NormalYoungGC:
       case LastYoungGC: return "Normal";
       case ConcurrentStartUndoGC:
       case ConcurrentStartMarkGC: return "Concurrent Start";

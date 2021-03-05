@@ -40,7 +40,7 @@ G1GCType G1CollectorState::young_gc_pause_type_detailed(bool concurrent_operatio
   } else {
     assert(!in_concurrent_start_gc(), "must be");
     assert(!in_young_gc_before_mixed(), "must be");
-    return YoungOnlyGC;
+    return NormalYoungGC;
   }
 }
 
@@ -54,7 +54,7 @@ G1GCType G1CollectorState::young_gc_pause_type() const {
   G1GCType type = young_gc_pause_type_detailed(false);
 
   if (type == LastYoungGC) {
-    return YoungOnlyGC;
+    return NormalYoungGC;
   }
 
   return type;
