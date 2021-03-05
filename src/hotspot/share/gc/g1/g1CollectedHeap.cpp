@@ -2925,7 +2925,7 @@ void G1CollectedHeap::do_collection_pause_at_safepoint_helper(double target_paus
   {
     G1EvacuationInfo evacuation_info;
 
-    _gc_tracer_stw->report_yc_type(collector_state()->young_gc_pause_type());
+    _gc_tracer_stw->report_yc_phase(collector_state()->young_gc_phase());
 
     GCTraceCPUTime tcpu;
 
@@ -2939,7 +2939,7 @@ void G1CollectedHeap::do_collection_pause_at_safepoint_helper(double target_paus
 
     G1MonitoringScope ms(g1mm(),
                          false /* full_gc */,
-                         collector_state()->young_gc_pause_type() == MixedGC /* all_memory_pools_affected */);
+                         collector_state()->young_gc_phase() == Mixed /* all_memory_pools_affected */);
 
     G1HeapTransition heap_transition(this);
 

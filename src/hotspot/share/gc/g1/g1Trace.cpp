@@ -48,11 +48,11 @@ public:
 class G1YCTypeConstant : public JfrSerializer {
 public:
   void serialize(JfrCheckpointWriter& writer) {
-    static const u4 nof_entries = G1YCTypeEndSentinel;
+    static const u4 nof_entries = G1YCPhaseEndSentinel;
     writer.write_count(nof_entries);
     for (u4 i = 0; i < nof_entries; ++i) {
       writer.write_key(i);
-      writer.write(G1GCTypeHelper::to_string((G1GCType)i));
+      writer.write(G1GCTypeHelper::to_string((G1YCPhase)i));
     }
   }
 };
@@ -71,8 +71,8 @@ void G1NewTracer::initialize() {
   JFR_ONLY(register_jfr_type_constants());
 }
 
-void G1NewTracer::report_yc_type(G1GCType type) {
-  _g1_young_gc_info.set_type(type);
+void G1NewTracer::report_yc_phase(G1YCPhase phase) {
+  _g1_young_gc_info.set_phase(phase);
 }
 
 void G1NewTracer::report_gc_end_impl(const Ticks& timestamp, TimePartitions* time_partitions) {
@@ -128,7 +128,7 @@ void G1NewTracer::send_g1_young_gc_event() {
   EventG1GarbageCollection e(UNTIMED);
   if (e.should_commit()) {
     e.set_gcId(GCId::current());
-    e.set_type(_g1_young_gc_info.type());
+    e.set_type(_g1_young_gc_info.phase());
     e.set_starttime(_shared_gc_info.start_timestamp());
     e.set_endtime(_shared_gc_info.end_timestamp());
     e.commit();

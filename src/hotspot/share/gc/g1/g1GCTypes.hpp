@@ -27,16 +27,22 @@
 
 #include "utilities/debug.hpp"
 
-enum G1GCType {
-  NormalYoungGC,
-  ConcurrentStartMarkGC,
+enum G1YCPhase {
+  Normal,
+  ConcurrentStart,
   DuringMarkOrRebuild,
-  MixedGC,
-  G1YCTypeEndSentinel,
+  Mixed,
+  G1YCPhaseEndSentinel
+};
+
+enum G1GCType {
+  YoungGC,
   LastYoungGC,
+  ConcurrentStartMarkGC,
   ConcurrentStartUndoGC,
   Cleanup,
   Remark,
+  MixedGC,
   FullGC,
   G1GCTypeEndSentinel
 };
@@ -51,7 +57,7 @@ class G1GCTypeHelper {
     return type == ConcurrentStartUndoGC ||
            type == ConcurrentStartMarkGC ||
            type == LastYoungGC ||
-           type == NormalYoungGC;
+           type == YoungGC;
   }
 
   static bool is_mixed_pause(G1GCType type) {
@@ -69,20 +75,16 @@ class G1GCTypeHelper {
     return type == ConcurrentStartMarkGC || type == ConcurrentStartUndoGC;
   }
 
-  static const char* to_string(G1GCType type) {
+  static const char* to_string(G1YCPhase type) {
     switch(type) {
-      case NormalYoungGC:
-      case LastYoungGC: return "Normal";
-      case ConcurrentStartUndoGC:
-      case ConcurrentStartMarkGC: return "Concurrent Start";
+      case Normal: return "Normal";
+      case ConcurrentStart: return "Concurrent Start";
       case DuringMarkOrRebuild: return "During Mark";
-      case Cleanup: return "Cleanup";
-      case Remark: return "Remark";
-      case MixedGC: return "Mixed";
-      case FullGC: return "Full";
+      case Mixed: return "Mixed";
       default: ShouldNotReachHere(); return NULL;
     }
   }
+
 };
 
 

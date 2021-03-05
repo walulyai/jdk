@@ -25,7 +25,7 @@
 #include "precompiled.hpp"
 #include "gc/g1/g1CollectorState.hpp"
 
-G1GCType G1CollectorState::young_gc_pause_type_detailed(bool concurrent_operation_is_full_mark) const {
+G1GCType G1CollectorState::young_gc_pause_type(bool concurrent_operation_is_full_mark) const {
   assert(!in_full_gc(), "must be");
   if (in_concurrent_start_gc()) {
     assert(!in_young_gc_before_mixed(), "must be");
@@ -40,22 +40,20 @@ G1GCType G1CollectorState::young_gc_pause_type_detailed(bool concurrent_operatio
   } else {
     assert(!in_concurrent_start_gc(), "must be");
     assert(!in_young_gc_before_mixed(), "must be");
-    return NormalYoungGC;
+    return YoungGC;
   }
 }
 
-G1GCType G1CollectorState::young_gc_pause_type() const {
+G1YCPhase G1CollectorState::young_gc_phase() const {
   assert(!in_full_gc(), "must be");
 
-  if (mark_or_rebuild_in_progress()) {
+  if (in_concurrent_start_gc()) {
+    return ConcurrentStart;
+  } else if (mark_or_rebuild_in_progress()) {
     return DuringMarkOrRebuild;
+  } else if (in_young_only_phase()) {
+    return Normal;
+  } else {
+    return Mixed;
   }
-
-  G1GCType type = young_gc_pause_type_detailed(false);
-
-  if (type == LastYoungGC) {
-    return NormalYoungGC;
-  }
-
-  return type;
 }
