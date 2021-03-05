@@ -24,6 +24,7 @@
 
 #include "precompiled.hpp"
 #include "gc/g1/g1CollectorState.hpp"
+#include "gc/g1/g1GCTypes.hpp"
 
 G1GCType G1CollectorState::young_gc_pause_type(bool concurrent_operation_is_full_mark) const {
   assert(!in_full_gc(), "must be");
