@@ -34,8 +34,6 @@ package gc.g1;
  * @run driver gc.g1.TestMixedGCLiveThreshold
  */
 
-import java.lang.management.ManagementFactory;
-import java.lang.management.MemoryUsage;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.regex.Pattern;
