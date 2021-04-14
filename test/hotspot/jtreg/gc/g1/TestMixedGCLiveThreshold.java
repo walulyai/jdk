@@ -44,8 +44,6 @@ import jdk.test.lib.process.ProcessTools;
 import jdk.test.lib.Asserts;
 import sun.hotspot.WhiteBox;
 
-
-
 public class TestMixedGCLiveThreshold {
     private static final String pattern = "Remembered Set Tracking update regions total ([0-9]+), selected ([0-9]+)$";
 
