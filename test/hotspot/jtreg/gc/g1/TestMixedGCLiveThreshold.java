@@ -25,11 +25,11 @@ package gc.g1;
 
 /*
  * @test TestMixedGCLiveThreshold
- * @summary Test G1 G1MixedGCLiveThresholdPercent which sets the occupancy threshold for an old region
- *          to be included in a mixed garbage collection cycle.
+ * @summary Test G1MixedGCLiveThresholdPercent. Fill up a region to at least 1/3 region-size,
+ * the region should not be selected for mixed GC cycle if liveness is above threshold.
  * @requires vm.gc.G1
  * @library /test/lib
-  * @build sun.hotspot.WhiteBox
+ * @build sun.hotspot.WhiteBox
  * @run driver jdk.test.lib.helpers.ClassFileInstaller sun.hotspot.WhiteBox
  * @run driver gc.g1.TestMixedGCLiveThreshold
  */

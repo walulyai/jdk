@@ -463,7 +463,7 @@ public:
   // live words between bottom and nTAMS.
   size_t live_words(uint region) const { return _region_mark_stats[region]._live_words; }
 
-  size_t liveness_in_bytes(uint region) const { return live_words(region) * HeapWordSize; }
+  size_t live_bytes(uint region) const { return live_words(region) * HeapWordSize; }
 
   // Sets the internal top_at_region_start for the given region to current top of the region.
   inline void update_top_at_rebuild_start(HeapRegion* r);
