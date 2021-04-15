@@ -95,7 +95,6 @@ public class TestMixedGCLiveThreshold {
     }
 
     private static boolean regionsSelectedForRebuild(String output) throws Exception {
-        System.out.println(output);
         Matcher m = Pattern.compile(pattern, Pattern.MULTILINE).matcher(output);
 
         if (!m.find()) {
