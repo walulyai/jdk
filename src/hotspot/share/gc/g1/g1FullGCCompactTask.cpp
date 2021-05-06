@@ -152,18 +152,9 @@ void G1FullGCCompactTask::humongous_compaction() {
 
       HeapWord* old_obj = g1h->region_at(old_first)->bottom();
 
-      // Copy object. Use conjoint copying if we are relocating
-      // in-place and the new object overlapps with the old object.
-      if ( new_first + num_regions > old_first) {
-        log_error(gc) ("conjoint_words");
-        Copy::aligned_conjoint_words(old_obj, destination, word_size);
-      } else {
-        log_error(gc) ("disjoint_words");
-        Copy::aligned_disjoint_words(old_obj, destination, word_size);
-      }
       // Copy object. Use conjoint copying the new object 
       // may overlap with the old object.
-     // Copy::aligned_conjoint_words(old_obj, destination, word_size);
+      Copy::aligned_conjoint_words(old_obj, destination, word_size);
       assert(destination == g1h->region_at(new_first)->bottom(), "sanity");
       oop new_obj = cast_to_oop(destination);
       new_obj->init_mark();
