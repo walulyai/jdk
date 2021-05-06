@@ -289,6 +289,10 @@ void G1FullCollector::phase2_prepare_compaction() {
   if (!task.has_freed_regions()) {
     task.prepare_serial_compaction();
   }
+
+  if (_scope.do_maximal_compaction()) {
+    task.prepare_humongous_compaction();
+  }
 }
 
 void G1FullCollector::phase3_adjust_pointers() {
@@ -308,6 +312,11 @@ void G1FullCollector::phase4_do_compaction() {
   // Serial compact to avoid OOM when very few free regions.
   if (serial_compaction_point()->has_regions()) {
     task.serial_compaction();
+  }
+
+  // Compact humongous objects after regular object moves
+  if (_scope.do_maximal_compaction()) {
+    task.humongous_compaction();
   }
 }
 

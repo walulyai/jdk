@@ -245,6 +245,48 @@ void G1FullGCPrepareTask::prepare_serial_compaction() {
   cp->update();
 }
 
+void G1FullGCPrepareTask::prepare_humongous_compaction() {
+  G1CollectedHeap* g1h = G1CollectedHeap::heap();
+  const uint num_regions = g1h->num_regions();
+
+  uint range_begin = num_regions;
+  uint range_end = num_regions;
+
+  for(uint idx = num_regions; idx > 0; --idx) {
+    HeapRegion* hr = g1h->region_at(idx - 1);
+    uint i = hr->hrm_index();
+    G1HeapRegionAttr region_attr = (G1HeapRegionAttr) g1h->region_attr(i);
+
+    if (hr->is_continues_humongous() || (!hr->is_pinned() && hr->compaction_top() == hr->bottom()) ) {
+    //if (hr->is_continues_humongous()) {
+      //log_error(gc) ("To-region candidate: %d is_empty: %d", (hr->is_continues_humongous()) ? hr->humongous_start_region()->hrm_index() : hr->hrm_index(), hr->is_empty());
+      range_begin = hr->hrm_index();
+      continue;
+    }
+
+    if (hr->is_starts_humongous()) {
+      oop obj = cast_to_oop(hr->bottom());
+      if (collector()->mark_bitmap()->is_marked(obj)) { // Object is live, should be moved
+        size_t word_size = obj->size();
+        uint obj_regions = (uint) G1CollectedHeap::humongous_obj_size_in_regions(word_size);
+        log_error(gc) ("From-region candidate: movable humongous region %d object size: %zu num_regions: %d", i, word_size, obj_regions);
+
+        uint humongous_start = range_end - obj_regions;
+
+        if (humongous_start >= range_begin && humongous_start != hr->hrm_index()) {
+          log_debug(gc) ("Move region: from %d to %d num_regions: %d", hr->hrm_index(), humongous_start, obj_regions);
+          obj->forward_to(cast_to_oop(g1h->region_at(humongous_start)->bottom()));
+          range_end = humongous_start;
+          continue;
+        }
+      }
+    }
+    range_begin = hr->hrm_index();
+    range_end = hr->hrm_index(); 
+  }
+
+}
+
 bool G1FullGCPrepareTask::G1CalculatePointersClosure::freed_regions() {
   if (_regions_freed) {
     return true;

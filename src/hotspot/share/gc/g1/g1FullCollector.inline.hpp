@@ -42,6 +42,10 @@ bool G1FullCollector::is_skip_marking(oop obj) const {
   return _region_attr_table.is_skip_marking(cast_from_oop<HeapWord*>(obj));
 }
 
+bool G1FullCollector::is_invalid(uint region_index) const {
+  return _region_attr_table.is_invalid(region_index);
+}
+
 void G1FullCollector::set_invalid(uint region_idx) {
   _region_attr_table.set_invalid(region_idx);
 }

@@ -31,6 +31,7 @@ G1FullGCScope::G1FullGCScope(G1MonitoringSupport* monitoring_support,
                              bool do_maximum_compaction) :
     _rm(),
     _explicit_gc(explicit_gc),
+    _do_maximal_compaction(do_maximum_compaction),
     _g1h(G1CollectedHeap::heap()),
     _gc_id(),
     _svc_marker(SvcGCMarker::FULL),
@@ -64,6 +65,10 @@ G1FullGCScope::~G1FullGCScope() {
 
 bool G1FullGCScope::is_explicit_gc() {
   return _explicit_gc;
+}
+
+bool G1FullGCScope::do_maximal_compaction() {
+  return _do_maximal_compaction;
 }
 
 bool G1FullGCScope::should_clear_soft_refs() {

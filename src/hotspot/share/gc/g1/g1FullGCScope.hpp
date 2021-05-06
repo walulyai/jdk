@@ -43,6 +43,7 @@ class GCMemoryManager;
 class G1FullGCScope : public StackObj {
   ResourceMark            _rm;
   bool                    _explicit_gc;
+  bool                    _do_maximal_compaction;
   G1CollectedHeap*        _g1h;
   GCIdMark                _gc_id;
   SvcGCMarker             _svc_marker;
@@ -63,6 +64,7 @@ public:
   ~G1FullGCScope();
 
   bool is_explicit_gc();
+  bool do_maximal_compaction();
   bool should_clear_soft_refs();
 
   STWGCTimer* timer();

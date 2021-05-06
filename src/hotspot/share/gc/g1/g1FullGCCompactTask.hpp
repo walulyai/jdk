@@ -48,6 +48,7 @@ public:
     _claimer(collector->workers()) { }
   void work(uint worker_id);
   void serial_compaction();
+  void humongous_compaction();
 
   class G1CompactRegionClosure : public StackObj {
     G1CMBitMap* _bitmap;

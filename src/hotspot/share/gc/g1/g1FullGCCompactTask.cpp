@@ -112,3 +112,120 @@ void G1FullGCCompactTask::serial_compaction() {
     compact_region(*it);
   }
 }
+
+void G1FullGCCompactTask::humongous_compaction() {
+  G1CollectedHeap* g1h = G1CollectedHeap::heap();
+  const uint num_regions = g1h->num_regions();
+
+  for(uint idx = num_regions; idx > 0; --idx) {
+    HeapRegion* hr = g1h->region_at(idx - 1);
+
+    if (hr->is_starts_humongous()) {
+      oop obj = cast_to_oop(hr->bottom());
+      HeapWord* destination = cast_from_oop<HeapWord*>(obj->forwardee());
+      if (destination == NULL) {
+        // Object not moving
+        continue;
+      }
+      size_t word_size = obj->size();
+      uint obj_regions = (uint) G1CollectedHeap::humongous_obj_size_in_regions(word_size);
+      log_error(gc) ("Object %d is moving |  object size: %zu num_regions: %d", hr->hrm_index(), word_size, obj_regions);
+
+      // Index of last region in the series.
+      uint old_first = hr->hrm_index();
+      uint old_last = old_first + obj_regions - 1;
+      
+      uint new_first = g1h->addr_to_region(destination);
+      assert(new_first < num_regions,  "must be!");
+      uint new_last = new_first + obj_regions - 1;
+
+      assert(old_first != new_first, "sanity");
+
+      // The word size sum of all the regions used
+      size_t word_size_sum = (size_t) obj_regions * HeapRegion::GrainWords;
+      assert(word_size <= word_size_sum, "sanity");
+
+      HeapRegion* first_hr =  g1h->region_at(new_first);
+      //HeapWord* new_obj  = first_hr->bottom();
+      // This will be the new top of the new object.
+      HeapWord* new_obj_top = destination + word_size;
+
+      HeapWord* old_obj = g1h->region_at(old_first)->bottom();
+
+      // Copy object. Use conjoint copying if we are relocating
+      // in-place and the new object overlapps with the old object.
+      if ( new_first + num_regions > old_first) {
+        log_error(gc) ("conjoint_words");
+        Copy::aligned_conjoint_words(old_obj, destination, word_size);
+      } else {
+        log_error(gc) ("disjoint_words");
+        Copy::aligned_disjoint_words(old_obj, destination, word_size);
+      }
+      // Copy object. Use conjoint copying the new object 
+      // may overlap with the old object.
+     // Copy::aligned_conjoint_words(old_obj, destination, word_size);
+      assert(destination == g1h->region_at(new_first)->bottom(), "sanity");
+      oop new_obj = cast_to_oop(destination);
+      new_obj->init_mark();
+      assert(new_obj->klass() != NULL, "should have a class");
+
+
+      for (uint i = old_first; i <= old_last; ++i) {
+        HeapRegion* hr = g1h->region_at(i);
+        // Clear the liveness information for this region if necessary i.e. if we actually look at it
+        // for bitmap verification. Otherwise it is sufficient that we move the TAMS to bottom().
+        if (G1VerifyBitmaps) {
+          collector()->mark_bitmap()->clear_region(hr);
+        }
+        hr->set_free();
+        hr->reset_compacted_after_full_gc();
+      }
+
+      // Next, pad out the unused tail of the last region with filler
+      // objects, for improved usage accounting.
+      // How many words we use for filler objects.
+      size_t word_fill_size = word_size_sum - word_size;
+
+      // How many words memory we "waste" which cannot hold a filler object.
+      size_t words_not_fillable = 0;
+
+      if (word_fill_size >= G1CollectedHeap::min_fill_size()) {
+        G1CollectedHeap::fill_with_objects(new_obj_top, word_fill_size);
+      } else if (word_fill_size > 0) {
+        // We have space to fill, but we cannot fit an object there.
+        words_not_fillable = word_fill_size;
+        word_fill_size = 0;
+      }
+      // We will set up the first region as "starts humongous". This
+      // will also update the BOT covering all the regions to reflect
+      // that there is a single object that starts at the bottom of the
+      // first region.
+      first_hr->set_starts_humongous(new_obj_top, word_fill_size);
+
+      for (uint i = new_first + 1; i < new_last; ++i) {
+        HeapRegion* hr = g1h->region_at(i);
+        hr->set_continues_humongous(first_hr);
+        hr->set_top(hr->end());
+      }
+
+      HeapRegion* last_hr = g1h->region_at(new_last);
+      last_hr->set_continues_humongous(first_hr);
+      // If we cannot fit a filler object, we must set top to the end
+      // of the humongous object, otherwise we cannot iterate the heap
+      // and the BOT will not be complete.
+      last_hr->set_top(last_hr->end() - words_not_fillable);
+      // cast_to_oop(destination)->init_mark();
+      assert(words_not_fillable == 0 ||
+             first_hr->bottom() + word_size_sum - words_not_fillable == last_hr->top(),
+             "Miscalculation in humongous allocation");
+      /*
+      for (uint i = first; i <= last; ++i) {
+        hr = region_at(i);
+        _humongous_set.add(hr);
+        _hr_printer.alloc(hr);
+      }
+      */
+
+    }
+  }
+}

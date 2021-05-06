@@ -47,6 +47,7 @@ public:
   G1FullGCPrepareTask(G1FullCollector* collector);
   void work(uint worker_id);
   void prepare_serial_compaction();
+  void prepare_humongous_compaction();
   bool has_freed_regions();
 
 protected:
