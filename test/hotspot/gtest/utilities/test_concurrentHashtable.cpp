@@ -77,6 +77,7 @@ struct Config : public AllStatic {
 
   static bool bulk_free() {
     ::free(elements);
+    elements = nullptr;
     return true;
   }
 };
@@ -266,6 +267,7 @@ static void cht_bulk_free_config(Thread* thr) {
   SimpleTestLookup stl1(val1), stl2(val2), stl3(val3);
 
   Config::initialize();
+  EXPECT_TRUE(Config::elements != nullptr) << "Custom allocator not initialized.";
   CustomTestTable* cht = new CustomTestTable();
 
   cht_getinsert_bulkdelete_insert_verified(thr, cht, val1, false, true);
@@ -273,6 +275,7 @@ static void cht_bulk_free_config(Thread* thr) {
   cht_getinsert_bulkdelete_insert_verified(thr, cht, val3, false, true);
 
   delete cht;
+  EXPECT_TRUE(Config::elements == nullptr) << "Custom allocator bulk_free call failed.";
 }
 
 static void cht_scope(Thread* thr) {
