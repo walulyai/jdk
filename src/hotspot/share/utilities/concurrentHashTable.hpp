@@ -263,7 +263,25 @@ class ConcurrentHashTable : public CHeapObj<F> {
   InternalTable* set_table_from_new();
 
   // Destroys all nodes.
-  void free_nodes();
+  void free_all_nodes();
+
+  // Use member function introspection to detect if CONFIG
+  // has defined a `bulk_free` method which avoids the overhead
+  // of traversing all nodes in the table.
+  template <typename T1, typename T2 = void>
+  struct HasBulkFree : std::false_type {};
+  template <typename T1>
+  struct HasBulkFree<T1, decltype(std::declval<T1>().bulk_free(), void())> : std::true_type {};
+
+  template<typename T, typename = typename EnableIf<HasBulkFree<T>::value, void>::type>
+  bool free_nodes_impl() { return CONFIG::bulk_free(); }
+
+  template<typename T, typename = typename EnableIf<!HasBulkFree<T>::value, void>::type>
+  void free_nodes_impl() { free_all_nodes(); }
+
+  void free_nodes() {
+    free_nodes_impl<CONFIG>();
+  }
 
   // Mask away high bits of hash.
   static size_t bucket_idx_hash(InternalTable* table, const uintx hash) {

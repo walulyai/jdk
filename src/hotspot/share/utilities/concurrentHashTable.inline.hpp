@@ -355,7 +355,7 @@ inline void ConcurrentHashTable<CONFIG, F>::
 
 template <typename CONFIG, MEMFLAGS F>
 inline void ConcurrentHashTable<CONFIG, F>::
-  free_nodes()
+  free_all_nodes()
 {
   // We assume we are not MT during freeing.
   for (size_t node_it = 0; node_it < _table->_size; node_it++) {
