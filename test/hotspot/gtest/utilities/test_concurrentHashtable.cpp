@@ -177,8 +177,7 @@ static void getinsert_bulkdelete_del(uintptr_t* val) {
   EXPECT_EQ(*val & 0x1, (uintptr_t)1) << "Deleting wrong value.";
 }
 
-template <typename T=SimpleTestTable>
-static void cht_getinsert_bulkdelete_insert_verified(Thread* thr, T* cht, uintptr_t val,
+static void cht_getinsert_bulkdelete_insert_verified(Thread* thr, SimpleTestTable* cht, uintptr_t val,
                                                      bool verify_expect_get, bool verify_expect_inserted) {
   SimpleTestLookup stl(val);
   if (verify_expect_inserted) {
@@ -271,20 +270,18 @@ static void cht_reset_shrink(Thread* thr) {
   Config::initialize();
   CustomTestTable* cht = new CustomTestTable();
 
-  cht_getinsert_bulkdelete_insert_verified(thr, cht, val1, false, true);
-  cht_getinsert_bulkdelete_insert_verified(thr, cht, val2, false, true);
-  cht_getinsert_bulkdelete_insert_verified(thr, cht, val3, false, true);
-
-  EXPECT_EQ(cht_get_copy(cht, thr, stl1), val1) << "Added value should exists.";
+  cht_insert_and_find(thr, cht, val1);
+  cht_insert_and_find(thr, cht, val2);
+  cht_insert_and_find(thr, cht, val3);
 
   cht->unsafe_reset();
   Config::reset();
 
   EXPECT_EQ(cht_get_copy(cht, thr, stl1), (uintptr_t)0) << "Table should have been reset";
   // Re-inserted values should not be considered duplicates; table was reset.
-  cht_getinsert_bulkdelete_insert_verified(thr, cht, val1, false, true);
-  cht_getinsert_bulkdelete_insert_verified(thr, cht, val2, false, true);
-  cht_getinsert_bulkdelete_insert_verified(thr, cht, val3, false, true);
+  cht_insert_and_find(thr, cht, val1);
+  cht_insert_and_find(thr, cht, val2);
+  cht_insert_and_find(thr, cht, val3);
 
   delete cht;
   Config::bulk_free();
