@@ -280,7 +280,7 @@ static void cht_reset_shrink(Thread* thr) {
   cht->unsafe_reset();
   Config::reset();
 
-  EXPECT_EQ(cht_get_copy(cht, thr, stl3), (uintptr_t)0) << "Table should have been reset";
+  EXPECT_EQ(cht_get_copy(cht, thr, stl1), (uintptr_t)0) << "Table should have been reset";
   // Re-inserted values should not be considered duplicates; table was reset.
   cht_getinsert_bulkdelete_insert_verified(thr, cht, val1, false, true);
   cht_getinsert_bulkdelete_insert_verified(thr, cht, val2, false, true);
