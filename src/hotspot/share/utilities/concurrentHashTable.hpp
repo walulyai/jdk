@@ -389,7 +389,9 @@ class ConcurrentHashTable : public CHeapObj<F> {
   // Re-size operations.
   bool shrink(Thread* thread, size_t size_limit_log2 = 0);
   bool grow(Thread* thread, size_t size_limit_log2 = 0);
-  // unsafe reset and/or resize the table
+  // Unsafe reset and resize the table. This method assumes that we
+  // want to clear and maybe resize the internal table without the
+  // overheads of clearing individual items in the table.
   void unsafe_reset(size_t size_log2 = 0);
 
   // All callbacks for get are under critical sections. Other callbacks may be
