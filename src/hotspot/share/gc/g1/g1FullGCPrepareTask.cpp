@@ -282,7 +282,7 @@ void G1FullGCPrepareTask::prepare_humongous_compaction() {
       }
     }
     range_begin = hr->hrm_index();
-    range_end = hr->hrm_index(); 
+    range_end = hr->hrm_index();
   }
 
 }

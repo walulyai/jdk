@@ -134,7 +134,7 @@ void G1FullGCCompactTask::humongous_compaction() {
       // Index of last region in the series.
       uint old_first = hr->hrm_index();
       uint old_last = old_first + obj_regions - 1;
-      
+
       uint new_first = g1h->addr_to_region(destination);
       assert(new_first < num_regions,  "must be!");
       uint new_last = new_first + obj_regions - 1;
@@ -152,7 +152,7 @@ void G1FullGCCompactTask::humongous_compaction() {
 
       HeapWord* old_obj = g1h->region_at(old_first)->bottom();
 
-      // Copy object. Use conjoint copying the new object 
+      // Copy object. Use conjoint copying the new object
       // may overlap with the old object.
       Copy::aligned_conjoint_words(old_obj, destination, word_size);
       assert(destination == g1h->region_at(new_first)->bottom(), "sanity");
