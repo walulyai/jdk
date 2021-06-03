@@ -157,6 +157,7 @@ public:
 
   void set_starts_humongous()    { set_from(StartsHumongousTag,    FreeTag); }
   void set_continues_humongous() { set_from(ContinuesHumongousTag, FreeTag); }
+  void change_continues_humongous() { set_from(ContinuesHumongousTag, ContinuesHumongousTag); }
 
   void set_old() { set(OldTag); }
 

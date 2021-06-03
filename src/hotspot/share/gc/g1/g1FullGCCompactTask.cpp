@@ -117,8 +117,8 @@ void G1FullGCCompactTask::humongous_compaction() {
   G1CollectedHeap* g1h = G1CollectedHeap::heap();
   const uint num_regions = g1h->num_regions();
 
-  for(uint idx = num_regions; idx > 0; --idx) {
-    HeapRegion* hr = g1h->region_at(idx - 1);
+  for (uint idx = 0; idx < num_regions; ++idx) {
+    HeapRegion* hr = g1h->region_at(idx);
 
     if (hr->is_starts_humongous()) {
       oop obj = cast_to_oop(hr->bottom());
@@ -136,17 +136,21 @@ void G1FullGCCompactTask::humongous_compaction() {
       uint old_last = old_first + obj_regions - 1;
 
       uint new_first = g1h->addr_to_region(destination);
-      assert(new_first < num_regions,  "must be!");
+      assert(new_first < old_first,  "must be!");
       uint new_last = new_first + obj_regions - 1;
 
       assert(old_first != new_first, "sanity");
+
+      log_error(gc) ("Move region: from %d to %d num_regions: %d", old_first, new_first, obj_regions);
 
       // The word size sum of all the regions used
       size_t word_size_sum = (size_t) obj_regions * HeapRegion::GrainWords;
       assert(word_size <= word_size_sum, "sanity");
 
       HeapRegion* first_hr =  g1h->region_at(new_first);
-      //HeapWord* new_obj  = first_hr->bottom();
+      assert(!first_hr->is_humongous(), "sanity / pre-condition %s %d idx %d", first_hr->get_type_str(), first_hr->is_humongous(), new_first);
+      assert(first_hr->is_empty(), "should be empty %s %d idx %d", first_hr->get_type_str(), first_hr->is_humongous(), new_first);
+      // first_hr->reset_compacted_after_full_gc();
       // This will be the new top of the new object.
       HeapWord* new_obj_top = destination + word_size;
 
@@ -155,21 +159,16 @@ void G1FullGCCompactTask::humongous_compaction() {
       // Copy object. Use conjoint copying the new object
       // may overlap with the old object.
       Copy::aligned_conjoint_words(old_obj, destination, word_size);
-      assert(destination == g1h->region_at(new_first)->bottom(), "sanity");
+      assert(destination == first_hr->bottom(), "sanity");
       oop new_obj = cast_to_oop(destination);
       new_obj->init_mark();
       assert(new_obj->klass() != NULL, "should have a class");
-
-
-      for (uint i = old_first; i <= old_last; ++i) {
+      // FIXME: what do we do about the regions we moved from????
+      // FIXME: how about overlaping regions??
+      uint non_overlapping_start = (new_last < old_first) ? old_first : new_last + 1;
+      for (uint i = non_overlapping_start; i <= old_last; ++i) {
         HeapRegion* hr = g1h->region_at(i);
-        // Clear the liveness information for this region if necessary i.e. if we actually look at it
-        // for bitmap verification. Otherwise it is sufficient that we move the TAMS to bottom().
-        if (G1VerifyBitmaps) {
-          collector()->mark_bitmap()->clear_region(hr);
-        }
-        hr->set_free();
-        hr->reset_compacted_after_full_gc();
+        g1h->free_humongous_region(hr, nullptr);
       }
 
       // Next, pad out the unused tail of the last region with filler
@@ -192,31 +191,38 @@ void G1FullGCCompactTask::humongous_compaction() {
       // that there is a single object that starts at the bottom of the
       // first region.
       first_hr->set_starts_humongous(new_obj_top, word_fill_size);
+      g1h->policy()->remset_tracker()->update_at_allocate(first_hr);
 
-      for (uint i = new_first + 1; i < new_last; ++i) {
+      // Then, if there are any, we will set up the "continues
+      // humongous" regions.
+      for (uint i = new_first + 1; i <= new_last; ++i) {
         HeapRegion* hr = g1h->region_at(i);
-        hr->set_continues_humongous(first_hr);
+        hr->change_continues_humongous(first_hr);
+        g1h->policy()->remset_tracker()->update_at_allocate(hr);
+      }
+
+    // Now, we will update the top fields of the "continues humongous"
+    // regions except the last one.
+      for (uint i = new_first; i < new_last; ++i) {
+        hr = g1h->region_at(i);
         hr->set_top(hr->end());
       }
 
       HeapRegion* last_hr = g1h->region_at(new_last);
-      last_hr->set_continues_humongous(first_hr);
+      // last_hr->set_continues_humongous(first_hr);
       // If we cannot fit a filler object, we must set top to the end
       // of the humongous object, otherwise we cannot iterate the heap
       // and the BOT will not be complete.
       last_hr->set_top(last_hr->end() - words_not_fillable);
-      // cast_to_oop(destination)->init_mark();
+
+      assert(last_hr->bottom() < new_obj_top && new_obj_top <= last_hr->end(),
+         "obj_top should be in last region");
+
       assert(words_not_fillable == 0 ||
              first_hr->bottom() + word_size_sum - words_not_fillable == last_hr->top(),
              "Miscalculation in humongous allocation");
-      /*
-      for (uint i = first; i <= last; ++i) {
-        hr = region_at(i);
-        _humongous_set.add(hr);
-        _hr_printer.alloc(hr);
-      }
-      */
 
     }
   }
+
 }

@@ -219,6 +219,17 @@ void HeapRegion::set_continues_humongous(HeapRegion* first_hr) {
   _bot_part.set_object_can_span(true);
 }
 
+void HeapRegion::change_continues_humongous(HeapRegion* first_hr) {
+  // assert(is_humongous(), "sanity / pre-condition");
+  assert(first_hr->is_starts_humongous(), "pre-condition");
+
+  _type.set_free();
+  _type.set_continues_humongous();
+  _humongous_start_region = first_hr;
+
+  _bot_part.set_object_can_span(true);
+}
+
 void HeapRegion::clear_humongous() {
   assert(is_humongous(), "pre-condition");
 

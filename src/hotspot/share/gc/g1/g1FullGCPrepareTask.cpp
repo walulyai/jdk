@@ -249,40 +249,54 @@ void G1FullGCPrepareTask::prepare_humongous_compaction() {
   G1CollectedHeap* g1h = G1CollectedHeap::heap();
   const uint num_regions = g1h->num_regions();
 
-  uint range_begin = num_regions;
-  uint range_end = num_regions;
+  uint range_begin = 0;
+  uint range_end = 0;
 
-  for(uint idx = num_regions; idx > 0; --idx) {
-    HeapRegion* hr = g1h->region_at(idx - 1);
-    uint i = hr->hrm_index();
-    G1HeapRegionAttr region_attr = (G1HeapRegionAttr) g1h->region_attr(i);
+  for (uint idx = 0; idx < num_regions; ++idx) {
+    HeapRegion* hr = g1h->region_at(idx);
+    uint hr_index = hr->hrm_index();
+    G1HeapRegionAttr region_attr = (G1HeapRegionAttr) g1h->region_attr(hr_index);
 
-    if (hr->is_continues_humongous() || (!hr->is_pinned() && hr->compaction_top() == hr->bottom()) ) {
+    if (!hr->is_pinned() && hr->compaction_top() == hr->bottom()) {
     //if (hr->is_continues_humongous()) {
-      //log_error(gc) ("To-region candidate: %d is_empty: %d", (hr->is_continues_humongous()) ? hr->humongous_start_region()->hrm_index() : hr->hrm_index(), hr->is_empty());
-      range_begin = hr->hrm_index();
-      continue;
+      if (!hr->is_empty()) {
+        log_error(gc) ("To-region candidate: %d is_empty: %d %zu %s %d", hr->hrm_index(), hr->is_empty(), hr->used(), hr->get_type_str(), hr->is_humongous());
+      } else {
+        //log_error(gc) ("To-region candidate: %d is_empty: %d used: %zu", hr->hrm_index(), hr->is_empty(), hr->used());
+        range_end = hr->hrm_index();
+        continue;
+      }
     }
 
     if (hr->is_starts_humongous()) {
-      oop obj = cast_to_oop(hr->bottom());
-      if (collector()->mark_bitmap()->is_marked(obj)) { // Object is live, should be moved
-        size_t word_size = obj->size();
-        uint obj_regions = (uint) G1CollectedHeap::humongous_obj_size_in_regions(word_size);
-        log_error(gc) ("From-region candidate: movable humongous region %d object size: %zu num_regions: %d", i, word_size, obj_regions);
+      if (range_begin != range_end) {
+        assert(!hr->is_archive(), "can't move archive region");
 
-        uint humongous_start = range_end - obj_regions;
+        oop obj = cast_to_oop(hr->bottom());
+        if (collector()->mark_bitmap()->is_marked(obj)) { // Object is live, should be moved
+          size_t word_size = obj->size();
+          uint obj_regions = (uint) G1CollectedHeap::humongous_obj_size_in_regions(word_size);
+          // log_error(gc) ("From-region candidate: movable humongous region %d object size: %zu num_regions: %d range_of_move: %d", hr_index, word_size, obj_regions, (range_end - range_begin));
 
-        if (humongous_start >= range_begin && humongous_start != hr->hrm_index()) {
-          log_debug(gc) ("Move region: from %d to %d num_regions: %d", hr->hrm_index(), humongous_start, obj_regions);
+          uint humongous_start = range_begin + 1;
+          log_error(gc) ("Forward region: from %d to %d num_regions: %d", hr->hrm_index(), humongous_start, obj_regions);
+          // assert(g1h->region_at(humongous_start)->is_empty(), "should be empty");
+          // assert(!g1h->region_at(humongous_start)->is_humongous(), "sanity / pre-condition");
           obj->forward_to(cast_to_oop(g1h->region_at(humongous_start)->bottom()));
-          range_end = humongous_start;
+          range_begin += obj_regions;
+          range_end += obj_regions;
+          idx += (obj_regions - 1); // move idx to last region in the humongous object
+          assert(g1h->region_at(idx)->humongous_start_region() == hr, "Must be!");
           continue;
+        } else {
+          ShouldNotReachHere();
         }
+      } else {
+        log_error(gc) ("%d Cannot be moved, no space before object", hr_index);
       }
     }
-    range_begin = hr->hrm_index();
-    range_end = hr->hrm_index();
+    range_begin = hr_index;
+    range_end = hr_index;
   }
 
 }

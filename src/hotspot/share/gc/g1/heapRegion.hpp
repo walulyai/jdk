@@ -440,6 +440,7 @@ public:
   // region. first_hr is the "start humongous" region of the series
   // which this region will be part of.
   void set_continues_humongous(HeapRegion* first_hr);
+  void change_continues_humongous(HeapRegion* first_hr);
 
   // Unsets the humongous-related fields on the region.
   void clear_humongous();
