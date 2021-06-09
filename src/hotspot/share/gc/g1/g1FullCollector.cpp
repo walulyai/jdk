@@ -233,13 +233,11 @@ void G1FullCollector::before_marking_update_attribute_table(HeapRegion* hr) {
     _region_attr_table.verify_is_invalid(hr->hrm_index());
   } else if (hr->is_closed_archive()) {
     _region_attr_table.set_skip_marking(hr->hrm_index());
+  } else if (hr->is_humongous() && _scope.do_maximal_compaction()) {
+    // Humongous regions can be compacted on last-ditch fullgc
+    _region_attr_table.set_compacting(hr->hrm_index());
   } else if (hr->is_pinned()) {
-    if (hr->is_humongous() && _scope.do_maximal_compaction()) {
-      // Humongous regions can be compacted on last-ditch fullgc
-      _region_attr_table.set_compacting(hr->hrm_index());
-    } else {
-      _region_attr_table.set_skip_compacting(hr->hrm_index());
-    }
+    _region_attr_table.set_skip_compacting(hr->hrm_index());
   } else {
     // Everything else should be compacted.
     _region_attr_table.set_compacting(hr->hrm_index());

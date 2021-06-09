@@ -54,12 +54,11 @@ void G1FullGCPrepareTask::G1CalculatePointersClosure::free_pinned_region(HeapReg
 bool G1FullGCPrepareTask::G1CalculatePointersClosure::do_heap_region(HeapRegion* hr) {
   bool force_not_compacted = false;
   if (should_compact(hr)) {
-    assert(!hr->is_humongous(), "moving humongous objects not supported.");
+    assert(!hr->is_humongous(), "moving humongous objects is handled specially.");
     prepare_for_compaction(hr);
   } else {
     // There is no need to iterate and forward objects in pinned regions ie.
-    // prepare them for compaction. The adjust pointers phase will skip
-    // work for them.
+    // prepare them for compaction. This is handled separately if required (maximal compaction). 
     assert(hr->containing_set() == nullptr, "already cleared by PrepareRegionsClosure");
     if (hr->is_humongous()) {
       oop obj = cast_to_oop(hr->humongous_start_region()->bottom());
@@ -100,7 +99,8 @@ bool G1FullGCPrepareTask::G1CalculatePointersClosure::do_heap_region(HeapRegion*
 G1FullGCPrepareTask::G1FullGCPrepareTask(G1FullCollector* collector) :
     G1FullGCTask("G1 Prepare Compact Task", collector),
     _freed_regions(false),
-    _hrclaimer(collector->workers()) {
+    _hrclaimer(collector->workers()),
+    _collector(collector) {
 }
 
 void G1FullGCPrepareTask::set_freed_regions() {
@@ -239,6 +239,7 @@ void G1FullGCPrepareTask::prepare_serial_compaction() {
       assert(!current->is_humongous(), "Should be no humongous regions in compaction queue");
       G1RePrepareClosure re_prepare(cp, current);
       current->set_compaction_top(current->bottom());
+      log_error(gc) ("set_compaction_top %d ", current->hrm_index());
       current->apply_to_marked_objects(collector()->mark_bitmap(), &re_prepare);
     }
   }
@@ -246,6 +247,7 @@ void G1FullGCPrepareTask::prepare_serial_compaction() {
 }
 
 void G1FullGCPrepareTask::prepare_humongous_compaction() {
+  GCTraceTime(Debug, gc, phases) debug("Phase 2: Prepare Humongous Compaction", collector()->scope()->timer());
   G1CollectedHeap* g1h = G1CollectedHeap::heap();
   const uint num_regions = g1h->num_regions();
 
@@ -255,17 +257,10 @@ void G1FullGCPrepareTask::prepare_humongous_compaction() {
   for (uint idx = 0; idx < num_regions; ++idx) {
     HeapRegion* hr = g1h->region_at(idx);
     uint hr_index = hr->hrm_index();
-    G1HeapRegionAttr region_attr = (G1HeapRegionAttr) g1h->region_attr(hr_index);
 
     if (!hr->is_pinned() && hr->compaction_top() == hr->bottom()) {
-    //if (hr->is_continues_humongous()) {
-      if (!hr->is_empty()) {
-        log_error(gc) ("To-region candidate: %d is_empty: %d %zu %s %d", hr->hrm_index(), hr->is_empty(), hr->used(), hr->get_type_str(), hr->is_humongous());
-      } else {
-        //log_error(gc) ("To-region candidate: %d is_empty: %d used: %zu", hr->hrm_index(), hr->is_empty(), hr->used());
-        range_end = hr->hrm_index();
-        continue;
-      }
+      range_end = hr->hrm_index();
+      continue;
     }
 
     if (hr->is_starts_humongous()) {
@@ -273,26 +268,20 @@ void G1FullGCPrepareTask::prepare_humongous_compaction() {
         assert(!hr->is_archive(), "can't move archive region");
 
         oop obj = cast_to_oop(hr->bottom());
-        if (collector()->mark_bitmap()->is_marked(obj)) { // Object is live, should be moved
-          size_t word_size = obj->size();
-          uint obj_regions = (uint) G1CollectedHeap::humongous_obj_size_in_regions(word_size);
-          // log_error(gc) ("From-region candidate: movable humongous region %d object size: %zu num_regions: %d range_of_move: %d", hr_index, word_size, obj_regions, (range_end - range_begin));
+        assert(collector()->mark_bitmap()->is_marked(obj), "object should be alive");
 
-          uint humongous_start = range_begin + 1;
-          log_error(gc) ("Forward region: from %d to %d num_regions: %d", hr->hrm_index(), humongous_start, obj_regions);
-          // assert(g1h->region_at(humongous_start)->is_empty(), "should be empty");
-          // assert(!g1h->region_at(humongous_start)->is_humongous(), "sanity / pre-condition");
-          obj->forward_to(cast_to_oop(g1h->region_at(humongous_start)->bottom()));
-          range_begin += obj_regions;
-          range_end += obj_regions;
-          idx += (obj_regions - 1); // move idx to last region in the humongous object
-          assert(g1h->region_at(idx)->humongous_start_region() == hr, "Must be!");
-          continue;
-        } else {
-          ShouldNotReachHere();
-        }
+        size_t word_size = obj->size();
+        uint obj_regions = (uint) G1CollectedHeap::humongous_obj_size_in_regions(word_size);
+
+        uint humongous_start = range_begin + 1;
+        obj->forward_to(cast_to_oop(g1h->region_at(humongous_start)->bottom()));
+        range_begin += obj_regions;
+        range_end += obj_regions;
+        idx += (obj_regions - 1); // move idx to last region in the humongous object
+        assert(g1h->region_at(idx)->humongous_start_region() == hr, "Must be!");
+        continue;
       } else {
-        log_error(gc) ("%d Cannot be moved, no space before object", hr_index);
+        log_debug(gc) ("%d Cannot be moved, no space before object", hr_index);
       }
     }
     range_begin = hr_index;

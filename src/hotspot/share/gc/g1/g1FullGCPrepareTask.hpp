@@ -39,6 +39,7 @@ class G1FullGCPrepareTask : public G1FullGCTask {
 protected:
   volatile bool     _freed_regions;
   HeapRegionClaimer _hrclaimer;
+  G1FullCollector* _collector;
 
   void set_freed_regions();
 
