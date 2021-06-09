@@ -145,7 +145,6 @@ void G1FullGCCompactTask::humongous_compaction() {
 
       assert(old_first != new_first, "sanity");
 
-
       // The word size sum of all the regions used
       size_t word_size_sum = (size_t) obj_regions * HeapRegion::GrainWords;
       assert(word_size <= word_size_sum, "sanity");
@@ -173,7 +172,7 @@ void G1FullGCCompactTask::humongous_compaction() {
       uint non_overlapping_start = (new_last < old_first) ? old_first : new_last + 1;
       for (uint i = non_overlapping_start; i <= old_last; ++i) {
         HeapRegion* hr = g1h->region_at(i);
-        // collector()->mark_bitmap()->clear_region(hr);
+        //FIXME: collector()->mark_bitmap()->clear_region(hr);
         g1h->free_humongous_region(hr, nullptr);
       }
 
@@ -214,17 +213,14 @@ void G1FullGCCompactTask::humongous_compaction() {
     // regions except the last one.
       for (uint i = new_first; i <= new_last; ++i) {
         hr = g1h->region_at(i);
-
         hr->set_top(hr->end());
-        // hr->zero_marked_bytes();
-        // hr->init_top_at_mark_start();
       }
 
       log_error(gc) ("Move region: from %d to %d num_regions: %d addr: %p block_start: %p ", old_first, new_first, obj_regions, first_hr, first_hr->block_start(destination));
       assert(first_hr->top() == first_hr->end(), "must be!");
       assert(first_hr->bottom() < first_hr->top(), "must be!");
       assert(!collector()->is_skip_compacting(new_first), "must not be");
-      assert(destination ==  first_hr->block_start(destination), "catch that! %p %p", destination, first_hr->block_start(destination));
+
       HeapRegion* last_hr = g1h->region_at(new_last);
       // last_hr->set_continues_humongous(first_hr);
       // If we cannot fit a filler object, we must set top to the end
