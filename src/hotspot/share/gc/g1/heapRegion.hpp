@@ -239,14 +239,14 @@ private:
   // in each heap region.
   size_t _prev_marked_bytes;    // Bytes known to be live via last completed marking.
   size_t _next_marked_bytes;    // Bytes known to be live via in-progress marking.
-public:
+
   void init_top_at_mark_start() {
     assert(_prev_marked_bytes == 0 &&
            _next_marked_bytes == 0,
            "Must be called after zero_marked_bytes.");
     _prev_top_at_mark_start = _next_top_at_mark_start = bottom();
   }
-private:
+
   // Data for young region survivor prediction.
   uint  _young_index_in_cset;
   G1SurvRateGroup* _surv_rate_group;
