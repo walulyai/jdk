@@ -32,8 +32,8 @@
 #include "runtime/atomic.hpp"
 
 inline HeapWord* G1BlockOffsetTablePart::block_start(const void* addr) {
-  if (addr >= _hr->bottom() && addr < _hr->end()) {
-    HeapWord* q = block_at_or_preceding(addr);
+  if (addr >= _hr->bottom() && addr < _hr->top()) {
+    HeapWord* q = block_at(addr);
     return forward_to_block_containing_addr(q, addr);
   } else {
     return NULL;
@@ -41,8 +41,8 @@ inline HeapWord* G1BlockOffsetTablePart::block_start(const void* addr) {
 }
 
 inline HeapWord* G1BlockOffsetTablePart::block_start_const(const void* addr) const {
-  if (addr >= _hr->bottom() && addr < _hr->end()) {
-    HeapWord* q = block_at_or_preceding(addr);
+  if (addr >= _hr->bottom() && addr < _hr->top()) {
+    HeapWord* q = block_at(addr);
     HeapWord* n = q + block_size(q);
     return forward_to_block_containing_addr_const(q, n, addr);
   } else {
@@ -110,14 +110,13 @@ inline size_t G1BlockOffsetTablePart::block_size(const HeapWord* p) const {
   return _hr->block_size(p);
 }
 
-inline HeapWord* G1BlockOffsetTablePart::block_at_or_preceding(const void* addr) const {
+inline HeapWord* G1BlockOffsetTablePart::block_at(const void* addr) const {
   assert(_object_can_span || _bot->offset_array(_bot->index_for(_hr->bottom())) == 0,
          "Object crossed region boundary, found offset %u instead of 0",
          (uint) _bot->offset_array(_bot->index_for(_hr->bottom())));
   size_t index = _bot->index_for(addr);
-  // We must make sure that the offset table entry we use is valid.  If
-  // "addr" is past the end, start at the last valid index.
-  index = MIN2(index, _next_offset_index - 1);
+  // We must make sure that the offset table entry we use is valid.
+  assert(index < _next_offset_index, "pre-condition");
 
   HeapWord* q = _bot->address_for_index(index);
 

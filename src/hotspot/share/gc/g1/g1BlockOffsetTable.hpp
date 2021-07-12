@@ -142,7 +142,7 @@ private:
   inline size_t block_size(const HeapWord* p) const;
 
   // Returns the address of a block whose start is at most "addr".
-  inline HeapWord* block_at_or_preceding(const void* addr) const;
+  inline HeapWord* block_at(const void* addr) const;
 
   // "q" is a block boundary that is <= "addr"; "n" is the address of the
   // next block (or the end of the space.)  Return the address of the
