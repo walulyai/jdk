@@ -978,6 +978,28 @@ inline void ConcurrentHashTable<CONFIG, F>::
 }
 
 template <typename CONFIG, MEMFLAGS F>
+template <typename FUNC>
+inline void ConcurrentHashTable<CONFIG, F>::
+  do_scan_for_range(Thread* thread, FUNC& scan_f, size_t start_idx, size_t stop_idx, bool is_mt)
+{
+  // Here we have resize lock so table is SMR safe, and there is no new
+  // table. Can do this in parallel if we want.
+  assert((is_mt && _resize_lock_owner != NULL) ||
+         (!is_mt && _resize_lock_owner == thread), "Re-size lock not held");
+
+  InternalTable* table = get_table();
+  assert(start_idx < stop_idx, "Must be");
+  assert(stop_idx <= _table->_size, "Must be");
+
+  for (size_t bucket_it = start_idx; bucket_it < stop_idx; ++bucket_it) {
+    ScopedCS cs(thread, this);
+    if (!visit_nodes(table->get_bucket(bucket_it), scan_f)) {
+      break;
+    }
+  }
+}
+
+template <typename CONFIG, MEMFLAGS F>
 template <typename EVALUATE_FUNC>
 inline size_t ConcurrentHashTable<CONFIG, F>::
   delete_check_nodes(Bucket* bucket, EVALUATE_FUNC& eval_f,

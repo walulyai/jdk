@@ -335,6 +335,12 @@ class ConcurrentHashTable : public CHeapObj<F> {
   template <typename FUNC>
   void do_scan_locked(Thread* thread, FUNC& scan_f);
 
+  // Visits nodes in buckets [start_idx, stop_idx] with FUNC.
+  // During shrink/grow we cannot guarantee that we only visit nodes once.
+  // To keep it simple caller will have locked _resize_lock.
+  template <typename FUNC>
+  void do_scan_for_range(Thread* thread, FUNC& scan_f, size_t start_idx, size_t stop_idx, bool is_mt);
+
   // Check for dead items in a bucket.
   template <typename EVALUATE_FUNC>
   size_t delete_check_nodes(Bucket* bucket, EVALUATE_FUNC& eval_f,
@@ -518,6 +524,7 @@ class ConcurrentHashTable : public CHeapObj<F> {
  public:
   class BulkDeleteTask;
   class GrowTask;
+  class ScanTask;
 };
 
 #endif // SHARE_UTILITIES_CONCURRENTHASHTABLE_HPP

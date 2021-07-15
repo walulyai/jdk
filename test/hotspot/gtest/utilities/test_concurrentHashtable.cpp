@@ -1141,6 +1141,83 @@ public:
   }
 };
 
+class MT_SCAN_Thread : public JavaTestThread {
+  TestTable::ScanTask* _scan_task;
+  size_t _num_scanned;
+  size_t *_total_scanned;
+  Semaphore run;
+  public:
+  MT_SCAN_Thread(Semaphore* post, size_t *total_scanned)
+    : JavaTestThread(post), _num_scanned(0), _total_scanned(total_scanned){}
+  virtual ~MT_SCAN_Thread() {
+  }
+  void main_run() {
+    run.wait();
+    while(_scan_task->do_task(this, *this));
+    Atomic::add(_total_scanned, _num_scanned);
+  }
+
+  void set_scan_task(TestTable::ScanTask* scan) {
+    _scan_task = scan;
+    run.signal();
+  }
+
+  bool operator()(uintptr_t* val) {
+    return ++_num_scanned;
+  }
+};
+
+class Driver_SCAN_Thread : public JavaTestThread {
+public:
+  Semaphore _done;
+  Driver_SCAN_Thread(Semaphore* post) : JavaTestThread(post) {
+  };
+  virtual ~Driver_SCAN_Thread(){}
+
+  void main_run() {
+    Semaphore done(0);
+    TestTable* cht = new TestTable(16, 16, 2);
+    uintptr_t num_items = 99999;
+    for (uintptr_t v = 1; v <= num_items; v++ ) {
+      TestLookup tl(v);
+      EXPECT_TRUE(cht->insert(this, tl, v)) << "Inserting an unique value should work.";
+    }
+
+    // Must create and start threads before acquiring mutex inside BulkDeleteTask.
+    const int num_threads = 4;
+    size_t total_scanned = 0;
+    MT_SCAN_Thread* tt[num_threads];
+    for (int i = 0; i < num_threads; i++) {
+      tt[i] = new MT_SCAN_Thread(&done, &total_scanned);
+      tt[i]->doit();
+    }
+
+    TestTable::ScanTask scan_task(cht, true /* mt */ );
+    EXPECT_TRUE(scan_task.prepare(this)) << "Uncontended prepare must work.";
+
+    for (int i = 0; i < num_threads; i++) {
+      tt[i]->set_scan_task(&scan_task);
+    }
+
+    for (uintptr_t v = 1; v <= num_items; v++ ) {
+      TestLookup tl(v);
+      cht_get_copy(cht, this, tl);
+    }
+
+    for (int i = 0; i < num_threads; i++) {
+      done.wait();
+    }
+
+    scan_task.done(this);
+
+    EXPECT_TRUE(total_scanned == (size_t)num_items) << " Should scan all inserted items: " << total_scanned;
+  }
+};
+
 TEST_VM(ConcurrentHashTable, concurrent_mt_bulk_delete) {
   mt_test_doer<Driver_BD_Thread>();
+}
+
+TEST_VM(ConcurrentHashTable, concurrent_mt_scan) {
+  mt_test_doer<Driver_SCAN_Thread>();
 }

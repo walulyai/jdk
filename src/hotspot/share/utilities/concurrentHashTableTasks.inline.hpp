@@ -202,4 +202,50 @@ class ConcurrentHashTable<CONFIG, F>::GrowTask :
   }
 };
 
+template <typename CONFIG, MEMFLAGS F>
+class ConcurrentHashTable<CONFIG, F>::ScanTask :
+  public BucketsOperation
+{
+ public:
+  ScanTask(ConcurrentHashTable<CONFIG, F>* cht, bool is_mt = false)
+    : BucketsOperation(cht, is_mt) {
+  }
+
+  // Before start prepare must be called.
+  bool prepare(Thread* thread) {
+    bool lock = BucketsOperation::_cht->try_resize_lock(thread);
+    if (!lock) {
+      return false;
+    }
+    this->setup(thread);
+    return true;
+  }
+
+  // Visit all items with SCAN_FUNC without any protection.
+  // It will assume there is no other thread accessing this
+  // table during the safepoint. Must be called with VM thread.
+  template <typename SCAN_FUNC>
+  bool do_task(Thread* thread, SCAN_FUNC& scan_f) {
+    size_t start, stop;
+    assert(BucketsOperation::_cht->_resize_lock_owner != NULL,
+           "Should be locked");
+    if (!this->claim(&start, &stop)) {
+      return false;
+    }
+
+    BucketsOperation::_cht->do_scan_for_range(thread, scan_f, start, stop,
+                                              BucketsOperation::_is_mt);
+    assert(BucketsOperation::_cht->_resize_lock_owner != NULL,
+           "Should be locked");
+    return true;
+  }
+
+  // Must be called after ranges are done.
+  void done(Thread* thread) {
+    this->thread_owns_resize_lock(thread);
+    BucketsOperation::_cht->unlock_resize_lock(thread);
+    this->thread_do_not_own_resize_lock(thread);
+  }
+};
+
 #endif // SHARE_UTILITIES_CONCURRENTHASHTABLETASKS_INLINE_HPP
