@@ -336,10 +336,8 @@ class ConcurrentHashTable : public CHeapObj<F> {
   void do_scan_locked(Thread* thread, FUNC& scan_f);
 
   // Visits nodes in buckets [start_idx, stop_idx] with FUNC.
-  // During shrink/grow we cannot guarantee that we only visit nodes once.
-  // To keep it simple caller will have locked _resize_lock.
   template <typename FUNC>
-  void do_scan_for_range(Thread* thread, FUNC& scan_f, size_t start_idx, size_t stop_idx, bool is_mt);
+  void do_scan_for_range(FUNC& scan_f, size_t start_idx, size_t stop_idx, InternalTable *table);
 
   // Check for dead items in a bucket.
   template <typename EVALUATE_FUNC>
@@ -391,6 +389,8 @@ class ConcurrentHashTable : public CHeapObj<F> {
     ConcurrentHashTable(log2size, DEFAULT_MAX_SIZE_LOG2, DEFAULT_GROW_HINT, context) {}
 
   ~ConcurrentHashTable();
+
+  class BucketsClaimer;
 
   TableRateStatistics _stats_rate;
 
@@ -476,6 +476,12 @@ class ConcurrentHashTable : public CHeapObj<F> {
   // table during the safepoint. Must be called with VM thread.
   template <typename SCAN_FUNC>
   void do_safepoint_scan(SCAN_FUNC& scan_f);
+
+  // Visit all items with SCAN_FUNC without any protection.
+  // Thread-safe, but must be called at safepoint. No other threads
+  // concurrently modifying the table.
+  template <typename SCAN_FUNC>
+  void do_safepoint_scan(SCAN_FUNC& scan_f, BucketsClaimer* bucket_claimer);
 
   // Destroying items matching EVALUATE_FUNC, before destroying items
   // DELETE_FUNC is called, if resize lock is obtained. Else returns false.
