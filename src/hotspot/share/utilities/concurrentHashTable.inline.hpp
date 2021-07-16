@@ -1384,7 +1384,7 @@ public:
       }
       ConcurrentHashTable<CONFIG, F>::InternalTable* new_table = _cht->get_new_table();
       assert(new_table != NULL, "Precondition");
-      size_t claimed = Atomic::fetch_and_add(&_next_to_claim, 1u);
+      size_t claimed = Atomic::fetch_and_add(&_next_to_claim_new_table, 1u);
       if (claimed < _limit_new_table) {
         *start = claimed * (((size_t)1) << _claim_size_log2_new_table);
         *stop  = ((*start) + (((size_t)1) << _claim_size_log2_new_table));
