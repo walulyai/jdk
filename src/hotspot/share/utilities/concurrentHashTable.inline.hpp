@@ -1199,8 +1199,8 @@ template <typename SCAN_FUNC>
 inline void ConcurrentHashTable<CONFIG, F>::
   do_safepoint_scan(SCAN_FUNC& scan_f, BucketsClaimer* bucket_claimer)
 {
-  /*assert(SafepointSynchronize::is_at_safepoint(),
-         "must only be called in a safepoint");*/
+  assert(SafepointSynchronize::is_at_safepoint(),
+         "must only be called in a safepoint");
   size_t start_idx = 0, stop_idx = 0;
   InternalTable* table = NULL;
   while (bucket_claimer->claim(&start_idx, &stop_idx, &table)) {
