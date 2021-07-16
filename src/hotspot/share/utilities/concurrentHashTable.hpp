@@ -335,7 +335,7 @@ class ConcurrentHashTable : public CHeapObj<F> {
   template <typename FUNC>
   void do_scan_locked(Thread* thread, FUNC& scan_f);
 
-  // Visits nodes in buckets [start_idx, stop_idx] with FUNC.
+  // Visits nodes for buckets in range [start_idx, stop_id) with FUNC.
   template <typename FUNC>
   void do_scan_for_range(FUNC& scan_f, size_t start_idx, size_t stop_idx, InternalTable *table);
 
@@ -530,7 +530,6 @@ class ConcurrentHashTable : public CHeapObj<F> {
  public:
   class BulkDeleteTask;
   class GrowTask;
-  class ScanTask;
 };
 
 #endif // SHARE_UTILITIES_CONCURRENTHASHTABLE_HPP

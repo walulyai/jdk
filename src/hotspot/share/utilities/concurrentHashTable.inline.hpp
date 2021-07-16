@@ -987,6 +987,7 @@ inline void ConcurrentHashTable<CONFIG, F>::
 
   for (size_t bucket_it = start_idx; bucket_it < stop_idx; ++bucket_it) {
     Bucket* bucket = table->get_bucket(bucket_it);
+    // If bucket has a redirect, the items will be in the new table.
     if (!bucket->have_redirect()) {
       if (!visit_nodes(table->get_bucket(bucket_it), scan_f)) {
         return; // FIXME: do we really need to return in all cases?
@@ -1206,6 +1207,7 @@ inline void ConcurrentHashTable<CONFIG, F>::
   while (bucket_claimer->claim(&start_idx, &stop_idx, &table)) {
     assert(table != NULL, "precondition");
     do_scan_for_range(scan_f, start_idx, stop_idx, table);
+    table = NULL;
   }
 }
 
@@ -1333,15 +1335,15 @@ class ConcurrentHashTable<CONFIG, F>::BucketsClaimer {
   static const size_t DEFAULT_CLAIM_SIZE_LOG2 = 12;
   // The table is split into ranges, every increment is one range.
   volatile size_t _next_to_claim;
-  size_t _claim_size_log2; // Number of buckets.
-  size_t _limit;      // Last task
+  size_t _claim_size_log2; // Number of buckets in claimed range.
+  size_t _limit;      // Claim limit
   size_t _size_log2;      // Table size.
 
   // If there is a paused resize, we also need to operate on the already resized items.
   volatile size_t _next_to_claim_new_table;
-  size_t _claim_size_log2_new_table; // Number of buckets.
-  size_t _limit_new_table;      // Last task
-  size_t _size_log2_new_table;      // Table size.
+  size_t _claim_size_log2_new_table;
+  size_t _limit_new_table;
+  size_t _size_log2_new_table;
 
 public:
   BucketsClaimer(ConcurrentHashTable<CONFIG, F>* cht)
