@@ -1336,7 +1336,7 @@ class ConcurrentHashTable<CONFIG, F>::BucketsClaimer {
   // The table is split into ranges, every increment is one range.
   volatile size_t _next_to_claim;
   size_t _claim_size_log2; // Number of buckets in claimed range.
-  size_t _limit;      // Claim limit
+  size_t _limit;      // Limit to number of claims
   size_t _size_log2;      // Table size.
 
   // If there is a paused resize, we also need to operate on the already resized items.
