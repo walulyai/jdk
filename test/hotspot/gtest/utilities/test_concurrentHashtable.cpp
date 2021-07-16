@@ -1186,6 +1186,7 @@ void VM_CHT_MT_Scan::doit() {
   size_t total_scanned = 0;
   TestTable::BucketsClaimer bucket_claimer(_cht);
   Semaphore done(0);
+
   // Create and start parallel worker threads.
   const int num_threads = 4;
   Scanner_Thread* st[num_threads];
@@ -1208,6 +1209,7 @@ void VM_CHT_MT_Scan::doit() {
 
 TEST_VM(ConcurrentHashTable, concurrent_mt_scan) {
   TestTable* cht = new TestTable(16, 16, 2);
+
   uintptr_t num_items = 99999;
   for (uintptr_t v = 1; v <= num_items; v++ ) {
     TestLookup tl(v);
