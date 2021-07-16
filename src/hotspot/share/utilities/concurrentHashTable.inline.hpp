@@ -1377,7 +1377,7 @@ public:
           return true;
         }
       }
-      if (_size_log2_new_table) {
+      if (_limit_new_table == 0) {
         return false;
       }
       ConcurrentHashTable<CONFIG, F>::InternalTable* new_table = _cht->get_new_table();
