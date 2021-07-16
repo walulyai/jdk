@@ -1366,7 +1366,7 @@ public:
       }
     }
 
-    // Returns true if you succeeded to claim the range start -> (stop-1).
+    // Returns true if you succeeded to claim the range [start, stop).
     bool claim(size_t* start, size_t* stop, ConcurrentHashTable<CONFIG, F>::InternalTable** table) {
       if (Atomic::load(&_next_to_claim) < _limit) {
         size_t claimed = Atomic::fetch_and_add(&_next_to_claim, 1u);
