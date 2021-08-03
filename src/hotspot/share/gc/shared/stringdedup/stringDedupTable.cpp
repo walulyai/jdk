@@ -282,6 +282,7 @@ void StringDedup::Table::num_dead_callback(size_t num_dead) {
 
   // Wake up a possibly sleeping dedup thread.  This callback is invoked at
   // the end of a GC, so there may be new requests waiting.
+  log_error(gc)("Wake up a possibly sleeping dedup thread.");
   ml.notify_all();
 }
 

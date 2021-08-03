@@ -27,6 +27,7 @@
 
 #include "gc/parallel/psParallelCompact.hpp"
 
+#include "classfile/javaClasses.inline.hpp"
 #include "gc/parallel/parallelScavengeHeap.hpp"
 #include "gc/parallel/parMarkBitMap.inline.hpp"
 #include "gc/shared/collectedHeap.hpp"
@@ -99,6 +100,9 @@ inline void PSParallelCompact::check_new_location(HeapWord* old_addr, HeapWord* 
 inline bool PSParallelCompact::mark_obj(oop obj) {
   const int obj_size = obj->size();
   if (mark_bitmap()->mark_obj(obj, obj_size)) {
+    if (java_lang_String::is_instance_inlined(obj)) {
+      log_error(gc)("should duplicate the string [PSParallelCompact::mark_obj]");
+    }
     _summary_data.add_obj(obj, obj_size);
     return true;
   } else {

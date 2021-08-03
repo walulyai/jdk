@@ -183,7 +183,7 @@ PSPromotionManager::reset_stats() {
 }
 #endif // TASKQUEUE_STATS
 
-PSPromotionManager::PSPromotionManager() {
+PSPromotionManager::PSPromotionManager() : _string_dedup_requests() {
   ParallelScavengeHeap* heap = ParallelScavengeHeap::heap();
 
   // We set the old lab's start array.

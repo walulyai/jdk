@@ -32,6 +32,7 @@
 #include "gc/parallel/psOldGen.hpp"
 #include "gc/parallel/psPromotionLAB.inline.hpp"
 #include "gc/parallel/psScavenge.inline.hpp"
+#include "gc/parallel/psStringDedup.hpp"
 #include "gc/shared/taskqueue.inline.hpp"
 #include "gc/shared/tlab_globals.hpp"
 #include "logging/log.hpp"
@@ -265,6 +266,15 @@ inline oop PSPromotionManager::copy_unmarked_to_survivor_space(oop o,
       new_obj->incr_age();
       assert(young_space()->contains(new_obj), "Attempt to push non-promoted obj");
     }
+    
+    if (psStringDedup::is_candidate_from_evacuation(o->klass(), age, new_obj_is_tenured)) {
+      // FIXME: fix the comments
+      // log_error(gc)("should duplicate the string [PSPromotionManager::copy_unmarked_to_survivor_space]");
+      // Record old; request adds a new weak reference, which reference
+      // processing expects to refer to a from-space object.
+      _string_dedup_requests.add(o);
+    }
+
 
     log_develop_trace(gc, scavenge)("{%s %s " PTR_FORMAT " -> " PTR_FORMAT " (%d)}",
                                     new_obj_is_tenured ? "copying" : "tenuring",

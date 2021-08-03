@@ -33,20 +33,7 @@ package gc.stringdedup;
  * @modules java.base/jdk.internal.misc:open
  * @modules java.base/java.lang:open
  *          java.management
- * @run driver gc.stringdedup.TestStringDeduplicationYoungGC G1
- */
-
-/*
- * @test TestStringDeduplicationYoungGC
- * @summary Test string deduplication during young GC
- * @bug 8029075
- * @requires vm.gc.Shenandoah
- * @library /test/lib
- * @library /
- * @modules java.base/jdk.internal.misc:open
- * @modules java.base/java.lang:open
- *          java.management
- * @run driver gc.stringdedup.TestStringDeduplicationYoungGC Shenandoah
+ * @run driver gc.stringdedup.TestStringDeduplicationYoungGC Parallel
  */
 
 public class TestStringDeduplicationYoungGC {

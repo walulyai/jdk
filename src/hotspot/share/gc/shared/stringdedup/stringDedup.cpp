@@ -83,6 +83,7 @@ void StringDedup::initialize() {
     Table::initialize();
     Processor::initialize();
     _enabled = true;
+    printf("String Deduplication is enabled");
     log_info_p(stringdedup, init)("String Deduplication is enabled");
   } else {
     // No klass will ever match.
@@ -185,7 +186,6 @@ void StringDedup::Requests::add(oop java_string) {
   // Store the string in the next pre-allocated storage entry.
   oop* ref = _buffer[--_index];
   NativeAccess<ON_PHANTOM_OOP_REF>::oop_store(ref, java_string);
-  log_trace(stringdedup)("request");
 }
 
 void StringDedup::Requests::flush() {

@@ -78,12 +78,14 @@ bool StringDedup::Processor::wait_for_requests() const {
     while (!should_terminate() &&
            (storage->allocation_count() == 0) &&
            !Table::is_dead_entry_removal_needed()) {
+      log_error(stringdedup)("waiting for requests");
       ml.wait();
+      log_error(stringdedup)("end waiting for requests");
     }
   }
   // Swap the request and processing storage objects.
   if (!should_terminate()) {
-    log_trace(stringdedup)("swapping request storages");
+    log_error(stringdedup)("swapping request storages");
     _storage_for_processing = Atomic::xchg(&_storage_for_requests, _storage_for_processing);
     GlobalCounter::write_synchronize();
   }
@@ -91,12 +93,14 @@ bool StringDedup::Processor::wait_for_requests() const {
   // by an in-progress GC.  Again here, the num-dead notification from the
   // Table notifies the monitor.
   if (!should_terminate()) {
-    log_trace(stringdedup)("waiting for storage to process");
+    log_error(stringdedup)("waiting for storage to process");
     MonitorLocker ml(StringDedup_lock, Mutex::_no_safepoint_check_flag);
     while (_storage_for_processing->is_used_acquire() && !should_terminate()) {
+      log_error(stringdedup)("waiting for storage to process - looping");
       ml.wait();
     }
   }
+  log_error(gc)("wait_for_requests returning");
   return !should_terminate();
 }
 
