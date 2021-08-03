@@ -26,6 +26,7 @@
 #define SHARE_GC_PARALLEL_PSCOMPACTIONMANAGER_HPP
 
 #include "gc/parallel/psParallelCompact.hpp"
+#include "gc/shared/stringdedup/stringDedup.hpp"
 #include "gc/shared/taskqueue.hpp"
 #include "gc/shared/taskTerminator.hpp"
 #include "memory/allocation.hpp"
@@ -87,6 +88,9 @@ class ParCompactionManager : public CHeapObj<mtGC> {
   HeapWord* _last_query_beg;
   oop _last_query_obj;
   size_t _last_query_ret;
+
+  // FIXME: add comment
+  StringDedup::Requests _string_dedup_requests;
 
   static PSOldGen* old_gen()             { return _old_gen; }
   static ObjectStartArray* start_array() { return _start_array; }

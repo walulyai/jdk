@@ -51,7 +51,7 @@ ParMarkBitMap*       ParCompactionManager::_mark_bitmap = NULL;
 GrowableArray<size_t >* ParCompactionManager::_shadow_region_array = NULL;
 Monitor*                ParCompactionManager::_shadow_region_monitor = NULL;
 
-ParCompactionManager::ParCompactionManager() {
+ParCompactionManager::ParCompactionManager(): _string_dedup_requests() {
 
   ParallelScavengeHeap* heap = ParallelScavengeHeap::heap();
 

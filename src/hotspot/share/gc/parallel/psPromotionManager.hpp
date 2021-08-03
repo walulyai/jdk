@@ -93,7 +93,7 @@ class PSPromotionManager {
   PreservedMarks*                     _preserved_marks;
   PromotionFailedInfo                 _promotion_failed_info;
 
-  // 
+  // FIXME: add comment
   StringDedup::Requests _string_dedup_requests;
 
   // Accessors
@@ -150,6 +150,7 @@ class PSPromotionManager {
   static void restore_preserved_marks();
 
   void flush_labs();
+  void flush_dedup_requests() { _string_dedup_requests.flush();}
   void drain_stacks(bool totally_drain) {
     drain_stacks_depth(totally_drain);
   }

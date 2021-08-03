@@ -35,7 +35,6 @@ StringDedup::StorageUse::StorageUse(OopStorage* storage) :
 {}
 
 bool StringDedup::StorageUse::is_used_acquire() const {
-  printf("_use_count: %lu\n", _use_count);
   return Atomic::load_acquire(&_use_count) > 0;
 }
 

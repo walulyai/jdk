@@ -33,7 +33,7 @@ package gc.stringdedup;
  * @modules java.base/jdk.internal.misc:open
  * @modules java.base/java.lang:open
  *          java.management
- * @run driver gc.stringdedup.TestStringDeduplicationFullGC G1
+ * @run driver gc.stringdedup.TestStringDeduplicationFullGC Parallel
  */
 
 /*
