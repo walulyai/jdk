@@ -52,7 +52,7 @@ package gc.stringdedup;
 /*
  * @test TestStringDeduplicationAgeThreshold
  * @summary Test string deduplication age threshold
- * @bug 8029075
+ * @bug 8267185
  * @requires vm.gc.Parallel
  * @library /test/lib
  * @library /

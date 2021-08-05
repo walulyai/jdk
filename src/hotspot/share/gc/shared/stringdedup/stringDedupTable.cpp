@@ -86,6 +86,7 @@
 // more space efficient.
 
 class StringDedup::Table::Bucket {
+  int _count;
   GrowableArrayCHeap<uint, mtStringDedup> _hashes;
   GrowableArrayCHeap<TableValue, mtStringDedup> _values;
 
@@ -108,18 +109,23 @@ public:
   const GrowableArrayView<TableValue>& values() const { return _values; }
 
   bool is_empty() const { return _hashes.length() == 0; }
-  int length() const { return _hashes.length(); }
+  int length() const { 
+    assert(_hashes.length() == _count, "Bucket contents mismatch %d != %d", _hashes.length(), _count);
+    return _hashes.length(); 
+  }
 
   void add(uint hash_code, TableValue value) {
     expand_if_full();
     _hashes.push(hash_code);
     _values.push(value);
+    _count++;
   }
 
   void delete_at(int index) {
     _values.at(index).release(_table_storage);
     _hashes.delete_at(index);
     _values.delete_at(index);
+    _count--;
   }
 
   void pop_norelease() {
@@ -135,7 +141,7 @@ public:
 };
 
 StringDedup::Table::Bucket::Bucket(int reserve) :
-  _hashes(reserve), _values(reserve)
+ _count(0), _hashes(reserve), _values(reserve)
 {
   assert(reserve == needed_capacity(reserve),
          "reserve %d not computed properly", reserve);
@@ -360,6 +366,7 @@ bool StringDedup::Table::Resizer::step() {
         Table::add(tv, hash_code);
       } else {
         tv.release(_table_storage);
+        log_error(gc)("delete called in resizer");
         _cur_stat.inc_deleted();
       }
       return true;              // Continue transferring current bucket.

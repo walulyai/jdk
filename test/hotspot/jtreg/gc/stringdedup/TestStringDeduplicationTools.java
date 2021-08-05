@@ -183,7 +183,6 @@ class TestStringDeduplicationTools {
         for (int attempts = 0; attempts < 10; attempts++) {
             // Check number of deduplicated strings
             ArrayList<Object> unique = new ArrayList<Object>(uniqueExpected);
-            int count = 0;
             for (String string: list) {
                 Object value = getValue(string);
                 boolean uniqueValue = true;
