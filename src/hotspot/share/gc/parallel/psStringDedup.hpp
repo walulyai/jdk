@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -19,26 +19,29 @@
  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
  * or visit www.oracle.com if you need additional information or have any
  * questions.
+ *
  */
 
-package gc.stringdedup;
+#ifndef SHARE_GC_PARALLEL_PSSTRINGDEDUP_HPP
+#define SHARE_GC_PARALLEL_PSSTRINGDEDUP_HPP
 
-/*
- * @test TestStringDeduplicationInterned
- * @summary Test string deduplication of interned strings
- * @bug 8029075
- * @requires vm.gc.Parallel
- * @library /test/lib
- * @library /
- * @modules java.base/jdk.internal.misc:open
- * @modules java.base/java.lang:open
- *          java.management
- * @run driver gc.stringdedup.TestStringDeduplicationInterned Parallel
- */
+#include "gc/shared/stringdedup/stringDedup.hpp"
+#include "memory/allStatic.hpp"
+#include "oops/oopsHierarchy.hpp"
 
-public class TestStringDeduplicationInterned {
-    public static void main(String[] args) throws Exception {
-        TestStringDeduplicationTools.selectGC(args);
-        TestStringDeduplicationTools.testInterned();
-    }
-}
+class psStringDedup : AllStatic {
+public:
+  // FIXME: fix the comments
+  // Candidate selection policy for young/mixed GC.
+  // If to is young then age should be the new (survivor's) age.
+  // if to is old then age should be the age of the copied from object.
+  static bool is_candidate_from_evacuation(const Klass* klass,
+                                           uint age,
+                                           bool obj_is_tenured) {
+    return StringDedup::is_enabled_string(klass) &&
+           (obj_is_tenured ?
+            StringDedup::is_below_threshold_age(age) :
+            StringDedup::is_threshold_age(age));
+  }
+};
+#endif // SHARE_GC_PARALLEL_PSSTRINGDEDUP_HPP

@@ -101,11 +101,11 @@ inline void PSParallelCompact::check_new_location(HeapWord* old_addr, HeapWord* 
 inline bool PSParallelCompact::mark_obj(oop obj) {
   const int obj_size = obj->size();
   if (mark_bitmap()->mark_obj(obj, obj_size)) {
-    if (StringDedup::is_enabled() && 
+    /*if (StringDedup::is_enabled() && 
         java_lang_String::is_instance_inlined(obj) &&
         psStringDedup::is_candidate_from_mark(obj)) {
       log_error(gc)("should duplicate the string [PSParallelCompact::mark_obj]");
-    }
+    }*/
     _summary_data.add_obj(obj, obj_size);
     return true;
   } else {

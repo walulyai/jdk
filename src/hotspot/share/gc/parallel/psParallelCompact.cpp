@@ -40,6 +40,7 @@
 #include "gc/parallel/psPromotionManager.inline.hpp"
 #include "gc/parallel/psRootType.hpp"
 #include "gc/parallel/psScavenge.hpp"
+#include "gc/parallel/psStringDedup.hpp"
 #include "gc/parallel/psYoungGen.hpp"
 #include "gc/shared/gcCause.hpp"
 #include "gc/shared/gcHeapSummary.hpp"
@@ -1020,6 +1021,8 @@ void PSParallelCompact::post_compact()
     // Update top().  Must be done after clearing the bitmap and summary data.
     _space_info[id].publish_new_top();
   }
+
+  ParCompactionManager::flush_string_dedup_requests();
 
   MutableSpace* const eden_space = _space_info[eden_space_id].space();
   MutableSpace* const from_space = _space_info[from_space_id].space();
@@ -3225,12 +3228,41 @@ MoveAndUpdateClosure::do_addr(HeapWord* addr, size_t words) {
     _start_array->allocate_block(destination());
   }
 
+oop moved_oop = cast_to_oop(copy_destination());
   if (copy_destination() != source()) {
+    oop source_oop = cast_to_oop(source());
+    if (StringDedup::is_enabled() && 
+        java_lang_String::is_instance_inlined(source_oop) &&
+        PSParallelCompact::space_id(source()) > PSParallelCompact::space_id(copy_destination()) &&
+        psStringDedup::is_candidate_from_evacuation(source_oop->klass(), source_oop->age(), true)) {
+      log_error(gc)("should duplicate the string [PSParallelCompact::mark_obj] source %d destination %d is_young_move %d",
+                    PSParallelCompact::space_id(source()),
+                    PSParallelCompact::space_id(copy_destination()),
+                    PSParallelCompact::space_id(source()) > PSParallelCompact::old_space_id &&
+                    PSParallelCompact::space_id(source()) != PSParallelCompact::space_id(copy_destination())
+                    );
+      
+      compaction_manager()->add_requests(moved_oop);
+    } 
     DEBUG_ONLY(PSParallelCompact::check_new_location(source(), destination());)
     Copy::aligned_conjoint_words(source(), copy_destination(), words);
+    /*oop source_oop = cast_to_oop(source());
+    if (StringDedup::is_enabled() && 
+        java_lang_String::is_instance_inlined(source_oop) && 
+        PSParallelCompact::space_id(source()) > PSParallelCompact::old_space_id &&
+        PSParallelCompact::space_id(source()) != PSParallelCompact::space_id(copy_destination()) &&
+        psStringDedup::is_candidate_from_mark(source_oop)) {
+      log_error(gc)("should duplicate the string [PSParallelCompact::mark_obj] %d source %d destination %d", 
+                    PSParallelCompact::space_id(source()) > PSParallelCompact::old_space_id &&
+                    PSParallelCompact::space_id(source()) != PSParallelCompact::space_id(copy_destination()),
+                    PSParallelCompact::space_id(source()),
+                    PSParallelCompact::space_id(copy_destination())
+                    );
+      // compaction_manager()->add_requests(source_oop);
+    } */
   }
 
-  oop moved_oop = cast_to_oop(copy_destination());
+  
   compaction_manager()->update_contents(moved_oop);
   assert(oopDesc::is_oop_or_null(moved_oop), "Expected an oop or NULL at " PTR_FORMAT, p2i(moved_oop));
 

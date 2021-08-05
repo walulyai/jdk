@@ -129,6 +129,14 @@ class ParCompactionManager : public CHeapObj<mtGC> {
     _last_query_ret = 0;
   }
 
+  void add_requests(oop string) {
+    _string_dedup_requests.add(string);
+  }
+
+  void flush_requests() {
+    _string_dedup_requests.flush();
+  }
+
   // Bitmap query support, cache last query and result
   HeapWord* last_query_begin() { return _last_query_beg; }
   oop last_query_object() { return _last_query_obj; }
@@ -139,6 +147,8 @@ class ParCompactionManager : public CHeapObj<mtGC> {
   void set_last_query_return(size_t new_ret) { _last_query_ret = new_ret; }
 
   static void reset_all_bitmap_query_caches();
+
+  static void flush_string_dedup_requests();
 
   RegionTaskQueue* region_stack()                { return &_region_stack; }
 
