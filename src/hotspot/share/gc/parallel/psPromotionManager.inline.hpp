@@ -267,7 +267,7 @@ inline oop PSPromotionManager::copy_unmarked_to_survivor_space(oop o,
       assert(young_space()->contains(new_obj), "Attempt to push non-promoted obj");
     }
     
-    if (psStringDedup::is_candidate_from_evacuation(o->klass(), age, new_obj_is_tenured)) {
+    if (psStringDedup::is_candidate_from_evacuation(o->klass(), new_obj->age(), new_obj_is_tenured)) {
       // FIXME: fix the comments
       // log_error(gc)("should duplicate the string [PSPromotionManager::copy_unmarked_to_survivor_space]");
       // Record old; request adds a new weak reference, which reference
