@@ -82,6 +82,7 @@ private:
   static Bucket* _buckets;
   static size_t _number_of_buckets;
   static size_t _number_of_entries;
+  static size_t _ivan_count;
   static size_t _grow_threshold;
   static CleanupState* _cleanup_state;
   static bool _need_bucket_shrinking;

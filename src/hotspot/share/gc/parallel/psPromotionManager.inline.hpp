@@ -264,15 +264,8 @@ inline oop PSPromotionManager::copy_unmarked_to_survivor_space(oop o,
     // okay to use the non mt safe oop methods.
     if (!new_obj_is_tenured) {
       new_obj->incr_age();
+      age++;
       assert(young_space()->contains(new_obj), "Attempt to push non-promoted obj");
-    }
-    
-    if (psStringDedup::is_candidate_from_evacuation(o->klass(), new_obj->age(), new_obj_is_tenured)) {
-      // FIXME: fix the comments
-      // log_error(gc)("should duplicate the string [PSPromotionManager::copy_unmarked_to_survivor_space]");
-      // Record old; request adds a new weak reference, which reference
-      // processing expects to refer to a from-space object.
-      _string_dedup_requests.add(o);
     }
 
 
@@ -291,10 +284,29 @@ inline oop PSPromotionManager::copy_unmarked_to_survivor_space(oop o,
       // we'll chunk it
       push_depth(ScannerTask(PartialArrayScanTask(o)));
       TASKQUEUE_STATS_ONLY(++_arrays_chunked; ++_array_chunk_pushes);
+      return new_obj;
     } else {
       // we'll just push its contents
       push_contents(new_obj);
     }
+
+    assert(age == new_obj->age(), "must be!");
+    if (new_obj_is_tenured && StringDedup::is_threshold_age(age+1) ) {
+      log_error(gc)("should duplicate the string [PSPromotionManager::copy_unmarked_to_survivor_space]");
+    }
+    if (psStringDedup::is_candidate_from_evacuation(o->klass(), new_obj->age(), new_obj_is_tenured)) {
+      // FIXME: fix the comments
+      
+      // log_error(gc)("should duplicate the string [PSPromotionManager::copy_unmarked_to_survivor_space]");
+      // Record old; request adds a new weak reference, which reference
+      // processing expects to refer to a from-space object.
+      if (java_lang_String::test_and_set_deduplication_requested(o)) {
+        log_error(gc)("Already deduplicated the string");
+      } else {
+        _string_dedup_requests.add(o);
+      }
+    }
+
     return new_obj;
   } else {
     // We lost, someone else "owns" this object.

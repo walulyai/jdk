@@ -452,6 +452,7 @@ OopStorage* StringDedup::Table::_table_storage;
 StringDedup::Table::Bucket* StringDedup::Table::_buckets;
 size_t StringDedup::Table::_number_of_buckets;
 size_t StringDedup::Table::_number_of_entries = 0;
+size_t StringDedup::Table::_ivan_count = 0;
 size_t StringDedup::Table::_grow_threshold;
 StringDedup::Table::CleanupState* StringDedup::Table::_cleanup_state = nullptr;
 bool StringDedup::Table::_need_bucket_shrinking = false;
@@ -506,6 +507,7 @@ size_t StringDedup::Table::hash_to_index(uint hash_code) {
 void StringDedup::Table::add(TableValue tv, uint hash_code) {
   _buckets[hash_to_index(hash_code)].add(hash_code, tv);
   ++_number_of_entries;
+  ++_ivan_count;
 }
 
 bool StringDedup::Table::is_dead_count_good_acquire() {
@@ -716,6 +718,7 @@ bool StringDedup::Table::start_resizer(bool grow_only, size_t number_of_entries)
   _buckets = make_buckets(new_size, reserve);
   _number_of_buckets = new_size;
   _number_of_entries = 0;
+  _ivan_count = 0;
   _grow_threshold = Config::grow_threshold(new_size);
   set_dead_state_cleaning();
   return true;
@@ -754,8 +757,8 @@ void StringDedup::Table::verify() {
     total_count += _buckets[i].length();
   }
   guarantee(total_count == _number_of_entries,
-            "number of values mismatch: %zu counted, %zu recorded",
-            total_count, _number_of_entries);
+            "number of values mismatch: %zu counted, %zu recorded, ivan count %zu",
+            total_count, _number_of_entries, _ivan_count);
   if (_cleanup_state != nullptr) {
     _cleanup_state->verify();
   }
