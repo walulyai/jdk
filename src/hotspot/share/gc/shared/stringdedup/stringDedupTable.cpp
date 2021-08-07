@@ -442,6 +442,7 @@ bool StringDedup::Table::Cleaner::step() {
     // Current entry is live.  Continue with the next entry.
     ++_entry_index;
   }
+  Table::verify();
   return true;
 }
 
@@ -508,6 +509,7 @@ void StringDedup::Table::add(TableValue tv, uint hash_code) {
   _buckets[hash_to_index(hash_code)].add(hash_code, tv);
   ++_number_of_entries;
   ++_ivan_count;
+  verify();
 }
 
 bool StringDedup::Table::is_dead_count_good_acquire() {
@@ -537,6 +539,7 @@ StringDedup::Table::find(typeArrayOop obj, uint hash_code) {
 }
 
 void StringDedup::Table::install(typeArrayOop obj, uint hash_code) {
+  verify();
   add(TableValue(_table_storage, obj), hash_code);
   _cur_stat.inc_new(obj->size() * HeapWordSize);
 }
@@ -756,6 +759,7 @@ void StringDedup::Table::verify() {
     _buckets[i].verify(i, _number_of_buckets);
     total_count += _buckets[i].length();
   }
+  log_error(gc)("StringDedup::Table::verify: %zu counted, %zu recorded", total_count, _number_of_entries);
   guarantee(total_count == _number_of_entries,
             "number of values mismatch: %zu counted, %zu recorded, ivan count %zu",
             total_count, _number_of_entries, _ivan_count);
