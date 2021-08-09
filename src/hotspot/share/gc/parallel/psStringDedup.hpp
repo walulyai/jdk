@@ -32,7 +32,7 @@
 class psStringDedup : AllStatic {
 public:
   static bool is_candidate_from_mark(oop java_string);
-  // Candidate selection policy for young or tenured during evacuation.
+  // Candidate selection policy for young during evacuation.
   // If to is young then age should be the new (survivor's) age.
   // if to is old then age should be the age of the copied from object.
   static bool is_candidate_from_evacuation(const Klass* klass,
