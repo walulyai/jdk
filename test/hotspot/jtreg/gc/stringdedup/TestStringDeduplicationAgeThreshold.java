@@ -49,6 +49,19 @@ package gc.stringdedup;
  * @run driver gc.stringdedup.TestStringDeduplicationAgeThreshold Shenandoah
  */
 
+/*
+ * @test TestStringDeduplicationAgeThreshold
+ * @summary Test string deduplication age threshold
+ * @bug 8267185
+ * @requires vm.gc.Parallel
+ * @library /test/lib
+ * @library /
+ * @modules java.base/jdk.internal.misc:open
+ * @modules java.base/java.lang:open
+ *          java.management
+ * @run driver gc.stringdedup.TestStringDeduplicationAgeThreshold Parallel
+ */
+
 public class TestStringDeduplicationAgeThreshold {
     public static void main(String[] args) throws Exception {
         TestStringDeduplicationTools.selectGC(args);

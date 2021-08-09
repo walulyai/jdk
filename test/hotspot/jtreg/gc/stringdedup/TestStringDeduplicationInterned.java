@@ -36,6 +36,19 @@ package gc.stringdedup;
  * @run driver gc.stringdedup.TestStringDeduplicationInterned G1
  */
 
+/*
+ * @test TestStringDeduplicationInterned
+ * @summary Test string deduplication of interned strings
+ * @bug 8267185
+ * @requires vm.gc.Parallel
+ * @library /test/lib
+ * @library /
+ * @modules java.base/jdk.internal.misc:open
+ * @modules java.base/java.lang:open
+ *          java.management
+ * @run driver gc.stringdedup.TestStringDeduplicationInterned Parallel
+ */
+
 public class TestStringDeduplicationInterned {
     public static void main(String[] args) throws Exception {
         TestStringDeduplicationTools.selectGC(args);
