@@ -108,6 +108,25 @@ inline void ParCompactionManager::mark_and_push(T* p) {
 
     if (mark_bitmap()->is_unmarked(obj) && PSParallelCompact::mark_obj(obj)) {
       push(obj);
+      // Marked by us
+      HeapWord* source_addr = cast_from_oop<HeapWord*>(obj);
+      if (StringDedup::is_enabled() && 
+        java_lang_String::is_instance_inlined(obj) &&
+        PSParallelCompact::space_id(source_addr) > PSParallelCompact::old_space_id // &&
+        //StringDedup::is_below_threshold_age(obj->age())
+      ) {
+          if (!java_lang_String::test_and_set_deduplication_requested(obj)) 
+          {
+            // FIXME: add comment "moving the object can fail on evacuation and the object stays in the young 
+            // region, however the deduplication is already done. User test"
+            // 
+            log_error(gc)("should duplicate the string [PSParallelCompact::mark_obj] source %d is_young_move %d",
+                    PSParallelCompact::space_id(source_addr),
+                    PSParallelCompact::space_id(source_addr) > PSParallelCompact::old_space_id
+                    );
+            _string_dedup_requests.add(obj);
+          }
+      }
     }
   }
 }

@@ -41,6 +41,7 @@
 #include "gc/shared/gcInitLogger.hpp"
 #include "gc/shared/locationPrinter.inline.hpp"
 #include "gc/shared/scavengableNMethods.hpp"
+#include "gc/shared/suspendibleThreadSet.hpp"
 #include "logging/log.hpp"
 #include "memory/iterator.hpp"
 #include "memory/metaspaceCounters.hpp"
@@ -161,6 +162,20 @@ void ParallelScavengeHeap::initialize_serviceability() {
   _young_manager->add_pool(_survivor_pool);
 
 }
+
+
+void ParallelScavengeHeap::safepoint_synchronize_begin() {
+  if (UseStringDeduplication) {
+    SuspendibleThreadSet::synchronize();
+  }
+}
+
+void ParallelScavengeHeap::safepoint_synchronize_end() {
+  if (UseStringDeduplication) {
+    SuspendibleThreadSet::desynchronize();
+  }
+}
+
 
 class PSIsScavengable : public BoolObjectClosure {
   bool do_object_b(oop obj) {

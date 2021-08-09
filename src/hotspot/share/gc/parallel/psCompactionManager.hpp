@@ -129,10 +129,6 @@ class ParCompactionManager : public CHeapObj<mtGC> {
     _last_query_ret = 0;
   }
 
-  void add_requests(oop string) {
-    _string_dedup_requests.add(string);
-  }
-
   void flush_requests() {
     _string_dedup_requests.flush();
   }

@@ -139,6 +139,9 @@ class ParallelScavengeHeap : public CollectedHeap {
   // Returns JNI_OK on success
   virtual jint initialize();
 
+  void safepoint_synchronize_begin() override;
+  void safepoint_synchronize_end() override;
+
   void post_initialize();
   void update_counters();
 

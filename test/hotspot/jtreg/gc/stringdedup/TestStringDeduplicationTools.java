@@ -201,7 +201,6 @@ class TestStringDeduplicationTools {
             System.out.println("Verifying strings: total=" + list.size() +
                                ", uniqueFound=" + unique.size() +
                                ", uniqueExpected=" + uniqueExpected);
-
             if (unique.size() == uniqueExpected) {
                 System.out.println("Deduplication completed (as fast as " + attempts + " iterations)");
                 passed = true;

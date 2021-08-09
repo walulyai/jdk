@@ -3231,19 +3231,7 @@ MoveAndUpdateClosure::do_addr(HeapWord* addr, size_t words) {
 oop moved_oop = cast_to_oop(copy_destination());
   if (copy_destination() != source()) {
     oop source_oop = cast_to_oop(source());
-    if (StringDedup::is_enabled() && 
-        java_lang_String::is_instance_inlined(source_oop) &&
-        PSParallelCompact::space_id(source()) > PSParallelCompact::space_id(copy_destination()) &&
-        psStringDedup::is_candidate_from_evacuation(source_oop->klass(), source_oop->age(), true)) {
-      log_error(gc)("should duplicate the string [PSParallelCompact::mark_obj] source %d destination %d is_young_move %d",
-                    PSParallelCompact::space_id(source()),
-                    PSParallelCompact::space_id(copy_destination()),
-                    PSParallelCompact::space_id(source()) > PSParallelCompact::old_space_id &&
-                    PSParallelCompact::space_id(source()) != PSParallelCompact::space_id(copy_destination())
-                    );
-      
-      compaction_manager()->add_requests(moved_oop);
-    } 
+
     DEBUG_ONLY(PSParallelCompact::check_new_location(source(), destination());)
     Copy::aligned_conjoint_words(source(), copy_destination(), words);
     /*oop source_oop = cast_to_oop(source());

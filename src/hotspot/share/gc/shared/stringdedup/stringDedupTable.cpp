@@ -366,7 +366,6 @@ bool StringDedup::Table::Resizer::step() {
         Table::add(tv, hash_code);
       } else {
         tv.release(_table_storage);
-        log_error(gc)("delete called in resizer");
         _cur_stat.inc_deleted();
       }
       return true;              // Continue transferring current bucket.
@@ -509,7 +508,6 @@ void StringDedup::Table::add(TableValue tv, uint hash_code) {
   _buckets[hash_to_index(hash_code)].add(hash_code, tv);
   ++_number_of_entries;
   ++_ivan_count;
-  verify();
 }
 
 bool StringDedup::Table::is_dead_count_good_acquire() {
@@ -539,7 +537,6 @@ StringDedup::Table::find(typeArrayOop obj, uint hash_code) {
 }
 
 void StringDedup::Table::install(typeArrayOop obj, uint hash_code) {
-  verify();
   add(TableValue(_table_storage, obj), hash_code);
   _cur_stat.inc_new(obj->size() * HeapWordSize);
 }
