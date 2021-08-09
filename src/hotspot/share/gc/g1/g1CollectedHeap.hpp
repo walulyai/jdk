@@ -1155,9 +1155,9 @@ public:
   // failure in that region.
   inline bool notify_region_failed_evacuation(uint const region_idx);
 
-  void remove_from_old_gen_sets(const uint old_regions_removed,
-                                const uint archive_regions_removed,
-                                const uint humongous_regions_removed);
+  void remove_from_old_gen_sets(const uint humongous_regions_removed,
+                                const uint old_regions_removed = 0,
+                                const uint archive_regions_removed = 0);
   void prepend_to_freelist(FreeRegionList* list);
   void decrement_summary_bytes(size_t bytes);
 

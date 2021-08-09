@@ -261,7 +261,7 @@ void G1PostEvacuateCollectionSetCleanupTask2::EagerlyReclaimHumongousObjectsTask
 G1PostEvacuateCollectionSetCleanupTask2::EagerlyReclaimHumongousObjectsTask::~EagerlyReclaimHumongousObjectsTask() {
   G1CollectedHeap* g1h = G1CollectedHeap::heap();
 
-  g1h->remove_from_old_gen_sets(0, 0, _humongous_regions_reclaimed);
+  g1h->remove_from_old_gen_sets(_humongous_regions_reclaimed);
   g1h->decrement_summary_bytes(_bytes_freed);
 }
 

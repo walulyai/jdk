@@ -1270,10 +1270,10 @@ public:
     _g1h->heap_region_par_iterate_from_worker_offset(&cl, &_hrclaimer, worker_id);
     assert(cl.is_complete(), "Shouldn't have aborted!");
 
-    // Now update the old/archive/humongous region sets
-    _g1h->remove_from_old_gen_sets(cl.old_regions_removed(),
-                                   cl.archive_regions_removed(),
-                                   cl.humongous_regions_removed());
+    // Now update the humongous/old/archive region sets
+    _g1h->remove_from_old_gen_sets(cl.humongous_regions_removed(),
+                                   cl.old_regions_removed(),
+                                   cl.archive_regions_removed());
     {
       MutexLocker x(ParGCRareEvent_lock, Mutex::_no_safepoint_check_flag);
       _g1h->decrement_summary_bytes(cl.freed_bytes());

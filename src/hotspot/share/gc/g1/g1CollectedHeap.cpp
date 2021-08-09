@@ -3882,9 +3882,9 @@ void G1CollectedHeap::free_humongous_region(HeapRegion* hr,
   free_region(hr, free_list);
 }
 
-void G1CollectedHeap::remove_from_old_gen_sets(const uint old_regions_removed,
-                                               const uint archive_regions_removed,
-                                               const uint humongous_regions_removed) {
+void G1CollectedHeap::remove_from_old_gen_sets(const uint humongous_regions_removed,
+                                               const uint old_regions_removed,
+                                               const uint archive_regions_removed) {
   if (old_regions_removed > 0 || archive_regions_removed > 0 || humongous_regions_removed > 0) {
     MutexLocker x(OldSets_lock, Mutex::_no_safepoint_check_flag);
     _old_set.bulk_remove(old_regions_removed);
