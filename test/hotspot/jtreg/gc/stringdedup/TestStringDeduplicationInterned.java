@@ -39,7 +39,7 @@ package gc.stringdedup;
 /*
  * @test TestStringDeduplicationInterned
  * @summary Test string deduplication of interned strings
- * @bug 8267185
+ * @bug 8029075
  * @requires vm.gc.Parallel
  * @library /test/lib
  * @library /

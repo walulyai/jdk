@@ -52,7 +52,7 @@ package gc.stringdedup;
 /*
  * @test TestStringDeduplicationFullGC
  * @summary Test string deduplication during full GC
- * @bug 8267185
+ * @bug 8029075
  * @requires vm.gc.Parallel
  * @library /test/lib
  * @library /
