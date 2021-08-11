@@ -103,6 +103,10 @@ public:
     return _live_stats[region_index]._live_words;
   }
 
+  bool is_empty(uint region_index) {
+    return live_words(region_index) == 0;
+  }
+
   void before_marking_update_attribute_table(HeapRegion* hr);
 
   inline bool is_compacting(oop obj) const;
@@ -110,6 +114,7 @@ public:
   inline bool is_skip_marking(oop obj) const;
 
   inline void set_invalid(uint region_idx);
+  inline bool is_invalid(uint region_idx) const;
   inline void update_from_compacting_to_skip_compacting(uint region_idx);
 
 private:

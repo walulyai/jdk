@@ -47,14 +47,17 @@ void G1FullGCPrepareTask::G1CalculatePointersClosure::free_pinned_region(HeapReg
   } else {
     _g1h->free_region(hr, nullptr);
   }
-  prepare_for_compaction(hr);
   _collector->set_invalid(hr->hrm_index());
+  prepare_for_compaction(hr);
 }
 
 bool G1FullGCPrepareTask::G1CalculatePointersClosure::do_heap_region(HeapRegion* hr) {
   bool force_not_compacted = false;
   if (should_compact(hr)) {
     assert(!hr->is_humongous(), "moving humongous objects not supported.");
+    if (_collector->is_empty(hr->hrm_index())) {
+      _collector->set_invalid(hr->hrm_index());
+    }
     prepare_for_compaction(hr);
   } else {
     // There is no need to iterate and forward objects in pinned regions ie.
@@ -182,8 +185,14 @@ size_t G1FullGCPrepareTask::G1RePrepareClosure::apply(oop obj) {
 
 void G1FullGCPrepareTask::G1CalculatePointersClosure::prepare_for_compaction_work(G1FullGCCompactionPoint* cp,
                                                                                   HeapRegion* hr) {
-  G1PrepareCompactLiveClosure prepare_compact(cp);
   hr->set_compaction_top(hr->bottom());
+  if (_collector->is_invalid(hr->hrm_index())) {
+    assert(_collector->is_empty(hr->hrm_index()), "precondition");
+    // FIXME: remove comment
+    // log_error(gc)("Region is empty: skip G1CalculatePointersClosure::prepare_for_compaction_work %zu", _collector->live_words(hr->hrm_index()));
+    return;
+  }
+  G1PrepareCompactLiveClosure prepare_compact(cp);
   hr->apply_to_marked_objects(_bitmap, &prepare_compact);
 }
 

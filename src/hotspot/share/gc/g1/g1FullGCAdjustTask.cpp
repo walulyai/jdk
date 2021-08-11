@@ -71,6 +71,10 @@ class G1AdjustRegionClosure : public HeapRegionClosure {
       // Closed archive regions never change references and only contain
       // references into other closed regions and are always live. Free
       // regions do not contain objects to iterate. So skip both.
+      // FIXME: remove below
+       if (_collector->is_invalid(r->hrm_index())) {
+          log_error(gc)("Skip G1AdjustRegionClosure %zu", _collector->live_words(r->hrm_index()));
+       }
       G1AdjustLiveClosure adjust(&cl);
       r->apply_to_marked_objects(_bitmap, &adjust);
     }
