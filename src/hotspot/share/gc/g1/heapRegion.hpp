@@ -248,6 +248,7 @@ private:
 
   // Data for young region survivor prediction.
   uint  _young_index_in_cset;
+  uint  _index_in_cset;
   G1SurvRateGroup* _surv_rate_group;
   int  _age_index;
 
@@ -512,22 +513,33 @@ public:
 
   uint index_in_opt_cset() const {
     assert(has_index_in_opt_cset(), "Opt cset index not set.");
+    assert(_index_in_opt_cset == _index_in_cset, "Precondition %u != %d", _index_in_opt_cset, _index_in_cset);
     return _index_in_opt_cset;
   }
-  bool has_index_in_opt_cset() const { return _index_in_opt_cset != InvalidCSetIndex; }
-  void set_index_in_opt_cset(uint index) { _index_in_opt_cset = index; }
-  void clear_index_in_opt_cset() { _index_in_opt_cset = InvalidCSetIndex; }
+  bool has_index_in_opt_cset() const {
+    assert(!in_collection_set() || _index_in_opt_cset == _index_in_cset, "Precondition in_collection_set(): %d && _index_in_opt_cset %u == %u _index_in_cset %s", in_collection_set(), _index_in_opt_cset, _index_in_cset, get_type_str());
+    return _index_in_opt_cset != InvalidCSetIndex; 
+  }
+  void set_index_in_opt_cset(uint index) { _index_in_opt_cset = index; _index_in_cset = InvalidCSetIndex;}
+  void clear_index_in_opt_cset() { _index_in_opt_cset = InvalidCSetIndex; _index_in_cset = InvalidCSetIndex;  }
 
   void calc_gc_efficiency(void);
   double gc_efficiency() const { return _gc_efficiency;}
 
-  uint  young_index_in_cset() const { return _young_index_in_cset; }
-  void clear_young_index_in_cset() { _young_index_in_cset = 0; }
+  uint  young_index_in_cset() const {
+    assert(_young_index_in_cset == _index_in_cset, "Precondition %u != %u", _young_index_in_cset, _index_in_cset);
+    return _young_index_in_cset; 
+  }
+  void clear_young_index_in_cset() { 
+    _young_index_in_cset = InvalidCSetIndex; 
+    _index_in_cset = InvalidCSetIndex;
+  }
   void set_young_index_in_cset(uint index) {
     assert(index != UINT_MAX, "just checking");
     assert(index != 0, "just checking");
     assert(is_young(), "pre-condition");
     _young_index_in_cset = index;
+    _index_in_cset = index;
   }
 
   int age_in_surv_rate_group() const;

@@ -246,13 +246,14 @@ HeapRegion::HeapRegion(uint hrm_index,
 #endif
   _prev_top_at_mark_start(NULL), _next_top_at_mark_start(NULL),
   _prev_marked_bytes(0), _next_marked_bytes(0),
-  _young_index_in_cset(-1),
+  _young_index_in_cset(InvalidCSetIndex),
+  _index_in_cset(InvalidCSetIndex),
   _surv_rate_group(NULL), _age_index(G1SurvRateGroup::InvalidAgeIndex), _gc_efficiency(-1.0),
   _node_index(G1NUMA::UnknownNodeIndex)
 {
   assert(Universe::on_page_boundary(mr.start()) && Universe::on_page_boundary(mr.end()),
          "invalid space boundaries");
-
+  log_error(gc)("_young_index_in_cset %u", _young_index_in_cset);
   _rem_set = new HeapRegionRemSet(this, config);
   initialize();
 }
