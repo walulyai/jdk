@@ -50,6 +50,18 @@ public:
   }
 };
 
+
+class G1VerifyLiveClosure : public StackObj {
+public:
+  G1VerifyLiveClosure()
+     { }
+
+  size_t apply(oop object) {
+     log_error(gc)("G1VerifyLiveClosure shouldn't have live objects");
+     return object->size();
+  }
+};
+
 class G1AdjustRegionClosure : public HeapRegionClosure {
   G1FullCollector* _collector;
   G1CMBitMap* _bitmap;
@@ -73,7 +85,9 @@ class G1AdjustRegionClosure : public HeapRegionClosure {
       // regions do not contain objects to iterate. So skip both.
       // FIXME: remove below
        if (_collector->is_invalid(r->hrm_index())) {
-          log_error(gc)("Skip G1AdjustRegionClosure %zu", _collector->live_words(r->hrm_index()));
+          log_error(gc)("Skip G1AdjustRegionClosure %zu %d", _collector->live_words(r->hrm_index()), r->hrm_index());
+          G1VerifyLiveClosure verifier;
+          r->apply_to_marked_objects(_bitmap, &verifier);
        }
       G1AdjustLiveClosure adjust(&cl);
       r->apply_to_marked_objects(_bitmap, &adjust);

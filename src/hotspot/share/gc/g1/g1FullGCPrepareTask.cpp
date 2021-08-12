@@ -51,12 +51,29 @@ void G1FullGCPrepareTask::G1CalculatePointersClosure::free_pinned_region(HeapReg
   prepare_for_compaction(hr);
 }
 
+class G1VerifyLiveClosure : public StackObj {
+public:
+  size_t live_words = 0;
+  G1VerifyLiveClosure()
+     { }
+
+  size_t apply(oop object) {
+     log_error(gc)("G1VerifyLiveClosure shouldn't have live objects");
+     assert(false, "G1VerifyLiveClosure: Dead region shouldn't have live objects %d", object->size());
+     live_words += object->size();
+     return object->size();
+  }
+};
+
 bool G1FullGCPrepareTask::G1CalculatePointersClosure::do_heap_region(HeapRegion* hr) {
   bool force_not_compacted = false;
   if (should_compact(hr)) {
     assert(!hr->is_humongous(), "moving humongous objects not supported.");
-    if (_collector->is_empty(hr->hrm_index())) {
-      _collector->set_invalid(hr->hrm_index());
+    if (!_collector->is_live(hr->hrm_index())) {
+      //_collector->set_invalid(hr->hrm_index());
+      log_error(gc)("Dead region: G1FullGCPrepareTask::G1CalculatePointersClosure::do_heap_region %d", hr->hrm_index());
+      G1VerifyLiveClosure verifier;
+      hr->apply_to_marked_objects(_bitmap, &verifier);
     }
     prepare_for_compaction(hr);
   } else {
@@ -187,9 +204,9 @@ void G1FullGCPrepareTask::G1CalculatePointersClosure::prepare_for_compaction_wor
                                                                                   HeapRegion* hr) {
   hr->set_compaction_top(hr->bottom());
   if (_collector->is_invalid(hr->hrm_index())) {
-    assert(_collector->is_empty(hr->hrm_index()), "precondition");
+    assert(!_collector->is_live(hr->hrm_index()), "precondition");
     // FIXME: remove comment
-    // log_error(gc)("Region is empty: skip G1CalculatePointersClosure::prepare_for_compaction_work %zu", _collector->live_words(hr->hrm_index()));
+    //log_error(gc)("Region is empty: skip G1CalculatePointersClosure::prepare_for_compaction_work %zu region %d", _collector->live_words(hr->hrm_index()), hr->hrm_index());
     return;
   }
   G1PrepareCompactLiveClosure prepare_compact(cp);

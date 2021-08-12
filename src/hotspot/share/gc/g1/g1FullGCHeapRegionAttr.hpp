@@ -64,7 +64,7 @@ public:
   }
 
   bool is_compacting(HeapWord* obj) const {
-    assert(!is_invalid(obj), "not initialized yet");
+    assert(!is_invalid(obj), "not initialized yet %zu", get_index_by_address(obj));
     return get_by_address(obj) == Compacting;
   }
 

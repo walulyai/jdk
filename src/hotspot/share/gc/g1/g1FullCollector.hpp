@@ -103,8 +103,8 @@ public:
     return _live_stats[region_index]._live_words;
   }
 
-  bool is_empty(uint region_index) {
-    return live_words(region_index) == 0;
+  bool is_live(uint region_index) {
+    return live_words(region_index) > 0;
   }
 
   void before_marking_update_attribute_table(HeapRegion* hr);
