@@ -235,6 +235,7 @@ public:
     assert(hr->in_collection_set(), "bad CS");
 
     if (_g1h->evacuation_failed(hr->hrm_index())) {
+      // FIXME: should not be clearing opt_cset for regions in collection set.
       hr->clear_index_in_opt_cset();
 
       bool during_concurrent_start = _g1h->collector_state()->in_concurrent_start_gc();

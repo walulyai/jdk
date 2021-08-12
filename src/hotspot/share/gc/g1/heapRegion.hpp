@@ -458,6 +458,8 @@ public:
   }
 
   inline bool in_collection_set() const;
+  
+  inline bool in_opt_cset() const;
 
   // Methods used by the HeapRegionSetBase class and subclasses.
 
@@ -511,29 +513,33 @@ public:
   // objects during evac failure handling.
   void note_self_forwarding_removal_end(size_t marked_bytes);
 
-  uint index_in_opt_cset() const {
+  uint index_in_opt_cset() const; /*{
     assert(has_index_in_opt_cset(), "Opt cset index not set.");
     assert(_index_in_opt_cset == _index_in_cset, "Precondition %u != %d", _index_in_opt_cset, _index_in_cset);
     return _index_in_opt_cset;
-  }
-  bool has_index_in_opt_cset() const {
+  }*/
+  bool has_index_in_opt_cset() const;/* {
     assert(!in_collection_set() || _index_in_opt_cset == _index_in_cset, "Precondition in_collection_set(): %d && _index_in_opt_cset %u == %u _index_in_cset %s", in_collection_set(), _index_in_opt_cset, _index_in_cset, get_type_str());
     return _index_in_opt_cset != InvalidCSetIndex; 
-  }
-  void set_index_in_opt_cset(uint index) { _index_in_opt_cset = index; _index_in_cset = InvalidCSetIndex;}
-  void clear_index_in_opt_cset() { _index_in_opt_cset = InvalidCSetIndex; _index_in_cset = InvalidCSetIndex;  }
+  }*/
+  void set_index_in_opt_cset(uint index);
+
+  void clear_index_in_opt_cset();
 
   void calc_gc_efficiency(void);
   double gc_efficiency() const { return _gc_efficiency;}
 
   uint  young_index_in_cset() const {
     assert(_young_index_in_cset == _index_in_cset, "Precondition %u != %u", _young_index_in_cset, _index_in_cset);
-    return _young_index_in_cset; 
+    return is_old() ? 0 : _index_in_cset;
   }
-  void clear_young_index_in_cset() { 
-    _young_index_in_cset = InvalidCSetIndex; 
+
+  void clear_index_in_cset() {
+    _young_index_in_cset = InvalidCSetIndex;
+    _index_in_opt_cset = InvalidCSetIndex;
     _index_in_cset = InvalidCSetIndex;
   }
+
   void set_young_index_in_cset(uint index) {
     assert(index != UINT_MAX, "just checking");
     assert(index != 0, "just checking");

@@ -103,7 +103,7 @@ void HeapRegion::setup_heap_region_size(size_t max_heap_size) {
 
 void HeapRegion::handle_evacuation_failure() {
   uninstall_surv_rate_group();
-  clear_young_index_in_cset();
+  clear_index_in_cset();
   set_old();
   _next_marked_bytes = 0;
 }
@@ -118,8 +118,7 @@ void HeapRegion::hr_clear(bool clear_space) {
   assert(_humongous_start_region == NULL,
          "we should have already filtered out humongous regions");
 
-  clear_young_index_in_cset();
-  clear_index_in_opt_cset();
+  clear_index_in_cset();
   uninstall_surv_rate_group();
   set_free();
   reset_pre_dummy_top();
@@ -253,7 +252,6 @@ HeapRegion::HeapRegion(uint hrm_index,
 {
   assert(Universe::on_page_boundary(mr.start()) && Universe::on_page_boundary(mr.end()),
          "invalid space boundaries");
-  log_error(gc)("_young_index_in_cset %u", _young_index_in_cset);
   _rem_set = new HeapRegionRemSet(this, config);
   initialize();
 }

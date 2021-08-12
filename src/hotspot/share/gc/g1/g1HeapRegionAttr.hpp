@@ -155,6 +155,7 @@ class G1HeapRegionAttrBiasedMappedArray : public G1BiasedMappedArray<G1HeapRegio
   bool is_in_cset_or_humongous(HeapWord* addr) const { return at(addr).is_in_cset_or_humongous(); }
   bool is_in_cset(HeapWord* addr) const { return at(addr).is_in_cset(); }
   bool is_in_cset(const HeapRegion* hr) const { return get_by_index(hr->hrm_index()).is_in_cset(); }
+  bool is_in_opt_cset(const HeapRegion* hr) const { return get_by_index(hr->hrm_index()).is_optional(); } 
   G1HeapRegionAttr at(HeapWord* addr) const { return get_by_address(addr); }
   void clear() { G1BiasedMappedArray<G1HeapRegionAttr>::clear(); }
   void clear(const HeapRegion* hr) { return set_by_index(hr->hrm_index(), G1HeapRegionAttr(G1HeapRegionAttr::NotInCSet)); }

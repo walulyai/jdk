@@ -162,6 +162,10 @@ bool G1CollectedHeap::is_in_cset(const HeapRegion* hr) {
   return _region_attr.is_in_cset(hr);
 }
 
+bool G1CollectedHeap::is_in_opt_cset(const HeapRegion* hr) {
+  return _region_attr.is_in_opt_cset(hr);
+}
+
 bool G1CollectedHeap::is_in_cset_or_humongous(const oop obj) {
   return _region_attr.is_in_cset_or_humongous(cast_from_oop<HeapWord*>(obj));
 }
