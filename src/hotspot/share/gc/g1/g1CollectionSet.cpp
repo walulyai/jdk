@@ -543,9 +543,9 @@ void G1CollectionSet::abandon_optional_collection_set(G1ParScanThreadStateSet* p
     pss->record_unused_optional_region(r);
     // Clear collection set marker and make sure that the remembered set information
     // is correct as we still need it later.
+    r->clear_index_in_opt_cset();
     _g1h->clear_region_attr(r);
     _g1h->register_region_with_region_attr(r);
-    r->clear_index_in_opt_cset();
   }
   free_optional_regions();
 

@@ -530,7 +530,7 @@ public:
   double gc_efficiency() const { return _gc_efficiency;}
 
   uint  young_index_in_cset() const {
-    assert(_young_index_in_cset == _index_in_cset, "Precondition %u != %u", _young_index_in_cset, _index_in_cset);
+    assert(_young_index_in_cset == _index_in_cset || is_old() && _index_in_opt_cset == _index_in_cset, "Precondition %u != %u", _young_index_in_cset, _index_in_cset);
     return is_old() ? 0 : _index_in_cset;
   }
 

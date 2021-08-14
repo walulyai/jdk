@@ -288,7 +288,6 @@ inline bool HeapRegion::in_collection_set() const {
 }
 
 inline bool HeapRegion::in_opt_cset() const {
-  assert(!in_collection_set(),  "should not be in both sets");
   return G1CollectedHeap::heap()->is_in_opt_cset(this);
 }
 
@@ -299,8 +298,8 @@ inline  uint HeapRegion::index_in_opt_cset() const {
   }
 inline  bool HeapRegion::has_index_in_opt_cset() const {
     assert(!in_collection_set() || is_young() || _index_in_opt_cset == _index_in_cset, "Precondition in_collection_set(): %d && _index_in_opt_cset %u == %u _index_in_cset %s", in_collection_set(), _index_in_opt_cset, _index_in_cset, get_type_str());
-    assert(_index_in_opt_cset == InvalidCSetIndex || in_opt_cset() && is_old(), "Precondition!");
-    return _index_in_cset != InvalidCSetIndex && in_opt_cset(); 
+    // assert(_index_in_opt_cset == InvalidCSetIndex || in_opt_cset() && is_old(), "Precondition!");
+    return _index_in_cset != InvalidCSetIndex && is_old();
   }
 
 
@@ -311,7 +310,9 @@ inline void HeapRegion::set_index_in_opt_cset(uint index) {
 }
 
 inline void HeapRegion::clear_index_in_opt_cset() {
-    assert(in_opt_cset(), "Precondition");
+    if (!has_index_in_opt_cset()) {
+      return;
+    }
     assert(_young_index_in_cset == InvalidCSetIndex, "Precondition");
     _index_in_opt_cset = InvalidCSetIndex;
     _index_in_cset = InvalidCSetIndex;  
