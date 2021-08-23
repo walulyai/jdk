@@ -35,6 +35,7 @@
 class HeapRegion;
 class HeapRegionClosure;
 class HeapRegionClaimer;
+class HeapRegionStrider;
 class FreeRegionList;
 class WorkGang;
 
@@ -73,6 +74,7 @@ class G1HeapRegionTable : public G1BiasedMappedArray<HeapRegion*> {
 class HeapRegionManager: public CHeapObj<mtGC> {
   friend class VMStructs;
   friend class HeapRegionClaimer;
+  friend class HeapRegionStrider;
 
   G1RegionToSpaceMapper* _bot_mapper;
   G1RegionToSpaceMapper* _cardtable_mapper;
@@ -276,6 +278,8 @@ public:
 
   void par_iterate(HeapRegionClosure* blk, HeapRegionClaimer* hrclaimer, const uint start_index) const;
 
+  void par_iterate(HeapRegionClosure* blk, HeapRegionStrider* hr_slider) const;
+
   // Uncommit up to num_regions_to_remove regions that are completely free.
   // Return the actual number of uncommitted regions.
   uint shrink_by(uint num_regions_to_remove);
@@ -328,5 +332,26 @@ class HeapRegionClaimer : public StackObj {
 
   // Claim the given region, returns true if successfully claimed.
   bool claim_region(uint region_index);
+};
+
+class HeapRegionStrider : public StackObj {
+  uint _n_workers;
+  uint _n_regions;
+  uint _regions_per_worker;
+  uint _stride_index;
+ public:
+
+  HeapRegionStrider(uint n_workers);
+
+  inline uint n_regions() const {
+    return _n_regions;
+  }
+
+  uint regions_per_worker() const {
+    return _regions_per_worker;
+  }
+
+  // Return a start offset given the worker.
+  uint get_offset_for_worker();
 };
 #endif // SHARE_GC_G1_HEAPREGIONMANAGER_HPP

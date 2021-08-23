@@ -2308,6 +2308,11 @@ void G1CollectedHeap::heap_region_par_iterate_from_worker_offset(HeapRegionClosu
   _hrm.par_iterate(cl, hrclaimer, hrclaimer->offset_for_worker(worker_id));
 }
 
+void G1CollectedHeap::heap_region_par_iterate(HeapRegionClosure* cl,
+                                              HeapRegionStrider *hr_strider) const {
+  _hrm.par_iterate(cl, hr_strider);
+}
+
 void G1CollectedHeap::heap_region_par_iterate_from_start(HeapRegionClosure* cl,
                                                          HeapRegionClaimer *hrclaimer) const {
   _hrm.par_iterate(cl, hrclaimer, 0);
@@ -3567,7 +3572,7 @@ void G1CollectedHeap::pre_evacuate_collection_set(G1EvacuationInfo* evacuation_i
 
   // Concurrent start needs claim bits to keep track of the marked-through CLDs.
   if (collector_state()->in_concurrent_start_gc()) {
-    concurrent_mark()->pre_concurrent_start(gc_cause());
+    concurrent_mark()->pre_concurrent_start(gc_cause(), workers());
 
     double start_clear_claimed_marks = os::elapsedTime();
 

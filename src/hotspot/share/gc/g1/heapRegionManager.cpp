@@ -578,6 +578,26 @@ bool HeapRegionManager::allocate_containing_regions(MemRegion range, size_t* com
   return true;
 }
 
+void HeapRegionManager::par_iterate(HeapRegionClosure* blk, HeapRegionStrider* hr_strider) const {
+
+  const uint n_regions = hr_strider->n_regions();
+  const uint stride = hr_strider->regions_per_worker();
+  const uint start_index = hr_strider->get_offset_for_worker();
+  uint end = MIN2(start_index + stride, n_regions);
+  for (uint index = start_index; index < end; index++) {
+    assert(index < n_regions, "sanity");
+    // Skip over unavailable regions
+    if (!is_available(index)) {
+      continue;
+    }
+    HeapRegion* r = _regions.get_by_index(index);
+    bool res = blk->do_heap_region(r);
+    if (res) {
+      return;
+    }
+  }
+}
+
 void HeapRegionManager::par_iterate(HeapRegionClosure* blk, HeapRegionClaimer* hrclaimer, const uint start_index) const {
   // Every worker will actually look at all regions, skipping over regions that
   // are currently not committed.
@@ -760,6 +780,19 @@ bool HeapRegionClaimer::claim_region(uint region_index) {
   return old_val == Unclaimed;
 }
 
+HeapRegionStrider::HeapRegionStrider(uint n_workers) :
+    _n_workers(n_workers),
+    _n_regions(G1CollectedHeap::heap()->_hrm._allocated_heapregions_length),
+    _stride_index(0) {
+  _regions_per_worker = (_n_regions + _n_workers - 1 ) / _n_workers;
+}
+
+uint HeapRegionStrider::get_offset_for_worker() {
+  assert(_n_workers > 0, "must be set");
+  uint worker_index = Atomic::fetch_and_add(&_stride_index, 1u);
+  assert(worker_index < _n_workers, "Too many workers claiming indexes");
+  return worker_index * _regions_per_worker;
+}
 class G1RebuildFreeListTask : public AbstractGangTask {
   HeapRegionManager* _hrm;
   FreeRegionList*    _worker_freelists;

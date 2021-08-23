@@ -688,23 +688,40 @@ void G1ConcurrentMark::clear_next_bitmap(WorkGang* workers) {
   clear_bitmap(_next_mark_bitmap, workers, false);
 }
 
-class NoteStartOfMarkHRClosure : public HeapRegionClosure {
+class NoteStartOfMarkTask : public AbstractGangTask {
+  class NoteStartOfMarkHRClosure : public HeapRegionClosure {
+  public:
+    bool do_heap_region(HeapRegion* r) override {
+      r->note_start_of_marking();
+      return false;
+    }
+  };
+  HeapRegionStrider _hr_strider;
+  NoteStartOfMarkHRClosure start_cl;
 public:
-  bool do_heap_region(HeapRegion* r) {
-    r->note_start_of_marking();
-    return false;
+  NoteStartOfMarkTask(uint n_workers) :
+    AbstractGangTask("G1 Note Start Of Mark"),
+    _hr_strider(n_workers),
+    start_cl()
+  { }
+
+  void work(uint worker_id) {
+    G1CollectedHeap::heap()->heap_region_par_iterate(&start_cl, &_hr_strider);
   }
 };
 
-void G1ConcurrentMark::pre_concurrent_start(GCCause::Cause cause) {
+void G1ConcurrentMark::pre_concurrent_start(GCCause::Cause cause, WorkGang* workers) {
   assert_at_safepoint_on_vm_thread();
 
   // Reset marking state.
   reset();
 
   // For each region note start of marking.
-  NoteStartOfMarkHRClosure startcl;
-  _g1h->heap_region_iterate(&startcl);
+  uint const num_workers = (uint)workers->active_workers();
+  NoteStartOfMarkTask note_start_task(num_workers);
+  log_debug(gc, ergo)("Running %s using %u workers for %u work units.",
+                        note_start_task.name(), num_workers, G1CollectedHeap::heap()->num_regions());
+  workers->run_task(&note_start_task, num_workers);
 
   _root_regions.reset();
 

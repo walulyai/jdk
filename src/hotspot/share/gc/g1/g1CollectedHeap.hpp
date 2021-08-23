@@ -158,6 +158,7 @@ class G1CollectedHeap : public CollectedHeap {
   // Other related classes.
   friend class G1HeapPrinterMark;
   friend class HeapRegionClaimer;
+  friend class HeapRegionStrider;
 
   // Testing classes.
   friend class G1CheckRegionAttrTableClosure;
@@ -1231,6 +1232,8 @@ public:
   void heap_region_par_iterate_from_start(HeapRegionClosure* cl,
                                           HeapRegionClaimer* hrclaimer) const;
 
+  void heap_region_par_iterate(HeapRegionClosure* cl,
+                               HeapRegionStrider* hr_strider) const;
   // Iterate over all regions in the collection set in parallel.
   void collection_set_par_iterate_all(HeapRegionClosure* cl,
                                       HeapRegionClaimer* hr_claimer,
