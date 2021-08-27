@@ -25,11 +25,13 @@
 #ifndef SHARE_GC_G1_G1CONCURRENTMARK_HPP
 #define SHARE_GC_G1_G1CONCURRENTMARK_HPP
 
+#include "gc/g1/g1BatchedGangTask.hpp"
 #include "gc/g1/g1ConcurrentMarkBitMap.hpp"
 #include "gc/g1/g1ConcurrentMarkObjArrayProcessor.hpp"
 #include "gc/g1/g1HeapVerifier.hpp"
 #include "gc/g1/g1RegionMarkStatsCache.hpp"
 #include "gc/g1/heapRegionSet.hpp"
+#include "gc/g1/heapRegionManager.hpp"
 #include "gc/shared/gcCause.hpp"
 #include "gc/shared/taskTerminator.hpp"
 #include "gc/shared/taskqueue.hpp"
@@ -375,10 +377,6 @@ class G1ConcurrentMark : public CHeapObj<mtGC> {
   // it has been reclaimed.
   void clear_statistics(HeapRegion* r);
 
-  // Resets the global marking data structures, as well as the
-  // task local ones; should be called during concurrent start.
-  void reset();
-
   // Resets all the marking data structures. Called when we have to restart
   // marking or when marking completes (via set_non_marking_state below).
   void reset_marking_for_restart();
@@ -525,6 +523,10 @@ public:
 
   // Calculates the number of concurrent GC threads to be used in the marking phase.
   uint calc_active_marking_workers();
+
+  // Resets the global marking data structures, as well as the
+  // task local ones; should be called during concurrent start.
+  void reset();
 
   // Moves all per-task cached data into global state.
   void flush_all_task_caches();
@@ -856,4 +858,42 @@ public:
   ~G1PrintRegionLivenessInfoClosure();
 };
 
+class G1PreConcurrentStartTask : public G1BatchedGangTask {
+  // Concurrent start needs claim bits to keep track of the marked-through CLDs.
+  class CLDClearClaimedMarksTask;
+  // Reset marking state.
+  class ResetMarkingStateTask;
+  // For each region note start of marking.
+  class NoteStartOfMarkTask;
+
+public:
+  G1PreConcurrentStartTask(GCCause::Cause cause, G1ConcurrentMark* cm);
+};
+
+class G1PreConcurrentStartTask::CLDClearClaimedMarksTask : public G1AbstractSubTask {
+public:
+  CLDClearClaimedMarksTask() : G1AbstractSubTask(G1GCPhaseTimes::CLDClearClaimedMarks) { }
+
+  double worker_cost() const override { return 0.5; }
+  void do_work(uint worker_id) override;
+};
+
+class G1PreConcurrentStartTask::ResetMarkingStateTask : public G1AbstractSubTask {
+  G1ConcurrentMark* _cm;
+public:
+  ResetMarkingStateTask(G1ConcurrentMark* cm) : G1AbstractSubTask(G1GCPhaseTimes::ResetMarkingState), _cm(cm) { }
+
+  double worker_cost() const override { return 1.0; }
+  void do_work(uint worker_id) override;
+};
+
+class G1PreConcurrentStartTask::NoteStartOfMarkTask : public G1AbstractSubTask {
+  HeapRegionClaimer _claimer;
+public:
+  NoteStartOfMarkTask() : G1AbstractSubTask(G1GCPhaseTimes::NoteStartOfMark), _claimer(0) { }
+
+  double worker_cost() const override;
+  void set_max_workers(uint max_workers) override;
+  void do_work(uint worker_id) override;
+};
 #endif // SHARE_GC_G1_G1CONCURRENTMARK_HPP
