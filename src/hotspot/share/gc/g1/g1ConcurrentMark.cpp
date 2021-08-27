@@ -735,7 +735,6 @@ void G1ConcurrentMark::pre_concurrent_start(GCCause::Cause cause) {
   assert_at_safepoint_on_vm_thread();
 
   G1PreConcurrentStartTask cl(cause, this);
-
   G1CollectedHeap::heap()->run_batch_task(&cl);
 
   _gc_tracer_cm->set_gc_cause(cause);
@@ -1853,7 +1852,6 @@ G1PreConcurrentStartTask::G1PreConcurrentStartTask(GCCause::Cause cause, G1Concu
   add_serial_task(new CLDClearClaimedMarksTask());
   add_serial_task(new ResetMarkingStateTask(cm));
   add_parallel_task(new NoteStartOfMarkTask());
-  log_debug(gc) ("G1PreConcurrentStartTask::G1PreConcurrentStartTask");
 };
 
 void G1PreConcurrentStartTask::CLDClearClaimedMarksTask::do_work(uint worker_id) {

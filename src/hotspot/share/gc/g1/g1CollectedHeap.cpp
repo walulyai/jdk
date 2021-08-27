@@ -3566,7 +3566,6 @@ void G1CollectedHeap::pre_evacuate_collection_set(G1EvacuationInfo* evacuation_i
   DerivedPointerTable::clear();
 #endif
 
-
   if (collector_state()->in_concurrent_start_gc()) {
     concurrent_mark()->pre_concurrent_start(gc_cause());
   }
