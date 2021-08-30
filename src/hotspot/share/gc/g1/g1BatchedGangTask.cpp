@@ -87,8 +87,8 @@ void G1BatchedGangTask::work(uint worker_id) {
   int t = 0;
   while (try_claim_serial_task(t)) {
     G1AbstractSubTask* task = _serial_tasks.at(t);
-    G1GCParPhaseTimesTracker x(_phase_times, task->tag(), worker_id);
-    task->do_work(worker_id);
+    G1GCParPhaseTimesTracker x(_phase_times, task->tag(), 0 /* serial task has one worker*/);
+    task->do_work(0 /* serial task has one worker*/);
   }
   for (G1AbstractSubTask* task : _parallel_tasks) {
     G1GCParPhaseTimesTracker x(_phase_times, task->tag(), worker_id);
