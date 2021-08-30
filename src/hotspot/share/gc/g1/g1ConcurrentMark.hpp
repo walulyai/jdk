@@ -857,43 +857,4 @@ public:
   virtual bool do_heap_region(HeapRegion* r);
   ~G1PrintRegionLivenessInfoClosure();
 };
-
-class G1PreConcurrentStartTask : public G1BatchedGangTask {
-  // Concurrent start needs claim bits to keep track of the marked-through CLDs.
-  class CLDClearClaimedMarksTask;
-  // Reset marking state.
-  class ResetMarkingStateTask;
-  // For each region note start of marking.
-  class NoteStartOfMarkTask;
-
-public:
-  G1PreConcurrentStartTask(GCCause::Cause cause, G1ConcurrentMark* cm);
-};
-
-class G1PreConcurrentStartTask::CLDClearClaimedMarksTask : public G1AbstractSubTask {
-public:
-  CLDClearClaimedMarksTask() : G1AbstractSubTask(G1GCPhaseTimes::CLDClearClaimedMarks) { }
-
-  double worker_cost() const override { return 0.5; }
-  void do_work(uint worker_id) override;
-};
-
-class G1PreConcurrentStartTask::ResetMarkingStateTask : public G1AbstractSubTask {
-  G1ConcurrentMark* _cm;
-public:
-  ResetMarkingStateTask(G1ConcurrentMark* cm) : G1AbstractSubTask(G1GCPhaseTimes::ResetMarkingState), _cm(cm) { }
-
-  double worker_cost() const override { return 1.0; }
-  void do_work(uint worker_id) override;
-};
-
-class G1PreConcurrentStartTask::NoteStartOfMarkTask : public G1AbstractSubTask {
-  HeapRegionClaimer _claimer;
-public:
-  NoteStartOfMarkTask() : G1AbstractSubTask(G1GCPhaseTimes::NoteStartOfMark), _claimer(0) { }
-
-  double worker_cost() const override;
-  void set_max_workers(uint max_workers) override;
-  void do_work(uint worker_id) override;
-};
 #endif // SHARE_GC_G1_G1CONCURRENTMARK_HPP

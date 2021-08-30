@@ -731,6 +731,84 @@ void G1ConcurrentMark::clear_next_bitmap(WorkGang* workers) {
   clear_next_bitmap(workers, false);
 }
 
+class G1PreConcurrentStartTask : public G1BatchedGangTask {
+  // Concurrent start needs claim bits to keep track of the marked-through CLDs.
+  class CLDClearClaimedMarksTask;
+  // Reset marking state.
+  class ResetMarkingStateTask;
+  // For each region note start of marking.
+  class NoteStartOfMarkTask;
+
+public:
+  G1PreConcurrentStartTask(GCCause::Cause cause, G1ConcurrentMark* cm);
+};
+
+class G1PreConcurrentStartTask::CLDClearClaimedMarksTask : public G1AbstractSubTask {
+public:
+  CLDClearClaimedMarksTask() : G1AbstractSubTask(G1GCPhaseTimes::CLDClearClaimedMarks) { }
+
+  double worker_cost() const override { return 1.0; }
+  void do_work(uint worker_id) override;
+};
+
+class G1PreConcurrentStartTask::ResetMarkingStateTask : public G1AbstractSubTask {
+  G1ConcurrentMark* _cm;
+public:
+  ResetMarkingStateTask(G1ConcurrentMark* cm) : G1AbstractSubTask(G1GCPhaseTimes::ResetMarkingState), _cm(cm) { }
+
+  double worker_cost() const override { return 1.0; }
+  void do_work(uint worker_id) override;
+};
+
+class G1PreConcurrentStartTask::NoteStartOfMarkTask : public G1AbstractSubTask {
+  HeapRegionClaimer _claimer;
+public:
+  NoteStartOfMarkTask() : G1AbstractSubTask(G1GCPhaseTimes::NoteStartOfMark), _claimer(0) { }
+
+  double worker_cost() const override {
+    // Arbitrarily chosen magic number to cap number of threads used when there are
+    // few regions.
+    const uint regions_per_thread = 1000;
+    return _claimer.n_regions() / regions_per_thread;
+  }
+
+  void set_max_workers(uint max_workers) override;
+  void do_work(uint worker_id) override;
+};
+
+void G1PreConcurrentStartTask::CLDClearClaimedMarksTask::do_work(uint worker_id) {
+  ClassLoaderDataGraph::clear_claimed_marks();
+}
+
+void G1PreConcurrentStartTask::ResetMarkingStateTask::do_work(uint worker_id) {
+  // Reset marking state.
+  _cm->reset();
+}
+
+class NoteStartOfMarkHRClosure : public HeapRegionClosure {
+public:
+  bool do_heap_region(HeapRegion* r) override {
+    r->note_start_of_marking();
+    return false;
+  }
+};
+
+void G1PreConcurrentStartTask::NoteStartOfMarkTask::do_work(uint worker_id) {
+  NoteStartOfMarkHRClosure start_cl;
+  G1CollectedHeap::heap()->heap_region_par_iterate_from_worker_offset(&start_cl, &_claimer, worker_id);
+}
+
+void G1PreConcurrentStartTask::NoteStartOfMarkTask::set_max_workers(uint max_workers) {
+  _claimer.set_n_workers(max_workers);
+}
+
+G1PreConcurrentStartTask::G1PreConcurrentStartTask(GCCause::Cause cause, G1ConcurrentMark* cm) :
+  G1BatchedGangTask("Pre Concurrent Start", G1CollectedHeap::heap()->phase_times()) {
+  add_serial_task(new CLDClearClaimedMarksTask());
+  add_serial_task(new ResetMarkingStateTask(cm));
+  add_parallel_task(new NoteStartOfMarkTask());
+};
+
 void G1ConcurrentMark::pre_concurrent_start(GCCause::Cause cause) {
   assert_at_safepoint_on_vm_thread();
 
@@ -1847,42 +1925,9 @@ G1ConcurrentMark::claim_region(uint worker_id) {
   return NULL;
 }
 
-G1PreConcurrentStartTask::G1PreConcurrentStartTask(GCCause::Cause cause, G1ConcurrentMark* cm) :
-  G1BatchedGangTask("Pre Concurrent Start", G1CollectedHeap::heap()->phase_times()) {
-  add_serial_task(new CLDClearClaimedMarksTask());
-  add_serial_task(new ResetMarkingStateTask(cm));
-  add_parallel_task(new NoteStartOfMarkTask());
-};
 
-void G1PreConcurrentStartTask::CLDClearClaimedMarksTask::do_work(uint worker_id) {
-  ClassLoaderDataGraph::clear_claimed_marks();
-}
 
-void G1PreConcurrentStartTask::ResetMarkingStateTask::do_work(uint worker_id) {
-  // Reset marking state.
-  _cm->reset();
-}
 
-class NoteStartOfMarkHRClosure : public HeapRegionClosure {
-public:
-  bool do_heap_region(HeapRegion* r) override {
-    r->note_start_of_marking();
-    return false;
-  }
-};
-
-void G1PreConcurrentStartTask::NoteStartOfMarkTask::do_work(uint worker_id) {
-  NoteStartOfMarkHRClosure start_cl;
-  G1CollectedHeap::heap()->heap_region_par_iterate_from_worker_offset(&start_cl, &_claimer, worker_id);
-}
-
-double G1PreConcurrentStartTask::NoteStartOfMarkTask::worker_cost() const {
-  return G1CollectedHeap::heap()->workers()->active_workers();
-}
-
-void G1PreConcurrentStartTask::NoteStartOfMarkTask::set_max_workers(uint max_workers) {
-  _claimer.set_n_workers(max_workers);
-}
 
 #ifndef PRODUCT
 class VerifyNoCSetOops {
