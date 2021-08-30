@@ -1925,10 +1925,6 @@ G1ConcurrentMark::claim_region(uint worker_id) {
   return NULL;
 }
 
-
-
-
-
 #ifndef PRODUCT
 class VerifyNoCSetOops {
   G1CollectedHeap* _g1h;
