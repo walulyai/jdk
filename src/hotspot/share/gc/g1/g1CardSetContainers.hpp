@@ -314,7 +314,7 @@ public:
   template <class CardSetPtrVisitor>
   void iterate(CardSetPtrVisitor& found, uint num_card_sets);
 
-  static EntryCountType num_buckets(size_t size_in_bits, size_t num_cards_in_array, size_t max_buckets);
+  static EntryCountType num_buckets(size_t size_in_bits, size_t max_cards_in_array, size_t max_buckets);
 
   static EntryCountType bitmap_size(size_t size_in_bits, uint num_buckets) {
     EntryCountType num_cards = (EntryCountType)size_in_bits / num_buckets;
