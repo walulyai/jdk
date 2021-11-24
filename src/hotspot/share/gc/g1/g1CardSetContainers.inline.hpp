@@ -253,7 +253,7 @@ inline void G1CardSetBitMap::iterate(CardVisitor& found, size_t size_in_bits, ui
 inline G1CardSetHowl::G1CardSetHowl(EntryCountType card_in_region, G1CardSetConfiguration* config) :
   G1CardSetContainer(),
   _num_entries((config->max_cards_in_array() + 1)) /* Card Transfer will not increment _num_entries */ {
-  EntryCountType num_buckets = config->buckets_in_howl();
+  EntryCountType num_buckets = config->num_buckets_in_howl();
   EntryCountType bucket = config->howl_bucket_index(card_in_region);
   for (uint i = 0; i < num_buckets; ++i) {
     _buckets[i] = G1CardSetInlinePtr();
@@ -291,7 +291,7 @@ inline bool G1CardSetHowl::contains(uint card_idx, G1CardSetConfiguration* confi
 
 template <class CardOrRangeVisitor>
 inline void G1CardSetHowl::iterate(CardOrRangeVisitor& found, G1CardSetConfiguration* config) {
-  for (uint i = 0; i < config->buckets_in_howl(); ++i) {
+  for (uint i = 0; i < config->num_buckets_in_howl(); ++i) {
     iterate_cardset(_buckets[i], i, found, config);
   }
 }

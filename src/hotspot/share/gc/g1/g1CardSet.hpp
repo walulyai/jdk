@@ -51,7 +51,7 @@ class G1CardSetConfiguration {
   uint _inline_ptr_bits_per_card;
 
   uint _max_cards_in_array;
-  uint _buckets_in_howl;
+  uint _num_buckets_in_howl;
   uint _max_cards_in_card_set;
   uint _cards_in_howl_threshold;
   uint _max_cards_in_howl_bitmap;
@@ -66,7 +66,7 @@ class G1CardSetConfiguration {
   G1CardSetConfiguration(uint inline_ptr_bits_per_card,
                          uint max_cards_in_array,
                          double cards_in_bitmap_threshold_percent,
-                         uint buckets_in_howl,
+                         uint num_buckets_in_howl,
                          double cards_in_howl_threshold_percent,
                          uint max_cards_in_card_set,
                          uint log2_card_region_per_heap_region);
@@ -81,7 +81,7 @@ public:
   // Testing only.
   G1CardSetConfiguration(uint max_cards_in_array,
                          double cards_in_bitmap_threshold_percent,
-                         uint buckets_in_howl,
+                         uint max_buckets_in_howl,
                          double cards_in_howl_threshold_percent,
                          uint max_cards_in_cardset,
                          uint log2_card_region_per_region);
@@ -105,7 +105,7 @@ public:
   uint log2_max_cards_in_howl_bitmap() const {return _log2_max_cards_in_howl_bitmap;}
 
   // Howl card set container configuration
-  uint buckets_in_howl() const { return _buckets_in_howl; }
+  uint num_buckets_in_howl() const { return _num_buckets_in_howl; }
   // Threshold at which to turn howling arrays into Full.
   uint cards_in_howl_threshold() const { return _cards_in_howl_threshold; }
   uint howl_bitmap_offset(uint card_idx) const { return card_idx & _bitmap_hash_mask; }

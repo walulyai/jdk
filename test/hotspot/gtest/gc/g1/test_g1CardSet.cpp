@@ -352,7 +352,7 @@ void G1CardSetTest::cardset_basic_test() {
     ASSERT_TRUE(res == Found);
 
     uint threshold = config.cards_in_howl_threshold();
-    uint adjusted_threshold = config.cards_in_howl_bitmap_threshold() * config.buckets_in_howl();
+    uint adjusted_threshold = config.cards_in_howl_bitmap_threshold() * config.num_buckets_in_howl();
     i = config.max_cards_in_howl_bitmap();
     count = i;
     for (; i <  threshold; i++) {
