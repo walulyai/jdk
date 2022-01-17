@@ -83,25 +83,6 @@ inline HeapWord* HeapRegion::block_start(const void* p) {
   return _bot_part.block_start(p);
 }
 
-inline bool HeapRegion::is_obj_dead_with_size(const oop obj, const G1CMBitMap* const prev_bitmap, size_t* size) const {
-  HeapWord* addr = cast_from_oop<HeapWord*>(obj);
-
-  assert(addr < top(), "must be");
-  assert(!is_closed_archive(),
-         "Closed archive regions should not have references into other regions");
-  assert(!is_humongous(), "Humongous objects not handled here");
-  bool obj_is_dead = is_obj_dead(obj, prev_bitmap);
-
-  if (ClassUnloading && obj_is_dead) {
-    assert(!block_is_obj(addr), "must be");
-    *size = block_size_using_bitmap(addr, prev_bitmap);
-  } else {
-    assert(block_is_obj(addr), "must be");
-    *size = obj->size();
-  }
-  return obj_is_dead;
-}
-
 inline bool HeapRegion::block_is_obj(const HeapWord* p) const {
   assert(p >= bottom() && p < top(), "precondition");
   assert(!is_continues_humongous(), "p must point to block-start");
@@ -112,42 +93,29 @@ inline bool HeapRegion::block_is_obj(const HeapWord* p) const {
   // because of this there can be stale objects for unloaded classes left in these regions.
   // During a concurrent cycle class unloading is done after marking is complete and objects
   // for the unloaded classes will be stale until the regions are collected.
-  if (ClassUnloading) {
-    return !G1CollectedHeap::heap()->is_obj_dead(cast_to_oop(p), this);
-  }
+  // To make sure dead objects can be handled without an additional bitmap, we scrub dead
+  // objects and create filler objects that are marked in the header.
   return true;
 }
 
-inline size_t HeapRegion::block_size_using_bitmap(const HeapWord* addr, const G1CMBitMap* const prev_bitmap) const {
-  assert(ClassUnloading,
-         "All blocks should be objects if class unloading isn't used, so this method should not be called. "
-         "HR: [" PTR_FORMAT ", " PTR_FORMAT ", " PTR_FORMAT ") "
-         "addr: " PTR_FORMAT,
-         p2i(bottom()), p2i(top()), p2i(end()), p2i(addr));
-
-  // Old regions' dead objects may have dead classes
-  // We need to find the next live object using the bitmap
-  HeapWord* next = prev_bitmap->get_next_marked_addr(addr, prev_top_at_mark_start());
-
-  assert(next > addr, "must get the next live object");
-  return pointer_delta(next, addr);
-}
-
-inline bool HeapRegion::is_obj_dead(const oop obj, const G1CMBitMap* const prev_bitmap) const {
+inline bool HeapRegion::is_obj_dead(const oop obj) const {
   assert(is_in_reserved(obj), "Object " PTR_FORMAT " must be in region", p2i(obj));
-  return !obj_allocated_since_prev_marking(obj) &&
-         !prev_bitmap->is_marked(obj) &&
-         !is_closed_archive();
+  if (obj_allocated_since_prev_marking(obj)) {
+    return false;
+  }
+
+  if (is_closed_archive()) {
+    return false;
+  }
+
+  // All of the above could be skipped, only scrubbed objects are gc marked.
+  return obj->is_gc_marked();
 }
 
 inline size_t HeapRegion::block_size(const HeapWord *addr) const {
   assert(addr < top(), "precondition");
-
-  if (block_is_obj(addr)) {
-    return cast_to_oop(addr)->size();
-  }
-
-  return block_size_using_bitmap(addr, G1CollectedHeap::heap()->concurrent_mark()->prev_mark_bitmap());
+  assert(block_is_obj(addr), "All blocks must be valid");
+  return cast_to_oop(addr)->size();
 }
 
 inline void HeapRegion::reset_compaction_top_after_compaction() {
@@ -339,18 +307,16 @@ HeapWord* HeapRegion::oops_on_memregion_seq_iterate_careful(MemRegion mr,
   }
 #endif
 
-  const G1CMBitMap* const bitmap = g1h->concurrent_mark()->prev_mark_bitmap();
   while (true) {
     oop obj = cast_to_oop(cur);
     assert(oopDesc::is_oop(obj, true), "Not an oop at " PTR_FORMAT, p2i(cur));
     assert(obj->klass_or_null() != NULL,
            "Unparsable heap at " PTR_FORMAT, p2i(cur));
 
-    size_t size;
-    bool is_dead = is_obj_dead_with_size(obj, bitmap, &size);
+    bool is_dead = is_obj_dead(obj);
     bool is_precise = false;
 
-    cur += size;
+    cur += obj->size();
     if (!is_dead) {
       // Process live object's references.
 

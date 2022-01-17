@@ -155,6 +155,11 @@ public:
   // is old the BOT will be updated if the object spans a threshold.
   void fill_with_dummy_object(HeapWord* address, size_t word_size, bool zap = true);
 
+  // Create objects in the given range. The BOT will be updated if needed and
+  // the created objects will have their header marked to show that they are
+  // dead.
+  void fill_range_with_dead_objects(HeapWord* start, HeapWord* end);
+
   // All allocations are done without updating the BOT. The BOT
   // needs to be kept in sync for old generation regions and
   // this is done by explicit updates when crossing thresholds.
@@ -177,10 +182,10 @@ public:
   // All allocated blocks are occupied by objects in a HeapRegion
   bool block_is_obj(const HeapWord* p) const;
 
-  // Returns whether the given object is dead based on TAMS and bitmap.
-  // An object is dead iff a) it was not allocated since the last mark (>TAMS), b) it
-  // is not marked (bitmap).
-  bool is_obj_dead(const oop obj, const G1CMBitMap* const prev_bitmap) const;
+  // Returns whether the given object is dead based on TAMS and mark word.
+  // For an object to be considered dead it must be below TAMS and be
+  // marked in the header.
+  bool is_obj_dead(const oop obj) const;
 
   // Returns the object size for all valid block starts
   // and the amount of unallocated words if called on top()
@@ -255,13 +260,6 @@ private:
 
   void report_region_type_change(G1HeapRegionTraceType::Type to);
 
-  // Returns whether the given object address refers to a dead object, and either the
-  // size of the object (if live) or the size of the block (if dead) in size.
-  // May
-  // - only called with obj < top()
-  // - not called on humongous objects or archive regions
-  inline bool is_obj_dead_with_size(const oop obj, const G1CMBitMap* const prev_bitmap, size_t* size) const;
-
   // Iterate over the references covered by the given MemRegion in a humongous
   // object and apply the given closure to them.
   // Humongous objects are allocated directly in the old-gen. So we need special
@@ -274,9 +272,6 @@ private:
                                                      Closure* cl,
                                                      G1CollectedHeap* g1h);
 
-  // Returns the block size of the given (dead, potentially having its class unloaded) object
-  // starting at p extending to at most the prev TAMS using the given mark bitmap.
-  inline size_t block_size_using_bitmap(const HeapWord* p, const G1CMBitMap* const prev_bitmap) const;
 public:
   HeapRegion(uint hrm_index,
              G1BlockOffsetTable* bot,

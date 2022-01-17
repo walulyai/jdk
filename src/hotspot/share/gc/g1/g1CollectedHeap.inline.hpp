@@ -216,7 +216,7 @@ inline bool G1CollectedHeap::is_in_young(const oop obj) {
 }
 
 inline bool G1CollectedHeap::is_obj_dead(const oop obj, const HeapRegion* hr) const {
-  return hr->is_obj_dead(obj, _cm->prev_mark_bitmap());
+  return hr->is_obj_dead(obj);
 }
 
 inline bool G1CollectedHeap::is_obj_dead(const oop obj) const {
