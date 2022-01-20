@@ -1260,7 +1260,7 @@ class G1MergeHeapRootsTask : public WorkerTask {
     G1MergeCardSetStats stats() const { return _stats; }
   };
 
-  // Closure to clear the prev bitmap for any old region in the collection set.
+  // Closure to clear the marking bitmap for any old region in the collection set.
   // This is needed to be able to use the bitmap for evacuation failure handling.
   class G1ClearBitmapClosure : public HeapRegionClosure {
     G1CollectedHeap* _g1h;
@@ -1274,11 +1274,13 @@ class G1MergeHeapRootsTask : public WorkerTask {
     bool do_heap_region(HeapRegion* hr) {
       assert(_g1h->is_in_cset(hr), "Should only be used iterating the collection set");
       // Young regions should always have cleared bitmaps, so only clear old.
+      // TODO: add optimization to only to this during concurrent clearing in
+      // all other cases this should already be done.
       if (hr->is_old()) {
-        _g1h->clear_prev_bitmap_for_region(hr);
+        _g1h->clear_next_bitmap_for_region(hr);
       } else {
         assert(hr->is_young(), "Should only be young and old regions in collection set");
-        assert_bitmap_clear(hr, _g1h->concurrent_mark()->prev_mark_bitmap());
+        assert_bitmap_clear(hr, _g1h->concurrent_mark()->next_mark_bitmap());
       }
       return false;
     }
@@ -1972,7 +1974,7 @@ public:
         }
 
         const Ticks start = Ticks::now();
-        size_t marked_bytes = rebuild_rem_set_in_region(_cm->prev_mark_bitmap(),
+        size_t marked_bytes = rebuild_rem_set_in_region(_cm->next_mark_bitmap(),
                                                         top_at_mark_start,
                                                         top_at_rebuild_start,
                                                         hr,

@@ -405,8 +405,8 @@ public:
         VerifyObjsInRegionClosure not_dead_yet_cl(r, _vo);
         r->object_iterate(&not_dead_yet_cl);
         if (r->max_live_bytes() < not_dead_yet_cl.live_bytes()) {
-          log_error(gc, verify)("[" PTR_FORMAT "," PTR_FORMAT "] max_live_bytes " SIZE_FORMAT " < calculated " SIZE_FORMAT,
-                                  p2i(r->bottom()), p2i(r->end()), r->max_live_bytes(), not_dead_yet_cl.live_bytes());
+          log_error(gc, verify)(HR_FORMAT " max_live_bytes " SIZE_FORMAT " < calculated " SIZE_FORMAT,
+                                HR_FORMAT_PARAMS(r), r->max_live_bytes(), not_dead_yet_cl.live_bytes());
           _failures = true;
         }
       }
@@ -687,21 +687,17 @@ bool G1HeapVerifier::verify_no_bits_over_tams(const char* bitmap_name, const G1C
 }
 
 bool G1HeapVerifier::verify_bitmaps(const char* caller, HeapRegion* hr) {
-  const G1CMBitMap* const prev_bitmap = _g1h->concurrent_mark()->prev_mark_bitmap();
   const G1CMBitMap* const next_bitmap = _g1h->concurrent_mark()->next_mark_bitmap();
 
-  HeapWord* ptams  = hr->prev_top_at_mark_start();
   HeapWord* ntams  = hr->next_top_at_mark_start();
   HeapWord* end    = hr->end();
-
-  bool res_p = verify_no_bits_over_tams("prev", prev_bitmap, ptams, end);
 
   bool res_n = true;
   // We cannot verify the next bitmap while we are about to clear it.
   if (!_g1h->collector_state()->clearing_next_bitmap()) {
     res_n = verify_no_bits_over_tams("next", next_bitmap, ntams, end);
   }
-  if (!res_p || !res_n) {
+  if (!res_n) {
     log_error(gc, verify)("#### Bitmap verification failed for " HR_FORMAT, HR_FORMAT_PARAMS(hr));
     log_error(gc, verify)("#### Caller: %s", caller);
     return false;

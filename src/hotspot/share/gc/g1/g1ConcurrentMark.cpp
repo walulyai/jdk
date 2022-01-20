@@ -360,14 +360,11 @@ bool G1CMRootMemRegions::wait_until_scan_finished() {
 }
 
 G1ConcurrentMark::G1ConcurrentMark(G1CollectedHeap* g1h,
-                                   G1RegionToSpaceMapper* prev_bitmap_storage,
                                    G1RegionToSpaceMapper* next_bitmap_storage) :
   // _cm_thread set inside the constructor
   _g1h(g1h),
 
-  _mark_bitmap_1(),
   _mark_bitmap_2(),
-  _prev_mark_bitmap(&_mark_bitmap_1),
   _next_mark_bitmap(&_mark_bitmap_2),
 
   _heap(_g1h->reserved()),
@@ -417,7 +414,6 @@ G1ConcurrentMark::G1ConcurrentMark(G1CollectedHeap* g1h,
 {
   assert(CGC_lock != NULL, "CGC_lock must be initialized");
 
-  _mark_bitmap_1.initialize(g1h->reserved(), prev_bitmap_storage);
   _mark_bitmap_2.initialize(g1h->reserved(), next_bitmap_storage);
 
   // Create & start ConcurrentMark thread.
@@ -508,7 +504,6 @@ void G1ConcurrentMark::humongous_object_eagerly_reclaimed(HeapRegion* r) {
   assert_at_safepoint();
 
   // Need to clear all mark bits of the humongous object.
-  clear_mark_if_set(_prev_mark_bitmap, r->bottom());
   clear_mark_if_set(_next_mark_bitmap, r->bottom());
 
   if (!_g1h->collector_state()->mark_or_rebuild_in_progress()) {
@@ -609,11 +604,9 @@ private:
     }
 
     HeapWord* region_clear_limit(HeapRegion* r) {
-      // During a Concurrent Undo Mark cycle, the _next_mark_bitmap is  cleared
-      // without swapping with the _prev_mark_bitmap. Therefore, the per region
-      // next_top_at_mark_start and live_words data are current wrt
-      // _next_mark_bitmap. We use this information to only clear ranges of the
-      // bitmap that require clearing.
+      // During a Concurrent Undo Mark cycle, the per region next_top_at_mark_start and
+      // live_words data are current wrt to the _next_mark_bitmap. We use this information
+      // to only clear ranges of the bitmap that require clearing.
       if (is_clear_concurrent_undo()) {
         // No need to clear bitmaps for empty regions.
         if (_cm->live_words(r->hrm_index()) == 0) {
@@ -1267,7 +1260,7 @@ public:
 
   void work(uint worker_id) {
     G1CollectedHeap* g1h = G1CollectedHeap::heap();
-    G1ScrubDeadObjectsClosure cl(_cm->prev_mark_bitmap());
+    G1ScrubDeadObjectsClosure cl(_cm->next_mark_bitmap());
     g1h->heap_region_par_iterate_from_worker_offset(&cl, &_hr_claimer, worker_id);
   }
 };
@@ -1310,9 +1303,6 @@ void G1ConcurrentMark::remark() {
       GCTraceTime(Debug, gc, phases) debug("Flush Task Caches", _gc_timer_cm);
       flush_all_task_caches();
     }
-
-    // Install newly created mark bitmap as "prev".
-    swap_mark_bitmaps();
 
     _g1h->collector_state()->set_clearing_next_bitmap(true);
     {
@@ -1788,8 +1778,7 @@ void G1ConcurrentMark::preclean() {
                                      _gc_timer_cm);
 }
 
-// When sampling object counts, we already swapped the mark bitmaps, so we need to use
-// the prev bitmap determining liveness.
+// When sampling object counts, we see all objects not scrubbed as live.
 class G1ObjectCountIsAliveClosure: public BoolObjectClosure {
   G1CollectedHeap* _g1h;
 public:
@@ -1803,7 +1792,7 @@ public:
 
 void G1ConcurrentMark::report_object_count(bool mark_completed) {
   // Depending on the completion of the marking liveness needs to be determined
-  // using either the next or prev bitmap.
+  // using either the bitmap or after the cycle using the scrubbing information.
   if (mark_completed) {
     G1ObjectCountIsAliveClosure is_alive(_g1h);
     _gc_tracer_cm->report_object_count_after_gc(&is_alive);
@@ -1811,13 +1800,6 @@ void G1ConcurrentMark::report_object_count(bool mark_completed) {
     G1CMIsAliveClosure is_alive(_g1h);
     _gc_tracer_cm->report_object_count_after_gc(&is_alive);
   }
-}
-
-
-void G1ConcurrentMark::swap_mark_bitmaps() {
-  G1CMBitMap* temp = _prev_mark_bitmap;
-  _prev_mark_bitmap = _next_mark_bitmap;
-  _next_mark_bitmap = temp;
 }
 
 // Closure for marking entries in SATB buffers.
@@ -1951,8 +1933,9 @@ void G1ConcurrentMark::flush_all_task_caches() {
                        hits, misses, percent_of(hits, sum));
 }
 
-void G1ConcurrentMark::clear_range_in_prev_bitmap(MemRegion mr) {
-  _prev_mark_bitmap->clear_range(mr);
+void G1ConcurrentMark::clear_range_in_next_bitmap(MemRegion mr) {
+  assert_at_safepoint();
+  _next_mark_bitmap->clear_range(mr);
 }
 
 HeapRegion*
@@ -2112,9 +2095,6 @@ void G1ConcurrentMark::concurrent_cycle_abort() {
     GCTraceTime(Debug, gc) debug("Clear Next Bitmap");
     clear_next_bitmap(_g1h->workers());
   }
-  // Note we cannot clear the previous marking bitmap here
-  // since VerifyDuringGC verifies the objects marked during
-  // a full GC against the previous bitmap.
 
   // Empty mark stack
   reset_marking_for_restart();
@@ -2178,9 +2158,7 @@ void G1ConcurrentMark::threads_do(ThreadClosure* tc) const {
 }
 
 void G1ConcurrentMark::print_on_error(outputStream* st) const {
-  st->print_cr("Marking Bits (Prev, Next): (CMBitMap*) " PTR_FORMAT ", (CMBitMap*) " PTR_FORMAT,
-               p2i(_prev_mark_bitmap), p2i(_next_mark_bitmap));
-  _prev_mark_bitmap->print_on_error(st, " Prev Bits: ");
+  st->print_cr("Marking Bits: (CMBitMap*) " PTR_FORMAT, p2i(_next_mark_bitmap));
   _next_mark_bitmap->print_on_error(st, " Next Bits: ");
 }
 

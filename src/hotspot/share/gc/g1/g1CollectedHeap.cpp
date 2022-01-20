@@ -1642,12 +1642,10 @@ jint G1CollectedHeap::initialize() {
                              G1CardCounts::heap_map_factor());
 
   size_t bitmap_size = G1CMBitMap::compute_size(heap_rs.size());
-  G1RegionToSpaceMapper* prev_bitmap_storage =
-    create_aux_memory_mapper("Prev Bitmap", bitmap_size, G1CMBitMap::heap_map_factor());
   G1RegionToSpaceMapper* next_bitmap_storage =
     create_aux_memory_mapper("Next Bitmap", bitmap_size, G1CMBitMap::heap_map_factor());
 
-  _hrm.initialize(heap_storage, prev_bitmap_storage, next_bitmap_storage, bot_storage, cardtable_storage, card_counts_storage);
+  _hrm.initialize(heap_storage, next_bitmap_storage, bot_storage, cardtable_storage, card_counts_storage);
   _card_table->initialize(cardtable_storage);
 
   // Do later initialization work for concurrent refinement.
@@ -1694,7 +1692,7 @@ jint G1CollectedHeap::initialize() {
 
   // Create the G1ConcurrentMark data structure and thread.
   // (Must do this late, so that "max_[reserved_]regions" is defined.)
-  _cm = new G1ConcurrentMark(this, prev_bitmap_storage, next_bitmap_storage);
+  _cm = new G1ConcurrentMark(this, next_bitmap_storage);
   _cm_thread = _cm->cm_thread();
 
   // Now expand into the initial heap size.
@@ -2949,19 +2947,15 @@ void G1CollectedHeap::record_obj_copy_mem_stats() {
                                                create_g1_evac_summary(&_old_evac_stats));
 }
 
-void G1CollectedHeap::clear_prev_bitmap_for_region(HeapRegion* hr) {
+void G1CollectedHeap::clear_next_bitmap_for_region(HeapRegion* hr) {
   MemRegion mr(hr->bottom(), hr->end());
-  concurrent_mark()->clear_range_in_prev_bitmap(mr);
+  concurrent_mark()->clear_range_in_next_bitmap(mr);
 }
 
 void G1CollectedHeap::free_region(HeapRegion* hr, FreeRegionList* free_list) {
   assert(!hr->is_free(), "the region should not be free");
   assert(!hr->is_empty(), "the region should not be empty");
   assert(_hrm.is_available(hr->hrm_index()), "region should be committed");
-
-  if (G1VerifyBitmaps) {
-    clear_prev_bitmap_for_region(hr);
-  }
 
   // Clear the card counts for this region.
   // Note: we only need to do this if the region is not young

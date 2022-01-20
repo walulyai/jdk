@@ -292,9 +292,7 @@ class G1ConcurrentMark : public CHeapObj<mtGC> {
   G1CollectedHeap*        _g1h;           // The heap
 
   // Concurrent marking support structures
-  G1CMBitMap              _mark_bitmap_1;
   G1CMBitMap              _mark_bitmap_2;
-  G1CMBitMap*             _prev_mark_bitmap; // Completed mark bitmap
   G1CMBitMap*             _next_mark_bitmap; // Under-construction mark bitmap
 
   // Heap bounds
@@ -516,13 +514,11 @@ public:
   bool try_stealing(uint worker_id, G1TaskQueueEntry& task_entry);
 
   G1ConcurrentMark(G1CollectedHeap* g1h,
-                   G1RegionToSpaceMapper* prev_bitmap_storage,
                    G1RegionToSpaceMapper* next_bitmap_storage);
   ~G1ConcurrentMark();
 
   G1ConcurrentMarkThread* cm_thread() { return _cm_thread; }
 
-  const G1CMBitMap* const prev_mark_bitmap() const { return _prev_mark_bitmap; }
   G1CMBitMap* next_mark_bitmap() const { return _next_mark_bitmap; }
 
   // Calculates the number of concurrent GC threads to be used in the marking phase.
@@ -563,19 +559,16 @@ public:
 
   void remark();
 
-  void swap_mark_bitmaps();
-
   void cleanup();
-  // Mark in the previous bitmap. Caution: the prev bitmap is usually read-only, so use
-  // this carefully.
-  inline void par_mark_in_prev_bitmap(oop p);
 
-  // Clears marks for all objects in the given range, for the prev or
-  // next bitmaps.  Caution: the previous bitmap is usually
-  // read-only, so use this carefully!
-  void clear_range_in_prev_bitmap(MemRegion mr);
+  // Mark in the marking bitmap. Used during evacuation failure to
+  // remember what objects need handling. Not for use during marking.
+  inline void raw_mark_in_next_bitmap(oop p);
 
-  inline bool is_marked_in_prev_bitmap(oop p) const;
+  // Clears marks for all objects in the given range in the marking
+  // bitmap. This should only be used clean the bitmap during a
+  // safepoint.
+  void clear_range_in_next_bitmap(MemRegion mr);
 
   // Verify that there are no collection set oops on the stacks (taskqueues /
   // global mark stack) and fingers (global / per-task).

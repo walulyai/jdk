@@ -88,7 +88,7 @@ public:
   bool verify_no_bits_over_tams(const char* bitmap_name, const G1CMBitMap* const bitmap,
                                 HeapWord* from, HeapWord* limit);
 
-  // Verify that the prev / next bitmap range [tams,end) for the given
+  // Verify that the marking bitmap range [tams,end) for the given
   // region has no marks. Return true if all is well, false if errors
   // are detected.
   bool verify_bitmaps(const char* caller, HeapRegion* hr);

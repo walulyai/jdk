@@ -68,6 +68,7 @@ public:
   // dead too) already.
   size_t apply(oop obj) {
     HeapWord* obj_addr = cast_from_oop<HeapWord*>(obj);
+    size_t obj_size = obj->size();
     assert(_last_forwarded_object_end <= obj_addr, "should iterate in ascending address order");
     assert(_hr->is_in(obj_addr), "sanity");
 
@@ -76,21 +77,12 @@ public:
 
     zap_dead_objects(_last_forwarded_object_end, obj_addr);
 
-    assert(_cm->is_marked_in_prev_bitmap(obj), "should be correctly marked");
+    assert(_cm->is_marked_in_next_bitmap(obj), "should be correctly marked");
     if (_during_concurrent_start) {
-      // For the next marking info we'll only mark the
-      // self-forwarded objects explicitly if we are during
-      // concurrent start (since, normally, we only mark objects pointed
-      // to by roots if we succeed in copying them). By marking all
-      // self-forwarded objects we ensure that we mark any that are
-      // still pointed to be roots. During concurrent marking, and
-      // after concurrent start, we don't need to mark any objects
-      // explicitly and all objects in the CSet are considered
-      // (implicitly) live. So, we won't mark them explicitly and
-      // we'll leave them over NTAMS.
-      _cm->mark_in_next_bitmap(_worker_id, obj);
+      // If the evacuation failure occurs during concurrent start we should add
+      // the liveness, because these marks will be kept.
+      _cm->add_to_liveness(_worker_id, obj, obj_size);
     }
-    size_t obj_size = obj->size();
 
     _marked_words += obj_size;
     // Reset the markWord
@@ -112,7 +104,7 @@ public:
 
     _hr->fill_range_with_dead_objects(start, end);
     MemRegion mr(start, end);
-    _cm->clear_range_in_prev_bitmap(mr);
+    _cm->clear_range_in_next_bitmap(mr);
   }
 
   void zap_remainder() {
@@ -143,12 +135,19 @@ public:
                                         during_concurrent_start,
                                         _worker_id);
 
-    // All objects that failed evacuation has been marked in the prev bitmap.
+    // All objects that failed evacuation has been marked in the bitmap.
     // Use the bitmap to apply the above closure to all failing objects.
-    G1CMBitMap* bitmap = const_cast<G1CMBitMap*>(_g1h->concurrent_mark()->prev_mark_bitmap());
+    G1CMBitMap* bitmap = _g1h->concurrent_mark()->next_mark_bitmap();
     hr->apply_to_marked_objects(bitmap, &rspc);
     // Need to zap the remainder area of the processed region.
     rspc.zap_remainder();
+    // Now clear all the marks to allow to be ready for a new marking cyle.
+    if (!during_concurrent_start) {
+      assert(hr->next_top_at_mark_start() == hr->bottom(), "NTAMS must be bottom to make all objects look live");
+      _g1h->clear_next_bitmap_for_region(hr);
+    } else {
+      assert(hr->next_top_at_mark_start() == hr->top(), "NTAMS must be top for bitmap to have any value");
+    }
 
     return rspc.marked_bytes();
   }

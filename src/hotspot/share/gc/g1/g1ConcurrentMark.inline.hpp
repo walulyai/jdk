@@ -286,13 +286,8 @@ inline bool G1CMTask::deal_with_reference(T* p) {
   return make_reference_grey(obj);
 }
 
-inline void G1ConcurrentMark::par_mark_in_prev_bitmap(oop p) {
-  _prev_mark_bitmap->par_mark(p);
-}
-
-bool G1ConcurrentMark::is_marked_in_prev_bitmap(oop p) const {
-  assert(p != NULL && oopDesc::is_oop(p), "expected an oop");
-  return _prev_mark_bitmap->is_marked(cast_from_oop<HeapWord*>(p));
+inline void G1ConcurrentMark::raw_mark_in_next_bitmap(oop p) {
+  _next_mark_bitmap->par_mark(p);
 }
 
 bool G1ConcurrentMark::is_marked_in_next_bitmap(oop p) const {

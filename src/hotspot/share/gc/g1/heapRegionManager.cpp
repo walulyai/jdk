@@ -67,13 +67,11 @@ HeapRegionManager::HeapRegionManager() :
   _committed_map(),
   _allocated_heapregions_length(0),
   _regions(), _heap_mapper(NULL),
-  _prev_bitmap_mapper(NULL),
   _next_bitmap_mapper(NULL),
   _free_list("Free list", new MasterFreeRegionListChecker())
 { }
 
 void HeapRegionManager::initialize(G1RegionToSpaceMapper* heap_storage,
-                                   G1RegionToSpaceMapper* prev_bitmap,
                                    G1RegionToSpaceMapper* next_bitmap,
                                    G1RegionToSpaceMapper* bot,
                                    G1RegionToSpaceMapper* cardtable,
@@ -82,7 +80,6 @@ void HeapRegionManager::initialize(G1RegionToSpaceMapper* heap_storage,
 
   _heap_mapper = heap_storage;
 
-  _prev_bitmap_mapper = prev_bitmap;
   _next_bitmap_mapper = next_bitmap;
 
   _bot_mapper = bot;
@@ -189,7 +186,6 @@ void HeapRegionManager::commit_regions(uint index, size_t num_regions, WorkerThr
   _heap_mapper->commit_regions(index, num_regions, pretouch_workers);
 
   // Also commit auxiliary data
-  _prev_bitmap_mapper->commit_regions(index, num_regions, pretouch_workers);
   _next_bitmap_mapper->commit_regions(index, num_regions, pretouch_workers);
 
   _bot_mapper->commit_regions(index, num_regions, pretouch_workers);
@@ -216,7 +212,6 @@ void HeapRegionManager::uncommit_regions(uint start, uint num_regions) {
   _heap_mapper->uncommit_regions(start, num_regions);
 
   // Also uncommit auxiliary data
-  _prev_bitmap_mapper->uncommit_regions(start, num_regions);
   _next_bitmap_mapper->uncommit_regions(start, num_regions);
 
   _bot_mapper->uncommit_regions(start, num_regions);
@@ -270,7 +265,6 @@ void HeapRegionManager::deactivate_regions(uint start, uint num_regions) {
 
 void HeapRegionManager::clear_auxiliary_data_structures(uint start, uint num_regions) {
   // Signal marking bitmaps to clear the given regions.
-  _prev_bitmap_mapper->signal_mapping_changed(start, num_regions);
   _next_bitmap_mapper->signal_mapping_changed(start, num_regions);
   // Signal G1BlockOffsetTable to clear the given regions.
   _bot_mapper->signal_mapping_changed(start, num_regions);
@@ -282,14 +276,12 @@ void HeapRegionManager::clear_auxiliary_data_structures(uint start, uint num_reg
 
 MemoryUsage HeapRegionManager::get_auxiliary_data_memory_usage() const {
   size_t used_sz =
-    _prev_bitmap_mapper->committed_size() +
     _next_bitmap_mapper->committed_size() +
     _bot_mapper->committed_size() +
     _cardtable_mapper->committed_size() +
     _card_counts_mapper->committed_size();
 
   size_t committed_sz =
-    _prev_bitmap_mapper->reserved_size() +
     _next_bitmap_mapper->reserved_size() +
     _bot_mapper->reserved_size() +
     _cardtable_mapper->reserved_size() +
