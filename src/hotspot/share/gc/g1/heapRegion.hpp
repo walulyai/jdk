@@ -234,6 +234,14 @@ private:
   HeapWord* _prev_top_at_mark_start;
   HeapWord* _next_top_at_mark_start;
 
+  // The area above this limit is parsable using obj->size(). This limit
+  // is equal to bottom except from Remark and until the region has been
+  // scrubbed concurrently in Rebuild Remembered Sets. The scrubbing ensures
+  // that all dead objects (with possibly unloaded classes) have been
+  // replaced with dummy objects that are parsable. Below this limit the
+  // marking bitmap must be used to determine size and liveness.
+  HeapWord* _parsable_limit;
+
   // We use concurrent marking to determine the amount of live data
   // in each heap region.
   size_t _prev_marked_bytes;    // Bytes known to be live via last completed marking.
@@ -244,6 +252,7 @@ private:
            _next_marked_bytes == 0,
            "Must be called after zero_marked_bytes.");
     _prev_top_at_mark_start = _next_top_at_mark_start = bottom();
+    _parsable_limit = bottom();
   }
 
   // Data for young region survivor prediction.
@@ -260,6 +269,9 @@ private:
 
   void report_region_type_change(G1HeapRegionTraceType::Type to);
 
+  template <class Closure>
+  inline HeapWord* oops_on_memregion_iterate(MemRegion mr, Closure* cl);
+
   // Iterate over the references covered by the given MemRegion in a humongous
   // object and apply the given closure to them.
   // Humongous objects are allocated directly in the old-gen. So we need special
@@ -271,6 +283,10 @@ private:
   inline HeapWord* do_oops_on_memregion_in_humongous(MemRegion mr,
                                                      Closure* cl,
                                                      G1CollectedHeap* g1h);
+
+  inline bool is_below_parsable_limit(const HeapWord* addr) const;
+  inline bool is_marked_in_bitmap(const oop obj) const;
+  inline size_t size_of_block(const HeapWord* addr) const;
 
 public:
   HeapRegion(uint hrm_index,
@@ -363,6 +379,8 @@ public:
   HeapWord* prev_top_at_mark_start() const { return _prev_top_at_mark_start; }
   HeapWord* next_top_at_mark_start() const { return _next_top_at_mark_start; }
 
+  HeapWord* parsable_limit() const { return _parsable_limit; }
+
   // Note the start or end of marking. This tells the heap region
   // that the collector is about to start or has finished (concurrently)
   // marking the heap.
@@ -375,6 +393,8 @@ public:
   // (now finalized) next marking info fields into the prev marking
   // info fields.
   inline void note_end_of_marking();
+
+  inline void note_end_of_scrubbing();
 
   const char* get_type_str() const { return _type.get_str(); }
   const char* get_short_type_str() const { return _type.get_short_str(); }

@@ -1195,76 +1195,6 @@ public:
   }
 };
 
-class G1ScrubDeadObjectsTask : public WorkerTask {
-  G1ConcurrentMark* _cm;
-  HeapRegionClaimer _hr_claimer;
-public:
-  G1ScrubDeadObjectsTask(G1ConcurrentMark* cm, uint num_workers) :
-    WorkerTask("Create Live Bitmap"),
-    _cm(cm),
-    _hr_claimer(num_workers) {
-    }
-
-  class G1ScrubDeadObjectsClosure : public HeapRegionClosure {
-    const G1CMBitMap* _bitmap;
-
-    HeapWord* next_object(HeapWord* live_obj) {
-      assert(_bitmap->is_marked(live_obj), "Object not live");
-      return live_obj + cast_to_oop(live_obj)->size();
-    }
-
-    // Fill the memory area from start to end with filler objects, and update the BOT
-    // and the mark bitmap accordingly.
-    void fill_with_dead_objects(HeapRegion* hr, HeapWord* start, HeapWord* end) {
-      if (start == end) {
-        return;
-      }
-      hr->fill_range_with_dead_objects(start, end);
-    }
-
-  public:
-    G1ScrubDeadObjectsClosure(const G1CMBitMap* bitmap) :
-      _bitmap(bitmap) { }
-
-    bool do_heap_region(HeapRegion* hr) {
-      if (!hr->is_old()) {
-        // Only scrub old regions.
-        return false;
-      }
-
-      HeapWord* limit = hr->prev_top_at_mark_start();
-      HeapWord* current_obj = hr->bottom();
-      while (current_obj < limit) {
-        if (_bitmap->is_marked(current_obj)) {
-          oop current = cast_to_oop(current_obj);
-          guarantee(!current->is_gc_marked(), "No live objects in G1 should be GC marked");
-          current_obj = next_object(current_obj);
-          continue;
-        }
-        // Found dead object, which is potentially unloaded, scrub to next
-        // marked object.
-        HeapWord* scrub_start = current_obj;
-        HeapWord* scrub_end = _bitmap->get_next_marked_addr(scrub_start, limit);
-        fill_with_dead_objects(hr, scrub_start, scrub_end);
-
-        // Check that after scrub the dead object is marked!
-        oop current = cast_to_oop(current_obj);
-        guarantee(current->is_gc_marked(), "Scrubbed objects in G1 should be GC marked");
-
-        current_obj = scrub_end;
-      }
-      return false;
-    }
-
-  };
-
-  void work(uint worker_id) {
-    G1CollectedHeap* g1h = G1CollectedHeap::heap();
-    G1ScrubDeadObjectsClosure cl(_cm->next_mark_bitmap());
-    g1h->heap_region_par_iterate_from_worker_offset(&cl, &_hr_claimer, worker_id);
-  }
-};
-
 void G1ConcurrentMark::remark() {
   assert_at_safepoint_on_vm_thread();
 
@@ -1330,20 +1260,6 @@ void G1ConcurrentMark::remark() {
     if (ClassUnloadingWithConcurrentMark) {
       GCTraceTime(Debug, gc, phases) debug("Purge Metaspace", _gc_timer_cm);
       ClassLoaderDataGraph::purge(/*at_safepoint*/true);
-    }
-
-    {
-      // After class unloading there can be dead objects in the heap we no longer can walk
-      // because their class information can have been unloaded. To make sure the heap is
-      // parsable without the need of a bitmap we scrub areas with dead objects to contain
-      // special objects that can be used for walking and verifying the heap. This is needed
-      // even if class unloading is disable since we also determine liveness this way.
-      GCTraceTime(Debug, gc, phases) debug("Scrub Dead Objects", _gc_timer_cm);
-      uint const num_workers = _g1h->workers()->active_workers();
-
-      G1ScrubDeadObjectsTask task(this, num_workers);
-      log_debug(gc,ergo)("Running %s using %u workers", task.name(), num_workers);
-      _g1h->workers()->run_task(&task, num_workers);
     }
 
     _g1h->resize_heap_if_necessary();
@@ -2053,6 +1969,110 @@ void G1ConcurrentMark::verify_no_collection_set_oops() {
   }
 }
 #endif // PRODUCT
+
+class G1ScrubDeadObjectsTask : public WorkerTask {
+  G1ConcurrentMark* _cm;
+  HeapRegionClaimer _hr_claimer;
+public:
+  G1ScrubDeadObjectsTask(G1ConcurrentMark* cm, uint num_workers) :
+    WorkerTask("Scrub dead objects"),
+    _cm(cm),
+    _hr_claimer(num_workers) {
+    }
+
+  class G1ScrubDeadObjectsClosure : public HeapRegionClosure {
+    G1ConcurrentMark* _cm;
+    const G1CMBitMap* _bitmap;
+
+    HeapWord* next_object(HeapWord* live_obj) {
+      assert(_bitmap->is_marked(live_obj), "Object not live");
+      return live_obj + cast_to_oop(live_obj)->size();
+    }
+
+    // Fill the memory area from start to end with filler objects, and update the BOT
+    // and the mark bitmap accordingly.
+    void fill_with_dead_objects(HeapRegion* hr, HeapWord* start, HeapWord* end) {
+      if (start == end) {
+        return;
+      }
+      hr->fill_range_with_dead_objects(start, end);
+    }
+
+    bool scrub_region(HeapRegion* hr) {
+      HeapWord* limit = hr->parsable_limit();
+      HeapWord* current_obj = hr->bottom();
+      log_debug(gc, marking)("Scrubbing region: " HR_FORMAT " limit: " PTR_FORMAT,
+                             HR_FORMAT_PARAMS(hr), p2i(hr->parsable_limit()));
+      while (current_obj < limit) {
+        if (_bitmap->is_marked(current_obj)) {
+          oop current = cast_to_oop(current_obj);
+          guarantee(!current->is_gc_marked(), "No live objects in G1 should be GC marked");
+          current_obj = next_object(current_obj);
+          continue;
+        }
+        // Found dead object, which is potentially unloaded, scrub to next
+        // marked object.
+        HeapWord* scrub_start = current_obj;
+        HeapWord* scrub_end = _bitmap->get_next_marked_addr(scrub_start, limit);
+        fill_with_dead_objects(hr, scrub_start, scrub_end);
+
+        // Check that after scrub the dead object is marked!
+        oop current = cast_to_oop(current_obj);
+        guarantee(current->is_gc_marked(), "Scrubbed objects in G1 should be GC marked");
+
+        current_obj = scrub_end;
+
+        // Avoid stalling safepoints and stop iteration if mark cycle has been aborted.
+        _cm->do_yield_check();
+        if (_cm->has_aborted()) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+  public:
+    G1ScrubDeadObjectsClosure(G1ConcurrentMark* cm, const G1CMBitMap* bitmap) :
+      _cm(cm),
+      _bitmap(bitmap) { }
+
+    bool do_heap_region(HeapRegion* hr) {
+      // Avoid stalling safepoints and stop iteration if mark cycle has been aborted.
+      _cm->do_yield_check();
+      if (_cm->has_aborted()) {
+        return true;
+      }
+
+      if (hr->is_old() || hr->is_open_archive()) {
+        // Old and open archive regions needs to have their dead objects scrubbed
+        // to make sure the region is parsable using the objects sizes.
+        bool should_abort = scrub_region(hr);
+        if (should_abort) {
+          return true;
+        }
+      }
+
+      // The region has been scrubbed or doesn't need to be.
+      hr->note_end_of_scrubbing();
+      return false;
+    }
+  };
+
+  void work(uint worker_id) {
+    SuspendibleThreadSetJoiner sts_join;
+
+    G1CollectedHeap* g1h = G1CollectedHeap::heap();
+    G1ScrubDeadObjectsClosure cl(_cm, _cm->next_mark_bitmap());
+    g1h->heap_region_par_iterate_from_worker_offset(&cl, &_hr_claimer, worker_id);
+  }
+};
+
+void G1ConcurrentMark::scrub_dead_objects() {
+  uint num_workers = _concurrent_workers->active_workers();
+
+  G1ScrubDeadObjectsTask task(this, num_workers);
+  _concurrent_workers->run_task(&task, num_workers);
+}
 
 void G1ConcurrentMark::rebuild_rem_set_concurrently() {
   // If Remark did not select any regions for RemSet rebuild,

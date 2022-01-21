@@ -594,6 +594,7 @@ public:
   ConcurrentGCTimer* gc_timer_cm() const { return _gc_timer_cm; }
 
 private:
+  void scrub_dead_objects();
   // Rebuilds the remembered sets for chosen regions in parallel and concurrently to the application.
   void rebuild_rem_set_concurrently();
 
