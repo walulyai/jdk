@@ -30,6 +30,7 @@
 #include "runtime/atomic.hpp"
 #include "utilities/bitMap.inline.hpp"
 #include "utilities/globalDefinitions.hpp"
+#include "utilities/lockFreeStack.hpp"
 #include "utilities/spinYield.hpp"
 
 #include "logging/log.hpp"
@@ -173,6 +174,9 @@ public:
   G1CardSetContainer** next_addr() {
     return &_next;
   }
+
+  static G1CardSetContainer* volatile* next_ptr(G1CardSetContainer& node) { return node.next_addr(); }
+  typedef LockFreeStack<G1CardSetContainer, &next_ptr> NodeStack;
 
   void set_next(G1CardSetContainer* next) {
     _next = next;

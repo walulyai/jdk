@@ -224,7 +224,21 @@ public:
 
   inline Slot* allocate();
 
+  void deallocate(Slot* node) { }
+
   inline uint num_segments() const;
+
+  size_t mem_size() const {
+    return sizeof(*this) +
+            num_segments() * sizeof(G1SegmentedArraySegment<flag>) +
+            num_available_slots() * slot_size();
+  }
+
+  size_t wasted_mem_size(uint num_pending) const {
+    return (num_available_slots() - (num_allocated_slots() - num_pending)) * slot_size();
+  }
+
+  void print(outputStream* os, uint num_pending_slots);
 
   template<typename SegmentClosure>
   void iterate_segments(SegmentClosure& closure) const;
