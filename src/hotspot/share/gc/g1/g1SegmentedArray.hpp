@@ -222,7 +222,7 @@ public:
   // be called in a globally synchronized area.
   void drop_all();
 
-  inline Slot* allocate();
+  inline Slot* allocate(size_t buffer_size);
 
   void deallocate(Slot* node) { }
 
@@ -234,8 +234,8 @@ public:
             num_available_slots() * slot_size();
   }
 
-  size_t wasted_mem_size(uint num_pending) const {
-    return (num_available_slots() - (num_allocated_slots() - num_pending)) * slot_size();
+  size_t wasted_mem_size(size_t num_pending) const {
+    return (num_available_slots() - (num_allocated_slots() - (uint)num_pending)) * slot_size();
   }
 
   void print(outputStream* os, uint num_pending_slots);

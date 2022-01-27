@@ -100,8 +100,7 @@ BufferNode* BufferNodeAllocator<BufferNode, Arena, E>::allocate() {
     node = _free_list.pop();
   }
   if (node == NULL) {
-    // node = _arena.allocate(_buffer_size);
-    node = _arena.allocate();
+    node = _arena.allocate(_buffer_size);
   } else {
     // Decrement count after getting buffer from free list.  This, along
     // with incrementing count before adding to free list, ensures count
