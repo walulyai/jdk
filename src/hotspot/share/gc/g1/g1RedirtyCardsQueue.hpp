@@ -65,6 +65,7 @@ public:
 // collected (and processed) buffers reverts back to collecting, allowing
 // the set to be reused for another round of redirtying.
 class G1RedirtyCardsQueueSet : public PtrQueueSet {
+  using PtrQueueSet::PaddedBufferNodeAllocator;
   DEFINE_PAD_MINUS_SIZE(1, DEFAULT_CACHE_LINE_SIZE, 0);
   BufferNode::Stack _list;
   DEFINE_PAD_MINUS_SIZE(2, DEFAULT_CACHE_LINE_SIZE, sizeof(size_t));
@@ -76,7 +77,7 @@ class G1RedirtyCardsQueueSet : public PtrQueueSet {
   void update_tail(BufferNode* node);
 
 public:
-  G1RedirtyCardsQueueSet(BufferNode::Allocator* allocator);
+  G1RedirtyCardsQueueSet(PaddedBufferNodeAllocator* allocator);
   ~G1RedirtyCardsQueueSet();
 
   void verify_empty() const NOT_DEBUG_RETURN;

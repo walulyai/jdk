@@ -220,7 +220,7 @@ public:
 
   // Deallocate all segments to the free segment list and reset this allocator. Must
   // be called in a globally synchronized area.
-  void drop_all();
+  void reset();
 
   inline Slot* allocate(size_t buffer_size);
 

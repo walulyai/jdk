@@ -64,7 +64,7 @@ G1DirtyCardQueue::~G1DirtyCardQueue() {
 // Assumed to be zero by concurrent threads.
 static uint par_ids_start() { return 0; }
 
-G1DirtyCardQueueSet::G1DirtyCardQueueSet(BufferNode::Allocator* allocator) :
+G1DirtyCardQueueSet::G1DirtyCardQueueSet(PaddedBufferNodeAllocator* allocator) :
   PtrQueueSet(allocator),
   _primary_refinement_thread(NULL),
   _num_cards(0),

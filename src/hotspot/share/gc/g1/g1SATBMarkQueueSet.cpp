@@ -33,7 +33,7 @@
 #include "utilities/debug.hpp"
 #include "utilities/globalDefinitions.hpp"
 
-G1SATBMarkQueueSet::G1SATBMarkQueueSet(BufferNode::Allocator* allocator) :
+G1SATBMarkQueueSet::G1SATBMarkQueueSet(PaddedBufferNodeAllocator* allocator) :
   SATBMarkQueueSet(allocator)
 {}
 

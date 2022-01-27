@@ -68,7 +68,7 @@ template <class BufferNode, class Arena, bool E>
 BufferNodeAllocator<BufferNode, Arena, E>::~BufferNodeAllocator() {
   delete_list(_free_list.pop_all());
   delete_list(_pending_list.pop_all());
-  _arena.drop_all();
+  _arena.reset();
 }
 
 template <class BufferNode, class Arena, bool E>
@@ -77,7 +77,7 @@ void BufferNodeAllocator<BufferNode, Arena, E>::reset() {
   _pending_list.pop_all();
   _pending_count = 0;
   _free_count = 0;
-  _arena.drop_all();
+  _arena.reset();
 }
 
 
@@ -192,7 +192,7 @@ size_t BufferNodeAllocator<BufferNode, Arena, E>::reduce_free_list(size_t remove
   for ( ; removed < remove_goal; ++removed) {
     BufferNode* node = _free_list.pop();
     if (node == NULL) break;
-    _arena->deallocate(node);
+    _arena.deallocate(node);
   }
   size_t new_count = Atomic::sub(&_free_count, removed);
   log_debug(gc, ptrqueue, freelist)

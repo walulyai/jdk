@@ -38,8 +38,9 @@ class G1CardTable;
 class G1BarrierSet: public CardTableBarrierSet {
   friend class VMStructs;
  private:
-  BufferNode::Allocator _satb_mark_queue_buffer_allocator;
-  BufferNode::Allocator _dirty_card_queue_buffer_allocator;
+  typedef typename PtrQueueSet::PaddedBufferNodeAllocator PaddedBufferNodeAllocator;
+  PaddedBufferNodeAllocator _satb_mark_queue_buffer_allocator;
+  PaddedBufferNodeAllocator _dirty_card_queue_buffer_allocator;
   G1SATBMarkQueueSet _satb_mark_queue_set;
   G1DirtyCardQueueSet _dirty_card_queue_set;
 

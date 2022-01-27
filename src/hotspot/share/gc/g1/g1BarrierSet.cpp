@@ -55,8 +55,8 @@ G1BarrierSet::G1BarrierSet(G1CardTable* card_table) :
                       make_barrier_set_c2<G1BarrierSetC2>(),
                       card_table,
                       BarrierSet::FakeRtti(BarrierSet::G1BarrierSet)),
-  _satb_mark_queue_buffer_allocator("SATB Buffer Allocator", G1SATBBufferSize),
-  _dirty_card_queue_buffer_allocator("DC Buffer Allocator", G1UpdateBufferSize),
+  _satb_mark_queue_buffer_allocator("SATB Buffer Allocator", G1SATBBufferSize, BufferNode::Arena()),
+  _dirty_card_queue_buffer_allocator("DC Buffer Allocator", G1UpdateBufferSize, BufferNode::Arena()),
   _satb_mark_queue_set(&_satb_mark_queue_buffer_allocator),
   _dirty_card_queue_set(&_dirty_card_queue_buffer_allocator)
 {}

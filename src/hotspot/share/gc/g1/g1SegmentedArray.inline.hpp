@@ -169,11 +169,11 @@ G1SegmentedArray<Slot, flag>::G1SegmentedArray(const G1SegmentedArrayAllocOption
 
 template <class Slot, MEMFLAGS flag>
 G1SegmentedArray<Slot, flag>::~G1SegmentedArray() {
-  drop_all();
+  reset();
 }
 
 template <class Slot, MEMFLAGS flag>
-void G1SegmentedArray<Slot, flag>::drop_all() {
+void G1SegmentedArray<Slot, flag>::reset() {
   G1SegmentedArraySegment<flag>* cur = Atomic::load_acquire(&_first);
 
   if (cur != nullptr) {

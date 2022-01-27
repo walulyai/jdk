@@ -31,8 +31,9 @@ class Monitor;
 class Thread;
 
 class G1SATBMarkQueueSet : public SATBMarkQueueSet {
+  typedef typename PtrQueueSet::PaddedBufferNodeAllocator PaddedBufferNodeAllocator;
 public:
-  G1SATBMarkQueueSet(BufferNode::Allocator* allocator);
+  G1SATBMarkQueueSet(PaddedBufferNodeAllocator* allocator);
 
   static void handle_zero_index_for_thread(Thread* t);
   virtual SATBMarkQueue& satb_queue_for_thread(Thread* const t) const;

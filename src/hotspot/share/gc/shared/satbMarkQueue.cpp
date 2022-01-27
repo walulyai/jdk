@@ -65,7 +65,7 @@ void SATBMarkQueue::print(const char* name) {
 
 #endif // PRODUCT
 
-SATBMarkQueueSet::SATBMarkQueueSet(BufferNode::Allocator* allocator) :
+SATBMarkQueueSet::SATBMarkQueueSet(PaddedBufferNodeAllocator* allocator) :
   PtrQueueSet(allocator),
   _list(),
   _count_and_process_flag(0),

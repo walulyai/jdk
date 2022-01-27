@@ -66,7 +66,7 @@ protected:
 
 template <class BufferNode, class Arena, bool padded = false>
 class BufferNodeAllocator : private BufferNodeAllocatorBase<BufferNode, padded>  {
-  friend class TestSupport;
+  friend class BufferNodeAllocatorTest;
   using BufferNodeAllocatorBase<BufferNode, padded>::_buffer_size;
   using BufferNodeAllocatorBase<BufferNode, padded>::_pending_list;
   using BufferNodeAllocatorBase<BufferNode, padded>::_free_list;

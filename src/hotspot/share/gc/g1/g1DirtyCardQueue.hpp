@@ -68,6 +68,7 @@ public:
 };
 
 class G1DirtyCardQueueSet: public PtrQueueSet {
+  using PtrQueueSet::PaddedBufferNodeAllocator;
   // Head and tail of a list of BufferNodes, linked through their next()
   // fields.  Similar to BufferNodeList, but without the _entry_count.
   struct HeadTail {
@@ -239,7 +240,7 @@ class G1DirtyCardQueueSet: public PtrQueueSet {
   void handle_completed_buffer(BufferNode* node, G1ConcurrentRefineStats* stats);
 
 public:
-  G1DirtyCardQueueSet(BufferNode::Allocator* allocator);
+  G1DirtyCardQueueSet(PaddedBufferNodeAllocator* allocator);
   ~G1DirtyCardQueueSet();
 
   void set_primary_refinement_thread(G1ConcurrentRefineThread* thread) {

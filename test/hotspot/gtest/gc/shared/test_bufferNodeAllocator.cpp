@@ -23,6 +23,7 @@
  */
 
 #include "precompiled.hpp"
+#include "gc/shared/bufferNodeAllocator.inline.hpp"
 #include "gc/shared/ptrQueue.hpp"
 #include "memory/allocation.hpp"
 #include "runtime/interfaceSupport.inline.hpp"
@@ -35,9 +36,11 @@
 #include "threadHelper.inline.hpp"
 #include "unittest.hpp"
 
-class BufferNode::TestSupport : AllStatic {
+typedef BufferNodeAllocator<BufferNode, BufferNode::Arena, true /* padded */> PaddedBufferNodeAllocator;
+
+class BufferNodeAllocatorTest : AllStatic {
 public:
-  static bool try_transfer_pending(Allocator* allocator) {
+  static bool try_transfer_pending(PaddedBufferNodeAllocator* allocator) {
     return allocator->try_transfer_pending();
   }
 
@@ -46,14 +49,14 @@ public:
   class ProcessorThread;
 };
 
-typedef BufferNode::TestSupport::CompletedList CompletedList;
-typedef BufferNode::TestSupport::AllocatorThread AllocatorThread;
-typedef BufferNode::TestSupport::ProcessorThread ProcessorThread;
+typedef BufferNodeAllocatorTest::CompletedList CompletedList;
+typedef BufferNodeAllocatorTest::AllocatorThread AllocatorThread;
+typedef BufferNodeAllocatorTest::ProcessorThread ProcessorThread;
 
-// Some basic testing of BufferNode::Allocator.
-TEST_VM(PtrQueueBufferAllocatorTest, test) {
+// Some basic testing of BufferNodeAllocator.
+TEST_VM(BufferNodeAllocatorTest, test) {
   const size_t buffer_size = 256;
-  BufferNode::Allocator allocator("Test Buffer Allocator", buffer_size);
+  PaddedBufferNodeAllocator allocator("Test Buffer Allocator", buffer_size, BufferNode::Arena());
   ASSERT_EQ(buffer_size, allocator.buffer_size());
 
   // Allocate some new nodes for use in testing.
@@ -69,7 +72,7 @@ TEST_VM(PtrQueueBufferAllocatorTest, test) {
   for (size_t i = 0; i < node_count; ++i) {
     allocator.release(nodes[i]);
   }
-  ASSERT_TRUE(BufferNode::TestSupport::try_transfer_pending(&allocator));
+  ASSERT_TRUE(BufferNodeAllocatorTest::try_transfer_pending(&allocator));
   ASSERT_EQ(node_count, allocator.free_count());
   for (size_t i = 0; i < node_count; ++i) {
     if (i == 0) {
@@ -90,7 +93,7 @@ TEST_VM(PtrQueueBufferAllocatorTest, test) {
   for (size_t i = 0; i < node_count; ++i) {
     allocator.release(nodes[i]);
   }
-  ASSERT_TRUE(BufferNode::TestSupport::try_transfer_pending(&allocator));
+  ASSERT_TRUE(BufferNodeAllocatorTest::try_transfer_pending(&allocator));
   ASSERT_EQ(node_count, allocator.free_count());
 
   // Destroy some nodes in the free list.
@@ -105,8 +108,8 @@ TEST_VM(PtrQueueBufferAllocatorTest, test) {
 // Completed buffer list pop avoids ABA by also being in a critical
 // section that is synchronized by the allocator's release.
 
-class BufferNode::TestSupport::CompletedList {
-  BufferNode::Stack _completed_list;
+class BufferNodeAllocatorTest::CompletedList {
+  BufferNode::NodeStack _completed_list;
 
 public:
   CompletedList() : _completed_list() {}
@@ -128,8 +131,8 @@ public:
 
 // Simulate a mutator thread, allocating buffers and adding them to
 // the completed buffer list.
-class BufferNode::TestSupport::AllocatorThread : public JavaTestThread {
-  BufferNode::Allocator* _allocator;
+class BufferNodeAllocatorTest::AllocatorThread : public JavaTestThread {
+  PaddedBufferNodeAllocator* _allocator;
   CompletedList* _cbl;
   volatile size_t* _total_allocations;
   volatile bool* _continue_running;
@@ -137,7 +140,7 @@ class BufferNode::TestSupport::AllocatorThread : public JavaTestThread {
 
 public:
   AllocatorThread(Semaphore* post,
-                  BufferNode::Allocator* allocator,
+                  PaddedBufferNodeAllocator* allocator,
                   CompletedList* cbl,
                   volatile size_t* total_allocations,
                   volatile bool* continue_running) :
@@ -163,14 +166,14 @@ public:
 
 // Simulate a GC thread, taking buffers from the completed buffer list
 // and returning them to the allocator.
-class BufferNode::TestSupport::ProcessorThread : public JavaTestThread {
-  BufferNode::Allocator* _allocator;
+class BufferNodeAllocatorTest::ProcessorThread : public JavaTestThread {
+  PaddedBufferNodeAllocator* _allocator;
   CompletedList* _cbl;
   volatile bool* _continue_running;
 
 public:
   ProcessorThread(Semaphore* post,
-                  BufferNode::Allocator* allocator,
+                  PaddedBufferNodeAllocator* allocator,
                   CompletedList* cbl,
                   volatile bool* continue_running) :
     JavaTestThread(post),
@@ -198,7 +201,7 @@ public:
   }
 };
 
-static void run_test(BufferNode::Allocator* allocator, CompletedList* cbl) {
+static void run_test(PaddedBufferNodeAllocator* allocator, CompletedList* cbl) {
   const uint nthreads = 4;
   const uint milliseconds_to_run = 1000;
 
@@ -242,15 +245,15 @@ static void run_test(BufferNode::Allocator* allocator, CompletedList* cbl) {
     ThreadInVMfromNative invm(this_thread);
     post.wait_with_safepoint_check(this_thread);
   }
-  ASSERT_TRUE(BufferNode::TestSupport::try_transfer_pending(allocator));
+  ASSERT_TRUE(BufferNodeAllocatorTest::try_transfer_pending(allocator));
   tty->print_cr("total allocations: " SIZE_FORMAT, total_allocations);
   tty->print_cr("allocator free count: " SIZE_FORMAT, allocator->free_count());
 }
 
 const size_t buffer_size = 1024;
 
-TEST_VM(PtrQueueBufferAllocatorTest, stress_free_list_allocator) {
-  BufferNode::Allocator allocator("Test Allocator", buffer_size);
+TEST_VM(BufferNodeAllocatorTest, stress_free_list_allocator) {
+  PaddedBufferNodeAllocator allocator("Test Allocator", buffer_size, BufferNode::Arena());
   CompletedList completed;
   run_test(&allocator, &completed);
 }
