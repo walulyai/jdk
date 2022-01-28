@@ -1999,10 +1999,10 @@ public:
     }
 
     bool scrub_region(HeapRegion* hr) {
-      HeapWord* limit = hr->parsable_limit();
+      HeapWord* limit = hr->parsable_bottom();
       HeapWord* current_obj = hr->bottom();
       log_debug(gc, marking)("Scrubbing region: " HR_FORMAT " limit: " PTR_FORMAT,
-                             HR_FORMAT_PARAMS(hr), p2i(hr->parsable_limit()));
+                             HR_FORMAT_PARAMS(hr), p2i(hr->parsable_bottom()));
       while (current_obj < limit) {
         if (_bitmap->is_marked(current_obj)) {
           oop current = cast_to_oop(current_obj);

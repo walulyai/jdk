@@ -83,8 +83,8 @@ inline HeapWord* HeapRegion::block_start(const void* p) {
   return _bot_part.block_start(p);
 }
 
-inline bool HeapRegion::is_below_parsable_limit(const HeapWord* addr) const {
-  return addr < _parsable_limit;
+inline bool HeapRegion::obj_is_parsable(const HeapWord* addr) const {
+  return addr >= _parsable_bottom;
 }
 
 inline bool HeapRegion::is_marked_in_bitmap(oop obj) const {
@@ -94,19 +94,20 @@ inline bool HeapRegion::is_marked_in_bitmap(oop obj) const {
 inline bool HeapRegion::block_is_obj(const HeapWord* p) const {
   assert(p >= bottom() && p < top(), "precondition");
   assert(!is_continues_humongous(), "p must point to block-start");
+
+  if (obj_is_parsable(p)) {
+    return true;
+  }
+
   // When class unloading is enabled it is not safe to only consider top() to conclude if the
   // given pointer is a valid object. The situation can occur both for class unloading in a
   // Full GC and during a concurrent cycle.
   // To make sure dead objects can be handled without always keeping an additional bitmap, we
-  // scrub dead objects and create filler objects that are marked in the header.
-  // During a concurrent cycle class unloading is done after marking is complete and the
-  // scrubbing is done concurrently with other GC operations so during the scrub we still
-  // use the bitmap information.
-  if (p < _parsable_limit) {
-    return is_marked_in_bitmap(cast_to_oop(p));
-  }
-
-  return true;
+  // scrub dead objects and create filler objects that are considered dead. We do this even if
+  // class unloading is disabled to avoid special code.
+  // From Remark until the region has been completely scrubbed obj_is_parsable will return false
+  // and we have to use the bitmap to know if a block is a valid object.
+  return is_marked_in_bitmap(cast_to_oop(p));
 }
 
 inline bool HeapRegion::is_obj_dead(const oop obj) const {
@@ -119,7 +120,7 @@ inline bool HeapRegion::is_obj_dead(const oop obj) const {
     return false;
   }
 
-  if (is_below_parsable_limit(cast_from_oop<HeapWord*>(obj))) {
+  if (!obj_is_parsable(cast_from_oop<HeapWord*>(obj))) {
     // Dead if not marked in the bitmap.
     return !is_marked_in_bitmap(obj);
   }
@@ -129,11 +130,11 @@ inline bool HeapRegion::is_obj_dead(const oop obj) const {
 }
 
 inline size_t HeapRegion::size_of_block(const HeapWord* addr) const {
-  assert(_parsable_limit > _bottom, "Should only be used when part of the region is un-parsable");
-  assert(is_below_parsable_limit(addr), "Should only be used when addr is in un-parsable range");
+  assert(_parsable_bottom > _bottom, "Should only be used when part of the region is un-parsable");
+  assert(!obj_is_parsable(addr), "Should only be used when addr is in un-parsable range");
 
   const G1CMBitMap* bitmap = G1CollectedHeap::heap()->concurrent_mark()->next_mark_bitmap();
-  HeapWord* next_live = bitmap->get_next_marked_addr(addr, _parsable_limit);
+  HeapWord* next_live = bitmap->get_next_marked_addr(addr, _parsable_bottom);
 
   assert(next_live > addr, "Must move forward");
   return pointer_delta(next_live, addr);
@@ -184,7 +185,7 @@ inline void HeapRegion::reset_skip_compacting_after_full_gc() {
 
 inline void HeapRegion::reset_after_full_gc_common() {
   // Everything above bottom() is parsable and live.
-  _parsable_limit = bottom();
+  _parsable_bottom = bottom();
 
   // Clear unused heap memory in debug builds.
   if (ZapUnusedHeapArea) {
@@ -251,14 +252,14 @@ inline void HeapRegion::note_start_of_marking() {
 
 inline void HeapRegion::note_end_of_marking() {
   _prev_top_at_mark_start = _next_top_at_mark_start;
-  _parsable_limit = _next_top_at_mark_start;
+  _parsable_bottom = _next_top_at_mark_start;
   _next_top_at_mark_start = bottom();
   _prev_marked_bytes = _next_marked_bytes;
   _next_marked_bytes = 0;
 }
 
 inline void HeapRegion::note_end_of_scrubbing() {
-  _parsable_limit = _bottom;
+  _parsable_bottom = _bottom;
 }
 
 inline bool HeapRegion::in_collection_set() const {
