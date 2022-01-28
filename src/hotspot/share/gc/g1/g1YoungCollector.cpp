@@ -396,7 +396,7 @@ class G1PrepareEvacuationTask : public WorkerTask {
                                p2i(hr->bottom()),
                                hr->rem_set()->occupied(),
                                hr->rem_set()->code_roots_list_length(),
-                               _g1h->concurrent_mark()->next_mark_bitmap()->is_marked(hr->bottom()),
+                               _g1h->concurrent_mark()->mark_bitmap()->is_marked(hr->bottom()),
                                _g1h->is_humongous_reclaim_candidate(index),
                                cast_to_oop(hr->bottom())->is_typeArray()
                               );

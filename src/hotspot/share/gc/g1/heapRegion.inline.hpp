@@ -88,7 +88,7 @@ inline bool HeapRegion::obj_is_parsable(const HeapWord* addr) const {
 }
 
 inline bool HeapRegion::is_marked_in_bitmap(oop obj) const {
-  return G1CollectedHeap::heap()->concurrent_mark()->next_mark_bitmap()->is_marked(obj);
+  return G1CollectedHeap::heap()->concurrent_mark()->mark_bitmap()->is_marked(obj);
 }
 
 inline bool HeapRegion::block_is_obj(const HeapWord* p) const {
@@ -112,16 +112,20 @@ inline bool HeapRegion::block_is_obj(const HeapWord* p) const {
 
 inline bool HeapRegion::is_obj_dead(const oop obj) const {
   assert(is_in_reserved(obj), "Object " PTR_FORMAT " must be in region", p2i(obj));
-  if (obj_allocated_since_prev_marking(obj)) {
+  // Any object allocated since the last mark cycle is live. During Remark
+  // the marking completes and what is considered the last cycle is updated.
+  if (obj_allocated_since_last_marking(obj)) {
     return false;
   }
 
+  // Objects in closed archive regions are always live.
   if (is_closed_archive()) {
     return false;
   }
 
+  // From Remark until a region has been concurrently scrubbed, parts of the
+  // region is not guaranteed to be parsable. Use the bitmap for liveness.
   if (!obj_is_parsable(cast_from_oop<HeapWord*>(obj))) {
-    // Dead if not marked in the bitmap.
     return !is_marked_in_bitmap(obj);
   }
 
@@ -133,7 +137,7 @@ inline size_t HeapRegion::size_of_block(const HeapWord* addr) const {
   assert(_parsable_bottom > _bottom, "Should only be used when part of the region is un-parsable");
   assert(!obj_is_parsable(addr), "Should only be used when addr is in un-parsable range");
 
-  const G1CMBitMap* bitmap = G1CollectedHeap::heap()->concurrent_mark()->next_mark_bitmap();
+  const G1CMBitMap* bitmap = G1CollectedHeap::heap()->concurrent_mark()->mark_bitmap();
   HeapWord* next_live = bitmap->get_next_marked_addr(addr, _parsable_bottom);
 
   assert(next_live > addr, "Must move forward");
@@ -161,7 +165,7 @@ inline void HeapRegion::reset_compacted_after_full_gc() {
 
   reset_compaction_top_after_compaction();
   // After a compaction the mark bitmap in a non-pinned regions is invalid.
-  // We treat all objects as being above PTAMS.
+  // But all objects are live, we get this by setting "prev" TAMS to bottom.
   zero_marked_bytes();
   init_top_at_mark_start();
 
@@ -177,7 +181,7 @@ inline void HeapRegion::reset_skip_compacting_after_full_gc() {
 
   _prev_top_at_mark_start = top(); // Keep existing top and usage.
   _prev_marked_bytes = used();
-  _next_top_at_mark_start = bottom();
+  _top_at_mark_start = bottom();
   _next_marked_bytes = 0;
 
   reset_after_full_gc_common();
@@ -246,14 +250,14 @@ inline void HeapRegion::update_bot_for_obj(HeapWord* obj_start, size_t obj_size)
 
 inline void HeapRegion::note_start_of_marking() {
   _next_marked_bytes = 0;
-  _next_top_at_mark_start = top();
+  _top_at_mark_start = top();
   _gc_efficiency = -1.0;
 }
 
 inline void HeapRegion::note_end_of_marking() {
-  _prev_top_at_mark_start = _next_top_at_mark_start;
-  _parsable_bottom = _next_top_at_mark_start;
-  _next_top_at_mark_start = bottom();
+  _prev_top_at_mark_start = _top_at_mark_start;
+  _parsable_bottom = _top_at_mark_start;
+  _top_at_mark_start = bottom();
   _prev_marked_bytes = _next_marked_bytes;
   _next_marked_bytes = 0;
 }

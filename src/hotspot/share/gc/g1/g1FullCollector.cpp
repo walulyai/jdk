@@ -66,7 +66,7 @@ static void update_derived_pointers() {
 }
 
 G1CMBitMap* G1FullCollector::mark_bitmap() {
-  return _heap->concurrent_mark()->next_mark_bitmap();
+  return _heap->concurrent_mark()->mark_bitmap();
 }
 
 ReferenceProcessor* G1FullCollector::reference_processor() {
@@ -119,7 +119,7 @@ G1FullCollector::G1FullCollector(G1CollectedHeap* heap,
     _array_queue_set(_num_workers),
     _preserved_marks_set(true),
     _serial_compaction_point(),
-    _is_alive(this, heap->concurrent_mark()->next_mark_bitmap()),
+    _is_alive(this, heap->concurrent_mark()->mark_bitmap()),
     _is_alive_mutator(heap->ref_processor_stw(), &_is_alive),
     _always_subject_to_discovery(),
     _is_subject_mutator(heap->ref_processor_stw(), &_always_subject_to_discovery),
@@ -210,7 +210,7 @@ void G1FullCollector::complete_collection() {
   update_derived_pointers();
 
   // Prepare the bitmap for the next (potentially concurrent) marking.
-  _heap->concurrent_mark()->clear_next_bitmap(_heap->workers());
+  _heap->concurrent_mark()->clear_bitmap(_heap->workers());
 
   _heap->prepare_heap_for_mutators();
 

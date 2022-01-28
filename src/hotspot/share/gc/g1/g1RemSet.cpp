@@ -1277,10 +1277,10 @@ class G1MergeHeapRootsTask : public WorkerTask {
       // TODO: add optimization to only to this during concurrent clearing in
       // all other cases this should already be done.
       if (hr->is_old()) {
-        _g1h->clear_next_bitmap_for_region(hr);
+        _g1h->clear_bitmap_for_region(hr);
       } else {
         assert(hr->is_young(), "Should only be young and old regions in collection set");
-        assert_bitmap_clear(hr, _g1h->concurrent_mark()->next_mark_bitmap());
+        assert_bitmap_clear(hr, _g1h->concurrent_mark()->mark_bitmap());
       }
       return false;
     }
@@ -1974,7 +1974,7 @@ public:
         }
 
         const Ticks start = Ticks::now();
-        size_t marked_bytes = rebuild_rem_set_in_region(_cm->next_mark_bitmap(),
+        size_t marked_bytes = rebuild_rem_set_in_region(_cm->mark_bitmap(),
                                                         top_at_mark_start,
                                                         top_at_rebuild_start,
                                                         hr,

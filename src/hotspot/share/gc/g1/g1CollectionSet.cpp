@@ -378,7 +378,7 @@ public:
     _st->print_cr("  " HR_FORMAT ", P: " PTR_FORMAT "N: " PTR_FORMAT ", age: %4d",
                   HR_FORMAT_PARAMS(r),
                   p2i(r->prev_top_at_mark_start()),
-                  p2i(r->next_top_at_mark_start()),
+                  p2i(r->top_at_mark_start()),
                   r->has_surv_rate_group() ? r->age_in_surv_rate_group() : -1);
     return false;
   }

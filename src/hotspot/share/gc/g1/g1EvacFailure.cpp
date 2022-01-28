@@ -77,7 +77,7 @@ public:
 
     zap_dead_objects(_last_forwarded_object_end, obj_addr);
 
-    assert(_cm->is_marked_in_next_bitmap(obj), "should be correctly marked");
+    assert(_cm->is_marked_in_bitmap(obj), "should be correctly marked");
     if (_during_concurrent_start) {
       // If the evacuation failure occurs during concurrent start we should add
       // the liveness, because these marks will be kept.
@@ -104,7 +104,7 @@ public:
 
     _hr->fill_range_with_dead_objects(start, end);
     MemRegion mr(start, end);
-    _cm->clear_range_in_next_bitmap(mr);
+    _cm->clear_range_in_bitmap(mr);
   }
 
   void zap_remainder() {
@@ -137,16 +137,16 @@ public:
 
     // All objects that failed evacuation has been marked in the bitmap.
     // Use the bitmap to apply the above closure to all failing objects.
-    G1CMBitMap* bitmap = _g1h->concurrent_mark()->next_mark_bitmap();
+    G1CMBitMap* bitmap = _g1h->concurrent_mark()->mark_bitmap();
     hr->apply_to_marked_objects(bitmap, &rspc);
     // Need to zap the remainder area of the processed region.
     rspc.zap_remainder();
     // Now clear all the marks to allow to be ready for a new marking cyle.
     if (!during_concurrent_start) {
-      assert(hr->next_top_at_mark_start() == hr->bottom(), "NTAMS must be bottom to make all objects look live");
-      _g1h->clear_next_bitmap_for_region(hr);
+      assert(hr->top_at_mark_start() == hr->bottom(), "TAMS must be bottom to make all objects look live");
+      _g1h->clear_bitmap_for_region(hr);
     } else {
-      assert(hr->next_top_at_mark_start() == hr->top(), "NTAMS must be top for bitmap to have any value");
+      assert(hr->top_at_mark_start() == hr->top(), "TAMS must be top for bitmap to have any value");
     }
 
     return rspc.marked_bytes();

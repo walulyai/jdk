@@ -622,7 +622,7 @@ public:
   // for all regions.
   void verify_region_attr_remset_is_tracked() PRODUCT_RETURN;
 
-  void clear_next_bitmap_for_region(HeapRegion* hr);
+  void clear_bitmap_for_region(HeapRegion* hr);
 
   bool is_user_requested_concurrent_full_gc(GCCause::Cause cause);
 

@@ -226,7 +226,7 @@ public:
       }
 
       o->oop_iterate(&isLive);
-      if (!_hr->obj_allocated_since_prev_marking(o)) {
+      if (!_hr->obj_allocated_since_last_marking(o)) {
         size_t obj_size = o->size();    // Make sure we don't overflow
         _live_bytes += (obj_size * HeapWordSize);
       }
@@ -687,15 +687,15 @@ bool G1HeapVerifier::verify_no_bits_over_tams(const char* bitmap_name, const G1C
 }
 
 bool G1HeapVerifier::verify_bitmaps(const char* caller, HeapRegion* hr) {
-  const G1CMBitMap* const next_bitmap = _g1h->concurrent_mark()->next_mark_bitmap();
+  const G1CMBitMap* const bitmap = _g1h->concurrent_mark()->mark_bitmap();
 
-  HeapWord* ntams  = hr->next_top_at_mark_start();
+  HeapWord* tams  = hr->top_at_mark_start();
   HeapWord* end    = hr->end();
 
   bool res_n = true;
-  // We cannot verify the next bitmap while we are about to clear it.
-  if (!_g1h->collector_state()->clearing_next_bitmap()) {
-    res_n = verify_no_bits_over_tams("next", next_bitmap, ntams, end);
+  // We cannot verify the marking bitmap while we are about to clear it.
+  if (!_g1h->collector_state()->clearing_bitmap()) {
+    res_n = verify_no_bits_over_tams("next", bitmap, tams, end);
   }
   if (!res_n) {
     log_error(gc, verify)("#### Bitmap verification failed for " HR_FORMAT, HR_FORMAT_PARAMS(hr));

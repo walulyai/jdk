@@ -75,7 +75,7 @@ void VM_HeapRegionApplyToMarkedObjectsTest::doit() {
   HeapRegion* region = heap->heap_region_containing(heap->bottom_addr_for_region(0));
 
   // Mark some "oops" in the bitmap.
-  G1CMBitMap* bitmap = heap->concurrent_mark()->next_mark_bitmap();
+  G1CMBitMap* bitmap = heap->concurrent_mark()->mark_bitmap();
   bitmap->mark(region->bottom());
   bitmap->mark(region->bottom() + MARK_OFFSET_1);
   bitmap->mark(region->bottom() + MARK_OFFSET_2);

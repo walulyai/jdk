@@ -230,9 +230,8 @@ private:
   // of the region for which no marking was done, i.e. objects may
   // have been allocated in this part since the last mark phase.
   // "prev" is the top at the start of the last completed marking.
-  // "next" is the top at the start of the in-progress marking (if any.)
+  HeapWord* _top_at_mark_start;
   HeapWord* _prev_top_at_mark_start;
-  HeapWord* _next_top_at_mark_start;
 
   // The area above this limit is parsable using obj->size(). This limit
   // is equal to bottom except from Remark and until the region has been
@@ -251,7 +250,7 @@ private:
     assert(_prev_marked_bytes == 0 &&
            _next_marked_bytes == 0,
            "Must be called after zero_marked_bytes.");
-    _prev_top_at_mark_start = _next_top_at_mark_start = bottom();
+    _prev_top_at_mark_start = _top_at_mark_start = bottom();
     _parsable_bottom = bottom();
   }
 
@@ -345,7 +344,7 @@ public:
   // The number of bytes live wrt the next marking.
   size_t next_live_bytes() {
     return
-      (top() - next_top_at_mark_start()) * HeapWordSize + next_marked_bytes();
+      (top() - top_at_mark_start()) * HeapWordSize + next_marked_bytes();
   }
 
   // A lower bound on the amount of garbage bytes in the region.
@@ -377,7 +376,7 @@ public:
   }
   // Get the start of the unmarked area in this region.
   HeapWord* prev_top_at_mark_start() const { return _prev_top_at_mark_start; }
-  HeapWord* next_top_at_mark_start() const { return _next_top_at_mark_start; }
+  HeapWord* top_at_mark_start() const { return _top_at_mark_start; }
 
   HeapWord* parsable_bottom() const { return _parsable_bottom; }
 
@@ -555,11 +554,11 @@ public:
   // Determine if an object has been allocated since the last
   // mark performed by the collector. This returns true iff the object
   // is within the unmarked area of the region.
-  bool obj_allocated_since_prev_marking(oop obj) const {
+  bool obj_allocated_since_last_marking(oop obj) const {
     return cast_from_oop<HeapWord*>(obj) >= prev_top_at_mark_start();
   }
-  bool obj_allocated_since_next_marking(oop obj) const {
-    return cast_from_oop<HeapWord*>(obj) >= next_top_at_mark_start();
+  bool obj_allocated_since_marking_start(oop obj) const {
+    return cast_from_oop<HeapWord*>(obj) >= top_at_mark_start();
   }
 
   // Update the region state after a failed evacuation.
