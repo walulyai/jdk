@@ -182,6 +182,8 @@ public:
   // All allocated blocks are occupied by objects in a HeapRegion
   bool block_is_obj(const HeapWord* p) const;
 
+  bool obj_is_scrubbed(const oop obj) const;
+
   // Returns whether the given object is dead based on TAMS and mark word.
   // For an object to be considered dead it must be below TAMS and be
   // marked in the header.

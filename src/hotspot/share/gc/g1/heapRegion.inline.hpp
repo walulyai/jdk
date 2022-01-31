@@ -110,6 +110,10 @@ inline bool HeapRegion::block_is_obj(const HeapWord* p) const {
   return is_marked_in_bitmap(cast_to_oop(p));
 }
 
+inline bool HeapRegion::obj_is_scrubbed(const oop obj) const {
+  return obj->is_gc_marked();
+}
+
 inline bool HeapRegion::is_obj_dead(const oop obj) const {
   assert(is_in_reserved(obj), "Object " PTR_FORMAT " must be in region", p2i(obj));
   // Any object allocated since the last mark cycle is live. During Remark
@@ -129,8 +133,8 @@ inline bool HeapRegion::is_obj_dead(const oop obj) const {
     return !is_marked_in_bitmap(obj);
   }
 
-  // This object is in the parsable part of the heap, dead if marked in the markWord.
-  return obj->is_gc_marked();
+  // This object is in the parsable part of the heap, live unless scrubbed.
+  return obj_is_scrubbed(obj);
 }
 
 inline size_t HeapRegion::size_of_block(const HeapWord* addr) const {
