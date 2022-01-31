@@ -69,8 +69,8 @@ class G1CardSetMemoryManager : public CHeapObj<mtGCCardSet> {
   G1CardSetConfiguration* _config;
 
   typedef G1SegmentedArray<G1CardSetContainer, mtGCCardSet> SegmentedArray;
-  typedef BufferNodeAllocator<G1CardSetContainer, SegmentedArray, false /* padded */> UnpaddedBufferNodeAllocator;
-  UnpaddedBufferNodeAllocator* _allocators;
+  typedef BufferNodeAllocator<G1CardSetContainer, SegmentedArray> PaddedBufferNodeAllocator;
+  PaddedBufferNodeAllocator* _allocators;
 
   uint num_mem_object_types() const;
 public:

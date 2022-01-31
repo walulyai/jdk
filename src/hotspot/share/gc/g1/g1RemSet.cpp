@@ -1430,7 +1430,7 @@ public:
   {
     if (initial_evacuation) {
       G1DirtyCardQueueSet& dcqs = G1BarrierSet::dirty_card_queue_set();
-      BufferNodeList buffers = dcqs.take_all_completed_buffers();
+      BufferNodeList<> buffers = dcqs.take_all_completed_buffers();
       if (buffers._entry_count != 0) {
         _dirty_card_buffers.prepend(*buffers._head, *buffers._tail);
       }

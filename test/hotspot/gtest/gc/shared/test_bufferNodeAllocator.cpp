@@ -36,7 +36,7 @@
 #include "threadHelper.inline.hpp"
 #include "unittest.hpp"
 
-typedef BufferNodeAllocator<BufferNode, BufferNode::Arena, true /* padded */> PaddedBufferNodeAllocator;
+typedef BufferNodeAllocator<BufferNode, BufferNode::Arena> PaddedBufferNodeAllocator;
 
 class BufferNodeAllocatorTest : AllStatic {
 public:
@@ -56,7 +56,7 @@ typedef BufferNodeAllocatorTest::ProcessorThread ProcessorThread;
 // Some basic testing of BufferNodeAllocator.
 TEST_VM(BufferNodeAllocatorTest, test) {
   const size_t buffer_size = 256;
-  PaddedBufferNodeAllocator allocator("Test Buffer Allocator", buffer_size, BufferNode::Arena());
+  PaddedBufferNodeAllocator allocator("Test Buffer Allocator", buffer_size);
   ASSERT_EQ(buffer_size, allocator.buffer_size());
 
   // Allocate some new nodes for use in testing.
@@ -109,7 +109,7 @@ TEST_VM(BufferNodeAllocatorTest, test) {
 // section that is synchronized by the allocator's release.
 
 class BufferNodeAllocatorTest::CompletedList {
-  BufferNode::NodeStack _completed_list;
+  BufferNode::Stack _completed_list;
 
 public:
   CompletedList() : _completed_list() {}
@@ -253,7 +253,7 @@ static void run_test(PaddedBufferNodeAllocator* allocator, CompletedList* cbl) {
 const size_t buffer_size = 1024;
 
 TEST_VM(BufferNodeAllocatorTest, stress_free_list_allocator) {
-  PaddedBufferNodeAllocator allocator("Test Allocator", buffer_size, BufferNode::Arena());
+  PaddedBufferNodeAllocator allocator("Test Allocator", buffer_size);
   CompletedList completed;
   run_test(&allocator, &completed);
 }

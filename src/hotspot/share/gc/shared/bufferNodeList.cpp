@@ -25,15 +25,18 @@
 #include "precompiled.hpp"
 #include "gc/shared/bufferNodeList.hpp"
 #include "utilities/debug.hpp"
-
-BufferNodeList::BufferNodeList() :
+/*
+template<typename T>
+BufferNodeList<T>::BufferNodeList() :
   _head(NULL), _tail(NULL), _entry_count(0) {}
 
-BufferNodeList::BufferNodeList(BufferNode* head,
-                               BufferNode* tail,
+template<typename T>
+BufferNodeList<T>::BufferNodeList(T* head,
+                               T* tail,
                                size_t entry_count) :
   _head(head), _tail(tail), _entry_count(entry_count)
 {
   assert((_head == NULL) == (_tail == NULL), "invariant");
   assert((_head == NULL) == (_entry_count == 0), "invariant");
 }
+*/

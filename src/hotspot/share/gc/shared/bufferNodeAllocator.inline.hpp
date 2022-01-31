@@ -31,31 +31,57 @@
 #include "runtime/atomic.hpp"
 #include "utilities/globalCounter.inline.hpp"
 
-template <class BufferNode, bool E>
-BufferNodeAllocatorBase<BufferNode, E>::BufferNodeAllocatorBase(const char* name, size_t buffer_size) :
+template <class BufferNode, class Arena>
+BufferNodeAllocator<BufferNode, Arena>::PendingList::PendingList() :
+  _tail(nullptr), _head(nullptr), _count(0) {}
+
+template <class BufferNode, class Arena>
+BufferNodeAllocator<BufferNode, Arena>::PendingList::~PendingList() { }
+
+template <class BufferNode, class Arena>
+size_t BufferNodeAllocator<BufferNode, Arena>::PendingList::add(BufferNode* node) {
+  assert(node->next() == nullptr, "precondition");
+  BufferNode* old_head = Atomic::xchg(&_head, node);
+  if (old_head != nullptr) {
+    node->set_next(old_head);
+  } else {
+    assert(_tail == nullptr, "invariant");
+    _tail = node;
+  }
+  return Atomic::add(&_count, size_t(1));
+}
+
+template <class BufferNode, class Arena>
+BufferNodeList<BufferNode> BufferNodeAllocator<BufferNode, Arena>::PendingList::take_all() {
+  BufferNodeList<BufferNode> result{Atomic::load(&_head), _tail, Atomic::load(&_count)};
+  Atomic::store(&_head, (BufferNode*)nullptr);
+  _tail = nullptr;
+  Atomic::store(&_count, size_t(0));
+  return result;
+}
+
+template <class BufferNode, class Arena>
+size_t BufferNodeAllocator<BufferNode, Arena>::PendingList::count() const {
+  return  Atomic::load(&_count);
+}
+
+template <class BufferNode, class Arena>
+template <typename... Args>
+BufferNodeAllocator<BufferNode, Arena>::BufferNodeAllocator(const char* name, size_t buffer_size, Args&&... args) :
   _buffer_size(buffer_size),
-  _pending_list(),
+  _pending_lists(),
+  _active_pending_list(0),
   _free_list(),
-  _pending_count(0),
   _free_count(0),
-  _transfer_lock(false)
+  _transfer_lock(false),
+  _arena(static_cast<Args&&>(args)...)
 {
   strncpy(_name, name, sizeof(_name) - 1);
   _name[sizeof(_name) - 1] = '\0';
 }
 
-template <class BufferNode>
-BufferNodeAllocatorBase<BufferNode, false>::BufferNodeAllocatorBase(size_t buffer_size) :
-  _buffer_size(buffer_size),
-  _pending_list(),
-  _free_list(),
-  _pending_count(0),
-  _free_count(0),
-  _transfer_lock(false)
-{}
-
-template <class BufferNode, class Arena, bool E>
-void BufferNodeAllocator<BufferNode, Arena, E>::delete_list(BufferNode* list) {
+template <class BufferNode, class Arena>
+void BufferNodeAllocator<BufferNode, Arena>::delete_list(BufferNode* list) {
   while (list != NULL) {
     BufferNode* next = list->next();
     DEBUG_ONLY(list->set_next(NULL);)
@@ -64,35 +90,35 @@ void BufferNodeAllocator<BufferNode, Arena, E>::delete_list(BufferNode* list) {
   }
 }
 
-template <class BufferNode, class Arena, bool E>
-BufferNodeAllocator<BufferNode, Arena, E>::~BufferNodeAllocator() {
+template <class BufferNode, class Arena>
+BufferNodeAllocator<BufferNode, Arena>::~BufferNodeAllocator() {
+  try_transfer_pending();
   delete_list(_free_list.pop_all());
-  delete_list(_pending_list.pop_all());
   _arena.reset();
 }
 
-template <class BufferNode, class Arena, bool E>
-void BufferNodeAllocator<BufferNode, Arena, E>::reset() {
+template <class BufferNode, class Arena>
+void BufferNodeAllocator<BufferNode, Arena>::reset() {
+  try_transfer_pending();
   _free_list.pop_all();
-  _pending_list.pop_all();
-  _pending_count = 0;
   _free_count = 0;
   _arena.reset();
 }
 
 
-template <class BufferNode, class Arena, bool E>
-size_t BufferNodeAllocator<BufferNode, Arena, E>::free_count() const {
+template <class BufferNode, class Arena>
+size_t BufferNodeAllocator<BufferNode, Arena>::free_count() const {
   return Atomic::load(&_free_count);
 }
 
-template <class BufferNode, class Arena, bool E>
-size_t BufferNodeAllocator<BufferNode, Arena, E>::pending_count() const {
-  return Atomic::load(&_pending_count);
+template <class BufferNode, class Arena>
+size_t BufferNodeAllocator<BufferNode, Arena>::pending_count() const {
+  uint index = Atomic::load(&_active_pending_list);
+  return _pending_lists[index].count();;
 }
 
-template <class BufferNode, class Arena, bool E>
-BufferNode* BufferNodeAllocator<BufferNode, Arena, E>::allocate() {
+template <class BufferNode, class Arena>
+BufferNode* BufferNodeAllocator<BufferNode, Arena>::allocate() {
   BufferNode* node = NULL;
   if (free_count() > 0) {
     // Protect against ABA; see release().
@@ -115,16 +141,13 @@ BufferNode* BufferNodeAllocator<BufferNode, Arena, E>::allocate() {
 // pop inside a critical section, and release synchronizes on the
 // critical sections before adding to the _free_list.  But we don't
 // want to make every release have to do a synchronize.  Instead, we
-// initially place released nodes on the _pending_list, and transfer
+// initially place released nodes on the pending list, and transfer
 // them to the _free_list in batches.  Only one transfer at a time is
-// permitted, with a lock bit to control access to that phase.  A
-// transfer takes all the nodes from the _pending_list, synchronizes on
-// the _free_list pops, and then adds the former pending nodes to the
-// _free_list.  While that's happening, other threads might be adding
-// other nodes to the _pending_list, to be dealt with by some later
-// transfer.
-template <class BufferNode, class Arena, bool E>
-void BufferNodeAllocator<BufferNode, Arena, E>::release(BufferNode* node) {
+// permitted, with a lock bit to control access to that phase.  While
+// a transfer is in progress, other threads might be adding other nodes
+// to the pending list, to be dealt with by some later transfer.
+template <class BufferNode, class Arena>
+void BufferNodeAllocator<BufferNode, Arena>::release(BufferNode* node) {
   assert(node != NULL, "precondition");
   assert(node->next() == NULL, "precondition");
 
@@ -137,21 +160,26 @@ void BufferNodeAllocator<BufferNode, Arena, E>::release(BufferNode* node) {
   // similar, due to how the buffers are used.
   const size_t trigger_transfer = 10;
 
-  // Add to pending list. Update count first so no underflow in transfer.
-  size_t pending_count = Atomic::add(&_pending_count, 1u);
-  _pending_list.push(*node);
-  if (pending_count > trigger_transfer) {
-    try_transfer_pending();
+  // The pending list is double-buffered.  Add node to the currently active
+  // pending list, within a critical section so a transfer will wait until
+  // we're done with what might be the pending list to be transferred.
+  {
+    GlobalCounter::CriticalSection cs(Thread::current());
+    uint index = Atomic::load_acquire(&_active_pending_list);
+    size_t count = _pending_lists[index].add(node);
+    if (count <= trigger_transfer) return;
   }
+  // Attempt transfer when number pending exceeds the transfer threshold.
+  try_transfer_pending();
 }
 
-// Try to transfer nodes from _pending_list to _free_list, with a
+// Try to transfer nodes from the pending list to _free_list, with a
 // synchronization delay for any in-progress pops from the _free_list,
 // to solve ABA there.  Return true if performed a (possibly empty)
 // transfer, false if blocked from doing so by some other thread's
 // in-progress transfer.
-template <class BufferNode, class Arena, bool E>
-bool BufferNodeAllocator<BufferNode, Arena, E>::try_transfer_pending() {
+template <class BufferNode, class Arena>
+bool BufferNodeAllocator<BufferNode, Arena>::try_transfer_pending() {
   // Attempt to claim the lock.
   if (Atomic::load(&_transfer_lock) || // Skip CAS if likely to fail.
       Atomic::cmpxchg(&_transfer_lock, false, true)) {
@@ -159,34 +187,33 @@ bool BufferNodeAllocator<BufferNode, Arena, E>::try_transfer_pending() {
   }
   // Have the lock; perform the transfer.
 
-  // Claim all the pending nodes.
-  BufferNode* first = _pending_list.pop_all();
-  if (first != NULL) {
-    // Prepare to add the claimed nodes, and update _pending_count.
-    BufferNode* last = first;
-    size_t count = 1;
-    for (BufferNode* next = first->next(); next != NULL; next = next->next()) {
-      last = next;
-      ++count;
-    }
-    Atomic::sub(&_pending_count, count);
+  // Change which pending list is active.  Don't need an atomic RMW since
+  // we have the lock and we're the only writer.
+  uint index = Atomic::load(&_active_pending_list);
+  uint new_active = (index + 1) % ARRAY_SIZE(_pending_lists);
+  Atomic::release_store(&_active_pending_list, new_active);
 
-    // Wait for any in-progress pops, to avoid ABA for them.
-    GlobalCounter::write_synchronize();
+  // Wait for all critical sections in the buffer life-cycle to complete.
+  // This includes _free_list pops and adding to the now inactive pending
+  // list.
+  GlobalCounter::write_synchronize();
 
-    // Add synchronized nodes to _free_list.
+  // Transfer the inactive pending list to _free_list.
+  BufferNodeList<BufferNode> transfer_list = _pending_lists[index].take_all();
+  size_t count = transfer_list._entry_count;
+  if (count > 0) {
     // Update count first so no underflow in allocate().
     Atomic::add(&_free_count, count);
-    _free_list.prepend(*first, *last);
+    _free_list.prepend(*transfer_list._head, *transfer_list._tail);
     log_trace(gc, ptrqueue, freelist)
-             ("Transferred %s pending to free: " SIZE_FORMAT, this->name(), count);
+             ("Transferred %s pending to free: %zu", name(), count);
   }
   Atomic::release_store(&_transfer_lock, false);
   return true;
 }
 
-template <class BufferNode, class Arena, bool E>
-size_t BufferNodeAllocator<BufferNode, Arena, E>::reduce_free_list(size_t remove_goal) {
+template <class BufferNode, class Arena>
+size_t BufferNodeAllocator<BufferNode, Arena>::reduce_free_list(size_t remove_goal) {
   try_transfer_pending();
   size_t removed = 0;
   for ( ; removed < remove_goal; ++removed) {
@@ -197,7 +224,7 @@ size_t BufferNodeAllocator<BufferNode, Arena, E>::reduce_free_list(size_t remove
   size_t new_count = Atomic::sub(&_free_count, removed);
   log_debug(gc, ptrqueue, freelist)
            ("Reduced %s free list by " SIZE_FORMAT " to " SIZE_FORMAT,
-            this->name(), removed, new_count);
+            name(), removed, new_count);
   return removed;
 }
 

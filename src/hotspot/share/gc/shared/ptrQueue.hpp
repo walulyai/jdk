@@ -132,16 +132,9 @@ class BufferNode {
     return offset_of(BufferNode, _buffer);
   }
 
-  // Allocate a new BufferNode with the "buffer" having size elements.
-  static BufferNode* allocate(size_t size);
-
-  // Free a BufferNode.
-  static void deallocate(BufferNode* node);
-
 public:
   static BufferNode* volatile* next_ptr(BufferNode& bn) { return &bn._next; }
   typedef LockFreeStack<BufferNode, &next_ptr> Stack;
-  typedef LockFreeStack<BufferNode, &next_ptr> NodeStack;
 
   BufferNode* next() const     { return _next;  }
   void set_next(BufferNode* n) { _next = n;     }
@@ -165,12 +158,9 @@ public:
   }
 
   class Arena;
-  class Allocator;              // Free-list based allocator.
-  class TestSupport;            // Unit test support.
 };
 
 class BufferNode::Arena {
-  friend class TestSupport;
 public:
     // Allocate a new BufferNode with the "buffer" having size elements.
   BufferNode* allocate(size_t size);
@@ -187,9 +177,9 @@ public:
 // set, and return completed buffers to the set.
 class PtrQueueSet {
 public:
-  typedef BufferNodeAllocator<BufferNode, BufferNode::Arena, true /* padded */> PaddedBufferNodeAllocator;
+  typedef BufferNodeAllocator<BufferNode, BufferNode::Arena> PaddedBufferNodeAllocator;
 private:
-  BufferNodeAllocator<BufferNode, BufferNode::Arena, true /* padded */>* _allocator;
+  PaddedBufferNodeAllocator* _allocator;
 
   NONCOPYABLE(PtrQueueSet);
 

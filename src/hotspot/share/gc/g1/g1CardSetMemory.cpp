@@ -33,13 +33,15 @@
 G1CardSetMemoryManager::G1CardSetMemoryManager(G1CardSetConfiguration* config,
                                                G1CardSetFreePool* free_list_pool) : _config(config) {
 
-  _allocators = NEW_C_HEAP_ARRAY(UnpaddedBufferNodeAllocator,
+  _allocators = NEW_C_HEAP_ARRAY(PaddedBufferNodeAllocator,
                                  _config->num_mem_object_types(),
                                  mtGC);
 
   for (uint i = 0; i < num_mem_object_types(); i++) {
-    new (&_allocators[i]) UnpaddedBufferNodeAllocator(10,
-                                                      SegmentedArray(config->mem_object_alloc_options(i), free_list_pool->free_list(i)));
+    new (&_allocators[i]) PaddedBufferNodeAllocator(config->mem_object_type_name_str(i),
+                                                    config->mem_object_alloc_options(i)->slot_size(),
+                                                    config->mem_object_alloc_options(i),
+                                                    free_list_pool->free_list(i));
   }
 }
 
@@ -53,7 +55,7 @@ G1CardSetMemoryManager::~G1CardSetMemoryManager() {
     _allocators[i].reset();
     _allocators[i].~BufferNodeAllocator();
   }
-  FREE_C_HEAP_ARRAY(UnpaddedBufferNodeAllocator, _allocators);
+  FREE_C_HEAP_ARRAY(PaddedBufferNodeAllocator, _allocators);
 }
 
 void G1CardSetMemoryManager::free(uint type, void* value) {
@@ -82,7 +84,7 @@ size_t G1CardSetMemoryManager::mem_size() const {
     result += _allocators[i].mem_size();
   }
   return sizeof(*this) + result -
-    (sizeof(UnpaddedBufferNodeAllocator) * num_mem_object_types());
+    (sizeof(PaddedBufferNodeAllocator) * num_mem_object_types());
 }
 
 size_t G1CardSetMemoryManager::wasted_mem_size() const {

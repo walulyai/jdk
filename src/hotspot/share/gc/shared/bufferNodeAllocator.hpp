@@ -25,71 +25,67 @@
 #ifndef SHARE_GC_SHARED_BUFFERNODEALLOCATOR_HPP
 #define SHARE_GC_SHARED_BUFFERNODEALLOCATOR_HPP
 
+#include "gc/shared/bufferNodeList.hpp"
 #include "memory/padded.hpp"
 #include "utilities/globalDefinitions.hpp"
 
-template <class BufferNode, bool E>
-class BufferNodeAllocatorBase {
-protected:
-  // Since we don't expect many instances, and measured >15% speedup
-  // on stress gtest, padding seems like a good tradeoff here.
+// Allocation is based on a lock-free free list of nodes, linked through
+// BufferNode::_next (see BufferNode::Stack).  To solve the ABA problem,
+// popping a node from the free list is performed within a GlobalCounter
+// critical section, and pushing nodes onto the free list is done after
+// a GlobalCounter synchronization associated with the nodes to be pushed.
+// This is documented behavior so that other parts of the node life-cycle
+// can depend on and make use of it too.
+template <class BufferNode, class Arena>
+class BufferNodeAllocator {
+  friend class BufferNodeAllocatorTest;
+  // Since we don't expect many instances, padding seems like a good tradeoff here.
 #define DECLARE_PADDED_MEMBER(Id, Type, Name) \
   Type Name; DEFINE_PAD_MINUS_SIZE(Id, DEFAULT_CACHE_LINE_SIZE, sizeof(Type))
 
+  class PendingList {
+    BufferNode* _tail;
+    DECLARE_PADDED_MEMBER(1, BufferNode* volatile, _head);
+    DECLARE_PADDED_MEMBER(2, volatile size_t, _count);
+
+    NONCOPYABLE(PendingList);
+
+  public:
+    PendingList();
+    ~PendingList();
+
+    // Add node to the list.  Returns the number of nodes in the list.
+    // Thread-safe against concurrent add operations.
+    size_t add(BufferNode* node);
+
+    size_t count() const;
+
+    // Return the nodes in the list, leaving the list empty.
+    // Not thread-safe.
+    BufferNodeList<BufferNode> take_all();
+  };
+
   const size_t _buffer_size = 0;
   char _name[DEFAULT_CACHE_LINE_SIZE - sizeof(size_t)]; // Use name as padding.
-  DECLARE_PADDED_MEMBER(1, typename BufferNode::NodeStack, _pending_list);
-  DECLARE_PADDED_MEMBER(2, typename BufferNode::NodeStack, _free_list);
-  DECLARE_PADDED_MEMBER(3, volatile size_t, _pending_count);
-  DECLARE_PADDED_MEMBER(4, volatile size_t, _free_count);
-  DECLARE_PADDED_MEMBER(5, volatile bool, _transfer_lock);
+  PendingList _pending_lists[2];
+  DECLARE_PADDED_MEMBER(1, volatile uint, _active_pending_list);
+  DECLARE_PADDED_MEMBER(2, typename BufferNode::Stack, _free_list);
+  DECLARE_PADDED_MEMBER(3, volatile size_t, _free_count);
+  DECLARE_PADDED_MEMBER(4, volatile bool, _transfer_lock);
 #undef DECLARE_PADDED_MEMBER
 
-public:
-  BufferNodeAllocatorBase(const char* name, size_t buffer_size);
-  const char* name() const { return _name; }
-};
-
-template <class BufferNode>
-class BufferNodeAllocatorBase<BufferNode, false>  {
-protected:
-  const size_t _buffer_size = 0;
-  char _name[DEFAULT_CACHE_LINE_SIZE - sizeof(size_t)]; // Use name as padding.
-  typename BufferNode::NodeStack _pending_list;
-  typename BufferNode::NodeStack _free_list;
-  volatile size_t _pending_count;
-  volatile size_t _free_count;
-  volatile bool _transfer_lock;
-  BufferNodeAllocatorBase(size_t buffer_size);
-  const char* name() const { return _name; }
-};
-
-template <class BufferNode, class Arena, bool padded = false>
-class BufferNodeAllocator : private BufferNodeAllocatorBase<BufferNode, padded>  {
-  friend class BufferNodeAllocatorTest;
-  using BufferNodeAllocatorBase<BufferNode, padded>::_buffer_size;
-  using BufferNodeAllocatorBase<BufferNode, padded>::_pending_list;
-  using BufferNodeAllocatorBase<BufferNode, padded>::_free_list;
-  using BufferNodeAllocatorBase<BufferNode, padded>::_pending_count;
-  using BufferNodeAllocatorBase<BufferNode, padded>::_free_count;
-  using BufferNodeAllocatorBase<BufferNode, padded>::_transfer_lock;
+  Arena _arena;
 
   void delete_list(BufferNode* list);
   bool try_transfer_pending();
 
-  Arena _arena;
-public:
-  template<bool E = padded>
-  BufferNodeAllocator(const char* name, size_t buffer_size, const Arena& arena, typename std::enable_if<E, int>::type = 0) :
-    BufferNodeAllocatorBase<BufferNode, padded>(name, buffer_size),
-    _arena(arena)
-  { }
+  NONCOPYABLE(BufferNodeAllocator);
 
-  template<bool E = padded>
-  BufferNodeAllocator(size_t buffer_size, const Arena& arena, typename std::enable_if<!E, int>::type = 0):
-  BufferNodeAllocatorBase<BufferNode, padded>(buffer_size),
-  _arena(arena)
-  { }
+public:
+  template <typename... Args>
+  BufferNodeAllocator(const char* name, size_t buffer_size, Args&&... args);
+
+  const char* name() const { return _name; }
 
   ~BufferNodeAllocator();
 
@@ -102,7 +98,7 @@ public:
   void release(BufferNode* node);
   void reset();
 
-  const Arena* arena() const { return &_arena; }
+  const Arena* arena() const { return &_arena; } // called for statistics
 
   size_t mem_size() const {
     return sizeof(*this) + _arena.mem_size();

@@ -45,17 +45,6 @@ PtrQueue::~PtrQueue() {
   assert(_buf == NULL, "queue must be flushed before delete");
 }
 
-BufferNode* BufferNode::allocate(size_t size) {
-  size_t byte_size = size * sizeof(void*);
-  void* data = NEW_C_HEAP_ARRAY(char, buffer_offset() + byte_size, mtGC);
-  return new (data) BufferNode;
-}
-
-void BufferNode::deallocate(BufferNode* node) {
-  node->~BufferNode();
-  FREE_C_HEAP_ARRAY(char, node);
-}
-
 BufferNode* BufferNode::Arena::allocate(size_t size) {
   size_t byte_size = size * sizeof(void*);
   void* data = NEW_C_HEAP_ARRAY(char, buffer_offset() + byte_size, mtGC);

@@ -276,7 +276,7 @@ public:
 
   void merge_bufferlists(G1RedirtyCardsQueueSet* src);
 
-  BufferNodeList take_all_completed_buffers();
+  BufferNodeList<> take_all_completed_buffers();
 
   void flush_queue(G1DirtyCardQueue& queue);
 

@@ -176,7 +176,7 @@ public:
   }
 
   static G1CardSetContainer* volatile* next_ptr(G1CardSetContainer& node) { return node.next_addr(); }
-  typedef LockFreeStack<G1CardSetContainer, &next_ptr> NodeStack;
+  typedef LockFreeStack<G1CardSetContainer, &next_ptr> Stack;
 
   void set_next(G1CardSetContainer* next) {
     _next = next;
