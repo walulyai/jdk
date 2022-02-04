@@ -1972,69 +1972,178 @@ void G1ConcurrentMark::verify_no_collection_set_oops() {
 
 class G1ScrubDeadObjectsTask : public WorkerTask {
   G1ConcurrentMark* _cm;
+  bool _should_rebuild_remset;
   HeapRegionClaimer _hr_claimer;
 public:
-  G1ScrubDeadObjectsTask(G1ConcurrentMark* cm, uint num_workers) :
+  G1ScrubDeadObjectsTask(G1ConcurrentMark* cm, bool should_rebuild, uint num_workers) :
     WorkerTask("Scrub dead objects"),
     _cm(cm),
+    _should_rebuild_remset(should_rebuild),
     _hr_claimer(num_workers) {
     }
 
   class G1ScrubDeadObjectsClosure : public HeapRegionClosure {
     G1ConcurrentMark* _cm;
     const G1CMBitMap* _bitmap;
+    G1RebuildRemSetClosure _rebuild_closure;
+    bool _should_rebuild_remset;
+    bool _concurrent_cycle_aborted;
 
-    HeapWord* next_object(HeapWord* live_obj) {
-      assert(_bitmap->is_marked(live_obj), "Object not live");
-      return live_obj + cast_to_oop(live_obj)->size();
+    size_t _processed_words;
+    const size_t PROCESSED_YIELD_LIMIT_IN_WORDS = G1RebuildRemSetChunkSize / HeapWordSize;
+
+    void add_processed_words(size_t processed) {
+      _processed_words += processed;
     }
 
-    // Fill the memory area from start to end with filler objects, and update the BOT
-    // and the mark bitmap accordingly.
-    void fill_with_dead_objects(HeapRegion* hr, HeapWord* start, HeapWord* end) {
-      if (start == end) {
-        return;
+    // Yield if enough has been processed and also check if the concurrent
+    // marking cycle has been aborted.
+    void yield_if_necessary() {
+      if (_processed_words >= PROCESSED_YIELD_LIMIT_IN_WORDS) {
+        _processed_words = 0;
+        _cm->do_yield_check();
+        if (_cm->has_aborted()) {
+          _concurrent_cycle_aborted = true;
+        }
       }
-      hr->fill_range_with_dead_objects(start, end);
     }
 
-    bool scrub_region(HeapRegion* hr) {
+    // Rebuild for the given live object, returns the offset to the next object.
+    size_t rebuild_obj(HeapWord* current_obj) {
+      oop current = cast_to_oop(current_obj);
+      // Only rebuild if we are going to do mixed collections.
+      if (_should_rebuild_remset) {
+        current->oop_iterate(&_rebuild_closure);
+      }
+
+      // Update how much we have processed to know if it is time to yield below.
+      size_t obj_size = current->size();
+      add_processed_words(obj_size);
+      return obj_size;
+    }
+
+    // Scrub a range of dead objects starting at scrub_start. Will never scrub past limit.
+    HeapWord* scrub_to_next_live(HeapRegion* hr, HeapWord* scrub_start, HeapWord* limit) {
+      assert(!_bitmap->is_marked(scrub_start), "Should not scrub live object");
+      HeapWord* scrub_end = _bitmap->get_next_marked_addr(scrub_start, limit);
+      if (scrub_start != scrub_end) {
+        // Only scrub if range is non-empty.
+        hr->fill_range_with_dead_objects(scrub_start, scrub_end);
+      }
+
+      // Check that after scrub the dead object is marked
+      // and that the next is live or at the limit.
+      assert(cast_to_oop(scrub_start)->is_gc_marked(), "Scrubbed objects in G1 should be GC marked");
+      assert(_bitmap->is_marked(scrub_end) || scrub_end == limit,
+             "We should either step to the next live object or the limit");
+
+      // Return the next object to handle.
+      return scrub_end;
+    }
+
+    void scrub_and_rebuild_region(HeapRegion* hr) {
       HeapWord* limit = hr->parsable_bottom();
       HeapWord* current_obj = hr->bottom();
       log_debug(gc, marking)("Scrubbing region: " HR_FORMAT " limit: " PTR_FORMAT,
                              HR_FORMAT_PARAMS(hr), p2i(hr->parsable_bottom()));
+
+      // Scrub and rebuild from bottom to TAMS/parsable bottom.
       while (current_obj < limit) {
         if (_bitmap->is_marked(current_obj)) {
-          oop current = cast_to_oop(current_obj);
-          guarantee(!current->is_gc_marked(), "No live objects in G1 should be GC marked");
-          current_obj = next_object(current_obj);
-          continue;
+          assert(!cast_to_oop(current_obj)->is_gc_marked(), "No live objects in G1 should be GC marked");
+          //  Live object, need to rebuild remembered sets for this object.
+          current_obj += rebuild_obj(current_obj);
+        } else {
+          // Found dead object, which is potentially unloaded. Scrub to next
+          // marked object and return it.
+          current_obj = scrub_to_next_live(hr, current_obj, limit);
         }
-        // Found dead object, which is potentially unloaded, scrub to next
-        // marked object.
-        HeapWord* scrub_start = current_obj;
-        HeapWord* scrub_end = _bitmap->get_next_marked_addr(scrub_start, limit);
-        fill_with_dead_objects(hr, scrub_start, scrub_end);
-
-        // Check that after scrub the dead object is marked!
-        oop current = cast_to_oop(current_obj);
-        guarantee(current->is_gc_marked(), "Scrubbed objects in G1 should be GC marked");
-
-        current_obj = scrub_end;
 
         // Avoid stalling safepoints and stop iteration if mark cycle has been aborted.
-        _cm->do_yield_check();
-        if (_cm->has_aborted()) {
-          return true;
+        yield_if_necessary();
+        if (_concurrent_cycle_aborted) {
+          log_trace(gc, marking)("Scrubbing aborted for region: %u", hr->hrm_index());
+          return;
         }
       }
-      return false;
+      // Check that the initial scan is consistent.
+      assert(current_obj == limit, "Should not step past limit");
+
+      // Rebuild from TAMS to TOP.
+      limit = hr->top();
+      while (current_obj < limit) {
+        current_obj += rebuild_obj(current_obj);
+        // Avoid stalling safepoints and stop iteration if mark cycle has been aborted.
+        yield_if_necessary();
+        if (_concurrent_cycle_aborted) {
+          log_trace(gc, marking)("Scrubbing aborted for region: %u", hr->hrm_index());
+          return;
+        }
+      }
+    }
+
+    // Checks the top at rebuild start value for the given humongous region. If the value
+    // is NULL the regions has either:
+    //  - been allocated after rebuild start, or
+    //  - been eagerly reclaimed by a young collection
+    // In these cases we should not rebuild using the given region.
+    bool should_rebuild_humongous(HeapRegion* hr) {
+      return _cm->top_at_rebuild_start(hr->hrm_index()) != NULL;
+    }
+
+    // Rebuild the remembered set for a humongous region. Does the rebuild in chunks to avoid
+    // stalling safepoints.
+    void rebuild_humongous(HeapRegion* hr) {
+      if (!_should_rebuild_remset) {
+        // When not rebuilding nothing to do, never need to scrub humongous objects.
+        return;
+      }
+
+      if (!should_rebuild_humongous(hr)) {
+        // Region allocated during rebuild, nothing to do.
+        return;
+      }
+
+      // At this point we should only have live humongous objects, that
+      // means it must either be:
+      // - marked
+      // - or seen as fully parsable, i.e. allocated after the marking started
+      oop humongous = cast_to_oop(hr->humongous_start_region()->bottom());
+      assert(_bitmap->is_marked(humongous) || hr->parsable_bottom() == hr->bottom(),
+             "Humongous object not considered live");
+
+      // Scan the humongous object in chunks from bottom to top to rebuild remembered sets.
+      HeapWord* limit = hr->top();
+      HeapWord* start = hr->bottom();
+      do {
+        MemRegion mr(start, MIN2(start + PROCESSED_YIELD_LIMIT_IN_WORDS, limit));
+        humongous->oop_iterate(&_rebuild_closure, mr);
+
+        // Update processed words and yield, for humongous we will yield after each chunk.
+        add_processed_words(mr.word_size());
+        yield_if_necessary();
+        if (_concurrent_cycle_aborted) {
+          log_trace(gc, marking)("Scrubbing aborted for humongous region: %u", hr->hrm_index());
+          return;
+        } else if (!should_rebuild_humongous(hr)) {
+          // We need to check that this humongous object has not been eagerly
+          // reclaimed while yielded.
+          log_trace(gc, marking)("Scrubbing aborted for eagerly reclaimed humongous region: %u", hr->hrm_index());
+          return;
+        }
+
+        // Step to next chunk of the humongous object
+        start = mr.end();
+      } while (start < limit);
     }
 
   public:
-    G1ScrubDeadObjectsClosure(G1ConcurrentMark* cm, const G1CMBitMap* bitmap) :
+    G1ScrubDeadObjectsClosure(G1ConcurrentMark* cm, const G1CMBitMap* bitmap, bool should_rebuild, uint worker_id) :
       _cm(cm),
-      _bitmap(bitmap) { }
+      _bitmap(bitmap),
+      _rebuild_closure(G1CollectedHeap::heap(), worker_id),
+      _should_rebuild_remset(should_rebuild),
+      _concurrent_cycle_aborted(false) { }
 
     bool do_heap_region(HeapRegion* hr) {
       // Avoid stalling safepoints and stop iteration if mark cycle has been aborted.
@@ -2046,13 +2155,19 @@ public:
       if (hr->is_old() || hr->is_open_archive()) {
         // Old and open archive regions needs to have their dead objects scrubbed
         // to make sure the region is parsable using the objects sizes.
-        bool should_abort = scrub_region(hr);
-        if (should_abort) {
-          return true;
-        }
+        scrub_and_rebuild_region(hr);
+      } else if (hr->is_humongous()) {
+        // No need to scrub humongous, but we should rebuild remsets.
+        rebuild_humongous(hr);
       }
 
-      // The region has been scrubbed or doesn't need to be.
+      if (_concurrent_cycle_aborted) {
+        // For aborted regions we should not mark it fully parsable. That
+        // would make verification fail at a later stage.
+        return true;
+      }
+
+      // Scrubbing and or rebuild completed, mark region fully parsable.
       hr->note_end_of_scrubbing();
       return false;
     }
@@ -2062,7 +2177,7 @@ public:
     SuspendibleThreadSetJoiner sts_join;
 
     G1CollectedHeap* g1h = G1CollectedHeap::heap();
-    G1ScrubDeadObjectsClosure cl(_cm, _cm->mark_bitmap());
+    G1ScrubDeadObjectsClosure cl(_cm, _cm->mark_bitmap(), _should_rebuild_remset, worker_id);
     g1h->heap_region_par_iterate_from_worker_offset(&cl, &_hr_claimer, worker_id);
   }
 };
@@ -2070,7 +2185,7 @@ public:
 void G1ConcurrentMark::scrub_dead_objects() {
   uint num_workers = _concurrent_workers->active_workers();
 
-  G1ScrubDeadObjectsTask task(this, num_workers);
+  G1ScrubDeadObjectsTask task(this, needs_remembered_set_rebuild(), num_workers);
   _concurrent_workers->run_task(&task, num_workers);
 }
 
@@ -2081,7 +2196,7 @@ void G1ConcurrentMark::rebuild_rem_set_concurrently() {
     log_debug(gc, marking)("Skipping Remembered Set Rebuild. No regions selected for rebuild");
     return;
   }
-  _g1h->rem_set()->rebuild_rem_set(this, _concurrent_workers, _worker_id_offset);
+  //_g1h->rem_set()->rebuild_rem_set(this, _concurrent_workers, _worker_id_offset);
 }
 
 void G1ConcurrentMark::print_stats() {
