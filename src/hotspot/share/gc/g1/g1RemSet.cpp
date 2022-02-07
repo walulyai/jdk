@@ -120,7 +120,7 @@ class G1RemSetScanState : public CHeapObj<mtGC> {
 
   uint _scan_chunks_per_region;         // Number of chunks per region.
   uint8_t _log_scan_chunks_per_region;  // Log of number of chunks per region.
-  bool* _region_scan_chunks;
+  CHeapBitMap _region_scan_chunks;
   size_t _num_total_scan_chunks;        // Total number of elements in _region_scan_chunks.
   uint8_t _scan_chunks_shift;           // For conversion between card index and chunk index.
 public:
@@ -132,7 +132,7 @@ public:
     size_t const idx = ((size_t)region_idx << _log_scan_chunks_per_region) + (card_in_region >> _scan_chunks_shift);
     assert(idx < _num_total_scan_chunks, "Index " SIZE_FORMAT " out of bounds " SIZE_FORMAT,
            idx, _num_total_scan_chunks);
-    return _region_scan_chunks[idx];
+    return _region_scan_chunks.at(idx);
   }
 
 private:
@@ -286,7 +286,7 @@ public:
     _card_table_scan_state(NULL),
     _scan_chunks_per_region(get_chunks_per_region(HeapRegion::LogOfHRGrainBytes)),
     _log_scan_chunks_per_region(log2i(_scan_chunks_per_region)),
-    _region_scan_chunks(NULL),
+    _region_scan_chunks(mtGC),
     _num_total_scan_chunks(0),
     _scan_chunks_shift(0),
     _all_dirty_regions(NULL),
@@ -297,7 +297,7 @@ public:
   ~G1RemSetScanState() {
     FREE_C_HEAP_ARRAY(G1RemsetIterState, _collection_set_iter_state);
     FREE_C_HEAP_ARRAY(uint, _card_table_scan_state);
-    FREE_C_HEAP_ARRAY(bool, _region_scan_chunks);
+    _region_scan_chunks.resize(0);
     FREE_C_HEAP_ARRAY(HeapWord*, _scan_top);
   }
 
@@ -307,7 +307,7 @@ public:
     _collection_set_iter_state = NEW_C_HEAP_ARRAY(G1RemsetIterState, max_reserved_regions, mtGC);
     _card_table_scan_state = NEW_C_HEAP_ARRAY(uint, max_reserved_regions, mtGC);
     _num_total_scan_chunks = max_reserved_regions * _scan_chunks_per_region;
-    _region_scan_chunks = NEW_C_HEAP_ARRAY(bool, _num_total_scan_chunks, mtGC);
+    _region_scan_chunks.resize(_num_total_scan_chunks);
 
     _scan_chunks_shift = (uint8_t)log2i(HeapRegion::CardsPerRegion / _scan_chunks_per_region);
     _scan_top = NEW_C_HEAP_ARRAY(HeapWord*, max_reserved_regions, mtGC);
@@ -333,8 +333,8 @@ public:
     for (size_t i = 0; i < _max_reserved_regions; i++) {
       _card_table_scan_state[i] = 0;
     }
+    _region_scan_chunks.clear();
 
-    ::memset(_region_scan_chunks, false, _num_total_scan_chunks * sizeof(*_region_scan_chunks));
   }
 
   void complete_evac_phase(bool merge_dirty_regions) {
@@ -356,12 +356,7 @@ public:
   }
 
   size_t num_visited_cards() const {
-    size_t result = 0;
-    for (uint i = 0; i < _num_total_scan_chunks; i++) {
-      if (_region_scan_chunks[i]) {
-        result++;
-      }
-    }
+    size_t result = _region_scan_chunks.count_one_bits();
     return result * (HeapRegion::CardsPerRegion / _scan_chunks_per_region);
   }
 
@@ -374,9 +369,8 @@ public:
     // Make sure that all chunks that contain the range are marked. Calculate the
     // chunk of the last card that is actually marked.
     size_t const end_chunk = (region_card_idx + card_length - 1) >> _scan_chunks_shift;
-    for (; chunk_idx <= end_chunk; chunk_idx++) {
-      _region_scan_chunks[chunk_idx] = true;
-    }
+    //TODO: comment about the +(end_chunk + 1)
+    _region_scan_chunks.par_set_range(chunk_idx, (end_chunk + 1), BitMap::unknown_range);
   }
 
   void set_chunk_dirty(size_t const card_idx) {
@@ -384,7 +378,7 @@ public:
            "Trying to access index " SIZE_FORMAT " out of bounds " SIZE_FORMAT,
            card_idx >> _scan_chunks_shift, _num_total_scan_chunks);
     size_t const chunk_idx = card_idx >> _scan_chunks_shift;
-    _region_scan_chunks[chunk_idx] = true;
+    _region_scan_chunks.par_set_bit(chunk_idx);
   }
 
   G1AbstractSubTask* create_cleanup_after_scan_heap_roots_task() {
