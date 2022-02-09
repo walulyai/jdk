@@ -158,14 +158,14 @@ private:
     uint _cur_idx;
     size_t _max_reserved_regions;
 
-    bool* _contains;
+    CHeapBitMap _contains;
 
   public:
     G1DirtyRegions(size_t max_reserved_regions) :
       _buffer(NEW_C_HEAP_ARRAY(uint, max_reserved_regions, mtGC)),
       _cur_idx(0),
       _max_reserved_regions(max_reserved_regions),
-      _contains(NEW_C_HEAP_ARRAY(bool, max_reserved_regions, mtGC)) {
+      _contains(max_reserved_regions, mtGC) {
 
       reset();
     }
@@ -174,12 +174,12 @@ private:
 
     ~G1DirtyRegions() {
       FREE_C_HEAP_ARRAY(uint, _buffer);
-      FREE_C_HEAP_ARRAY(bool, _contains);
+      _contains.resize(0);
     }
 
     void reset() {
       _cur_idx = 0;
-      ::memset(_contains, false, _max_reserved_regions * sizeof(bool));
+      _contains.clear();
     }
 
     uint size() const { return _cur_idx; }
@@ -190,11 +190,11 @@ private:
     }
 
     void add_dirty_region(uint region) {
-      if (_contains[region]) {
+      if (_contains.at(region)) {
         return;
       }
 
-      bool marked_as_dirty = Atomic::cmpxchg(&_contains[region], false, true) == false;
+      bool marked_as_dirty = _contains.par_set_bit(region);
       if (marked_as_dirty) {
         uint allocated = Atomic::fetch_and_add(&_cur_idx, 1u);
         _buffer[allocated] = region;
@@ -205,9 +205,9 @@ private:
     void merge(const G1DirtyRegions* other) {
       for (uint i = 0; i < other->size(); i++) {
         uint region = other->at(i);
-        if (!_contains[region]) {
+        if (!_contains.at(region)) {
           _buffer[_cur_idx++] = region;
-          _contains[region] = true;
+          _contains.set_bit(region);
         }
       }
     }
