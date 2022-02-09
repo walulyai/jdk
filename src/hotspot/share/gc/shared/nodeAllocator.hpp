@@ -30,13 +30,13 @@
 #include "utilities/globalDefinitions.hpp"
 
 // Allocation is based on a lock-free free list of nodes, linked through
-// BufferNode::_next (see BufferNode::Stack).  To solve the ABA problem,
+// Node::_next (see BufferNode::Stack).  To solve the ABA problem,
 // popping a node from the free list is performed within a GlobalCounter
 // critical section, and pushing nodes onto the free list is done after
 // a GlobalCounter synchronization associated with the nodes to be pushed.
 // This is documented behavior so that other parts of the node life-cycle
 // can depend on and make use of it too.
-template <class BufferNode, class Arena>
+template <class Node, class Arena>
 class NodeAllocator {
   friend class BufferNodeAllocatorTest;
   // Since we don't expect many instances, padding seems like a good tradeoff here.
@@ -44,8 +44,8 @@ class NodeAllocator {
   Type Name; DEFINE_PAD_MINUS_SIZE(Id, DEFAULT_CACHE_LINE_SIZE, sizeof(Type))
 
   class PendingList {
-    BufferNode* _tail;
-    DECLARE_PADDED_MEMBER(1, BufferNode* volatile, _head);
+    Node* _tail;
+    DECLARE_PADDED_MEMBER(1, Node* volatile, _head);
     DECLARE_PADDED_MEMBER(2, volatile size_t, _count);
 
     NONCOPYABLE(PendingList);
@@ -56,27 +56,27 @@ class NodeAllocator {
 
     // Add node to the list.  Returns the number of nodes in the list.
     // Thread-safe against concurrent add operations.
-    size_t add(BufferNode* node);
+    size_t add(Node* node);
 
     size_t count() const;
 
     // Return the nodes in the list, leaving the list empty.
     // Not thread-safe.
-    BufferNodeList<BufferNode> take_all();
+    BufferNodeList<Node> take_all();
   };
 
   const size_t _buffer_size = 0;
   char _name[DEFAULT_CACHE_LINE_SIZE - sizeof(size_t)]; // Use name as padding.
   PendingList _pending_lists[2];
   DECLARE_PADDED_MEMBER(1, volatile uint, _active_pending_list);
-  DECLARE_PADDED_MEMBER(2, typename BufferNode::Stack, _free_list);
+  DECLARE_PADDED_MEMBER(2, typename Node::Stack, _free_list);
   DECLARE_PADDED_MEMBER(3, volatile size_t, _free_count);
   DECLARE_PADDED_MEMBER(4, volatile bool, _transfer_lock);
 #undef DECLARE_PADDED_MEMBER
 
   Arena _arena;
 
-  void delete_list(BufferNode* list);
+  void delete_list(Node* list);
   bool try_transfer_pending();
 
   NONCOPYABLE(NodeAllocator);
@@ -89,13 +89,12 @@ public:
 
   ~NodeAllocator();
 
-
   size_t buffer_size() const { return _buffer_size; }
   size_t free_count() const;
   size_t pending_count() const;
 
-  BufferNode* allocate();
-  void release(BufferNode* node);
+  Node* allocate();
+  void release(Node* node);
   void reset();
 
   const Arena* arena() const { return &_arena; } // called for statistics
