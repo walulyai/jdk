@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2001, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2001, 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -25,7 +25,7 @@
 #ifndef SHARE_GC_SHARED_PTRQUEUE_HPP
 #define SHARE_GC_SHARED_PTRQUEUE_HPP
 
-#include "gc/shared/bufferNodeAllocator.inline.hpp"
+#include "gc/shared/nodeAllocator.inline.hpp"
 #include "memory/padded.hpp"
 #include "utilities/align.hpp"
 #include "utilities/debug.hpp"
@@ -177,15 +177,15 @@ public:
 // set, and return completed buffers to the set.
 class PtrQueueSet {
 public:
-  typedef BufferNodeAllocator<BufferNode, BufferNode::Arena> PaddedBufferNodeAllocator;
+  typedef NodeAllocator<BufferNode, BufferNode::Arena> BufferNodeAllocator;
 private:
-  PaddedBufferNodeAllocator* _allocator;
+  BufferNodeAllocator* _allocator;
 
   NONCOPYABLE(PtrQueueSet);
 
 protected:
   // Create an empty ptr queue set.
-  PtrQueueSet(PaddedBufferNodeAllocator* allocator);
+  PtrQueueSet(BufferNodeAllocator* allocator);
   ~PtrQueueSet();
 
   // Discard any buffered enqueued data.
@@ -213,7 +213,7 @@ protected:
 public:
 
   // Return the associated BufferNode allocator.
-  PaddedBufferNodeAllocator* allocator() const { return _allocator; }
+  BufferNodeAllocator* allocator() const { return _allocator; }
 
   // Return the buffer for a BufferNode of size buffer_size().
   void** allocate_buffer();

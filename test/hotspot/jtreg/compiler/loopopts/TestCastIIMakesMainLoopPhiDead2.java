@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -19,24 +19,36 @@
  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
  * or visit www.oracle.com if you need additional information or have any
  * questions.
- *
  */
 
-#include "precompiled.hpp"
-#include "gc/shared/bufferNodeList.hpp"
-#include "utilities/debug.hpp"
 /*
-template<typename T>
-BufferNodeList<T>::BufferNodeList() :
-  _head(NULL), _tail(NULL), _entry_count(0) {}
+ * @test
+ * bug 8280600
+ * @summary C2: assert(!had_error) failed: bad dominance
+ * @run main/othervm -Xcomp -XX:CompileOnly=TestCastIIMakesMainLoopPhiDead2 TestCastIIMakesMainLoopPhiDead2
+ */
 
-template<typename T>
-BufferNodeList<T>::BufferNodeList(T* head,
-                               T* tail,
-                               size_t entry_count) :
-  _head(head), _tail(tail), _entry_count(entry_count)
-{
-  assert((_head == NULL) == (_tail == NULL), "invariant");
-  assert((_head == NULL) == (_entry_count == 0), "invariant");
+public class TestCastIIMakesMainLoopPhiDead2 {
+    static int zero = 0;
+
+    public static void main(String[] args) {
+        for (int i = 0; i < 100000; i++) {
+            test();
+        }
+    }
+
+    static void test() {
+        int h[] = new int[zero];
+        for (int m = 0; m < 5; m++) {
+            try {
+                for (int f = -400; f < 1; f++) {
+                    h[f] = 1; // Out of bounds store.
+                }
+            } catch (ArrayIndexOutOfBoundsException i) {
+                // Expected
+            }
+        }
+    }
 }
-*/
+
+

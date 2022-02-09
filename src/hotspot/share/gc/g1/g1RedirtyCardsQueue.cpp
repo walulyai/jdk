@@ -84,7 +84,7 @@ G1RedirtyCardsLocalQueueSet::Queue::~Queue() {
 
 // G1RedirtyCardsQueueSet
 
-G1RedirtyCardsQueueSet::G1RedirtyCardsQueueSet(PaddedBufferNodeAllocator* allocator) :
+G1RedirtyCardsQueueSet::G1RedirtyCardsQueueSet(BufferNodeAllocator* allocator) :
   PtrQueueSet(allocator),
   _list(),
   _entry_count(0),

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -29,7 +29,7 @@
 #include "gc/g1/g1CardSetContainers.hpp"
 #include "gc/g1/g1SegmentedArray.hpp"
 #include "gc/g1/g1SegmentedArrayFreePool.hpp"
-#include "gc/shared/bufferNodeAllocator.inline.hpp"
+#include "gc/shared/nodeAllocator.inline.hpp"
 #include "memory/allocation.hpp"
 #include "utilities/growableArray.hpp"
 #include "utilities/lockFreeStack.hpp"
@@ -69,8 +69,8 @@ class G1CardSetMemoryManager : public CHeapObj<mtGCCardSet> {
   G1CardSetConfiguration* _config;
 
   typedef G1SegmentedArray<G1CardSetContainer, mtGCCardSet> SegmentedArray;
-  typedef BufferNodeAllocator<G1CardSetContainer, SegmentedArray> PaddedBufferNodeAllocator;
-  PaddedBufferNodeAllocator* _allocators;
+  typedef NodeAllocator<G1CardSetContainer, SegmentedArray> G1CardSetAllocator;
+  G1CardSetAllocator* _allocators;
 
   uint num_mem_object_types() const;
 public:

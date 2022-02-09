@@ -35,13 +35,8 @@ struct BufferNodeList {
   T* _tail;            // Last node in list or NULL if empty.
   size_t _entry_count;          // Sum of entries in nodes in list.
 
-  BufferNodeList() : _head(NULL), _tail(NULL), _entry_count(0) {}
-  BufferNodeList(T* head, T* tail, size_t entry_count) :
-  _head(head), _tail(tail), _entry_count(entry_count)
-  {
-    assert((_head == NULL) == (_tail == NULL), "invariant");
-    assert((_head == NULL) == (_entry_count == 0), "invariant");
-  }
+  BufferNodeList();
+  BufferNodeList(T* head, T* tail, size_t entry_count);
 };
 
 #endif // SHARE_GC_SHARED_BUFFERNODELIST_HPP
