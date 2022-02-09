@@ -104,8 +104,8 @@ class SATBMarkQueueSet: public PtrQueueSet {
 #endif // ASSERT
 
 protected:
-  typedef typename PtrQueueSet::BufferNodeAllocator PaddedBufferNodeAllocator;
-  SATBMarkQueueSet(PaddedBufferNodeAllocator* allocator);
+  typedef typename PtrQueueSet::BufferNodeAllocator BufferNodeAllocator;
+  SATBMarkQueueSet(BufferNodeAllocator* allocator);
   ~SATBMarkQueueSet();
 
   void handle_zero_index(SATBMarkQueue& queue);
