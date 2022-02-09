@@ -34,7 +34,7 @@
 #include "gc/g1/g1RemSet.hpp"
 #include "gc/g1/g1ThreadLocalData.hpp"
 #include "gc/g1/heapRegionRemSet.inline.hpp"
-#include "gc/shared/bufferNodeList.hpp"
+#include "gc/shared/bufferNodeList.inline.hpp"
 #include "gc/shared/suspendibleThreadSet.hpp"
 #include "memory/iterator.hpp"
 #include "runtime/atomic.hpp"
@@ -64,7 +64,7 @@ G1DirtyCardQueue::~G1DirtyCardQueue() {
 // Assumed to be zero by concurrent threads.
 static uint par_ids_start() { return 0; }
 
-G1DirtyCardQueueSet::G1DirtyCardQueueSet(BufferNode::Allocator* allocator) :
+G1DirtyCardQueueSet::G1DirtyCardQueueSet(BufferNodeAllocator* allocator) :
   PtrQueueSet(allocator),
   _refinement_notification_thread(nullptr),
   _num_cards(0),
@@ -315,7 +315,7 @@ void G1DirtyCardQueueSet::enqueue_all_paused_buffers() {
 }
 
 void G1DirtyCardQueueSet::abandon_completed_buffers() {
-  BufferNodeList list = take_all_completed_buffers();
+  BufferNodeList<> list = take_all_completed_buffers();
   BufferNode* buffers_to_delete = list._head;
   while (buffers_to_delete != NULL) {
     BufferNode* bn = buffers_to_delete;
@@ -329,20 +329,20 @@ void G1DirtyCardQueueSet::abandon_completed_buffers() {
 // result. The queue sets must share the same allocator.
 void G1DirtyCardQueueSet::merge_bufferlists(G1RedirtyCardsQueueSet* src) {
   assert(allocator() == src->allocator(), "precondition");
-  const BufferNodeList from = src->take_all_completed_buffers();
+  const BufferNodeList<> from = src->take_all_completed_buffers();
   if (from._head != NULL) {
     Atomic::add(&_num_cards, from._entry_count);
     _completed.append(*from._head, *from._tail);
   }
 }
 
-BufferNodeList G1DirtyCardQueueSet::take_all_completed_buffers() {
+BufferNodeList<> G1DirtyCardQueueSet::take_all_completed_buffers() {
   enqueue_all_paused_buffers();
   verify_num_cards();
   Pair<BufferNode*, BufferNode*> pair = _completed.take_all();
   size_t num_cards = Atomic::load(&_num_cards);
   Atomic::store(&_num_cards, size_t(0));
-  return BufferNodeList(pair.first, pair.second, num_cards);
+  return BufferNodeList<>(pair.first, pair.second, num_cards);
 }
 
 class G1RefineBufferedCards : public StackObj {

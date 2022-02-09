@@ -25,7 +25,7 @@
 #ifndef SHARE_GC_G1_G1REDIRTYCARDSQUEUE_HPP
 #define SHARE_GC_G1_G1REDIRTYCARDSQUEUE_HPP
 
-#include "gc/shared/bufferNodeList.hpp"
+#include "gc/shared/bufferNodeList.inline.hpp"
 #include "gc/shared/ptrQueue.hpp"
 #include "memory/padded.hpp"
 #include "utilities/macros.hpp"
@@ -42,7 +42,7 @@ class G1RedirtyCardsLocalQueueSet : private PtrQueueSet {
   };
 
   G1RedirtyCardsQueueSet* _shared_qset;
-  BufferNodeList _buffers;
+  BufferNodeList<> _buffers;
   Queue _queue;
 
   // Add the buffer to the local list.
@@ -65,6 +65,7 @@ public:
 // collected (and processed) buffers reverts back to collecting, allowing
 // the set to be reused for another round of redirtying.
 class G1RedirtyCardsQueueSet : public PtrQueueSet {
+  using PtrQueueSet::BufferNodeAllocator;
   DEFINE_PAD_MINUS_SIZE(1, DEFAULT_CACHE_LINE_SIZE, 0);
   BufferNode::Stack _list;
   DEFINE_PAD_MINUS_SIZE(2, DEFAULT_CACHE_LINE_SIZE, sizeof(size_t));
@@ -76,7 +77,7 @@ class G1RedirtyCardsQueueSet : public PtrQueueSet {
   void update_tail(BufferNode* node);
 
 public:
-  G1RedirtyCardsQueueSet(BufferNode::Allocator* allocator);
+  G1RedirtyCardsQueueSet(BufferNodeAllocator* allocator);
   ~G1RedirtyCardsQueueSet();
 
   void verify_empty() const NOT_DEBUG_RETURN;
@@ -84,12 +85,12 @@ public:
   // Collect buffers.  These functions are thread-safe.
   // precondition: Must not be concurrent with buffer processing.
   virtual void enqueue_completed_buffer(BufferNode* node);
-  void add_bufferlist(const BufferNodeList& buffers);
+  void add_bufferlist(const BufferNodeList<>& buffers);
 
   // Processing phase operations.
   // precondition: Must not be concurrent with buffer collection.
   BufferNode* all_completed_buffers() const;
-  BufferNodeList take_all_completed_buffers();
+  BufferNodeList<> take_all_completed_buffers();
 };
 
 #endif // SHARE_GC_G1_G1REDIRTYCARDSQUEUE_HPP

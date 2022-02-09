@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -21,19 +21,26 @@
  * questions.
  *
  */
+#ifndef SHARE_GC_SHARED_BUFFERNODELIST_INLINE_HPP
+#define SHARE_GC_SHARED_BUFFERNODELIST_INLINE_HPP
 
-#include "precompiled.hpp"
+
 #include "gc/shared/bufferNodeList.hpp"
+
 #include "utilities/debug.hpp"
 
-BufferNodeList::BufferNodeList() :
+template<typename T>
+BufferNodeList<T>::BufferNodeList() :
   _head(NULL), _tail(NULL), _entry_count(0) {}
 
-BufferNodeList::BufferNodeList(BufferNode* head,
-                               BufferNode* tail,
+template<typename T>
+BufferNodeList<T>::BufferNodeList(T* head,
+                               T* tail,
                                size_t entry_count) :
   _head(head), _tail(tail), _entry_count(entry_count)
 {
   assert((_head == NULL) == (_tail == NULL), "invariant");
   assert((_head == NULL) == (_entry_count == 0), "invariant");
 }
+
+#endif // SHARE_GC_SHARED_BUFFERNODELIST_INLINE_HPP

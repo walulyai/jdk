@@ -169,11 +169,11 @@ G1SegmentedArray<Slot, flag>::G1SegmentedArray(const G1SegmentedArrayAllocOption
 
 template <class Slot, MEMFLAGS flag>
 G1SegmentedArray<Slot, flag>::~G1SegmentedArray() {
-  drop_all();
+  reset();
 }
 
 template <class Slot, MEMFLAGS flag>
-void G1SegmentedArray<Slot, flag>::drop_all() {
+void G1SegmentedArray<Slot, flag>::reset() {
   G1SegmentedArraySegment<flag>* cur = Atomic::load_acquire(&_first);
 
   if (cur != nullptr) {
@@ -210,7 +210,7 @@ void G1SegmentedArray<Slot, flag>::drop_all() {
 }
 
 template <class Slot, MEMFLAGS flag>
-Slot* G1SegmentedArray<Slot, flag>::allocate() {
+Slot* G1SegmentedArray<Slot, flag>::allocate(size_t buffer_size) {
   assert(slot_size() > 0, "instance size not set.");
 
   G1SegmentedArraySegment<flag>* cur = Atomic::load_acquire(&_first);
@@ -235,6 +235,25 @@ Slot* G1SegmentedArray<Slot, flag>::allocate() {
 template <class Slot, MEMFLAGS flag>
 inline uint G1SegmentedArray<Slot, flag>::num_segments() const {
   return Atomic::load(&_num_segments);
+}
+
+template <class Slot, MEMFLAGS flag>
+void G1SegmentedArray<Slot, flag>::print(outputStream* os, uint pending_slots_count) {
+  uint allocated_slots_count = num_allocated_slots();
+  uint available_slots_count = num_available_slots();
+  uint highest = first_array_segment() != nullptr
+               ? first_array_segment()->num_slots()
+               : 0;
+  uint segments_count = num_segments();
+  os->print("MA " PTR_FORMAT ": %u slots pending (allocated %u available %u) used %.3f highest %u segments %u size %zu ",
+            p2i(this),
+            pending_slots_count,
+            allocated_slots_count,
+            available_slots_count,
+            percent_of(allocated_slots_count - pending_slots_count, available_slots_count),
+            highest,
+            segments_count,
+            mem_size());
 }
 
 #ifdef ASSERT

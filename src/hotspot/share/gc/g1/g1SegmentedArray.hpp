@@ -220,11 +220,25 @@ public:
 
   // Deallocate all segments to the free segment list and reset this allocator. Must
   // be called in a globally synchronized area.
-  void drop_all();
+  void reset();
 
-  inline Slot* allocate();
+  inline Slot* allocate(size_t buffer_size);
+
+  void deallocate(Slot* node) { }
 
   inline uint num_segments() const;
+
+  size_t mem_size() const {
+    return sizeof(*this) +
+            num_segments() * sizeof(G1SegmentedArraySegment<flag>) +
+            num_available_slots() * slot_size();
+  }
+
+  size_t wasted_mem_size(size_t num_pending) const {
+    return (num_available_slots() - (num_allocated_slots() - (uint)num_pending)) * slot_size();
+  }
+
+  void print(outputStream* os, uint num_pending_slots);
 
   template<typename SegmentClosure>
   void iterate_segments(SegmentClosure& closure) const;

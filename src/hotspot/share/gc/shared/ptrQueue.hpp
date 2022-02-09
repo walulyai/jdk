@@ -25,7 +25,7 @@
 #ifndef SHARE_GC_SHARED_PTRQUEUE_HPP
 #define SHARE_GC_SHARED_PTRQUEUE_HPP
 
-#include "gc/shared/bufferNodeList.hpp"
+#include "gc/shared/nodeAllocator.inline.hpp"
 #include "memory/padded.hpp"
 #include "utilities/align.hpp"
 #include "utilities/debug.hpp"
@@ -132,12 +132,6 @@ class BufferNode {
     return offset_of(BufferNode, _buffer);
   }
 
-  // Allocate a new BufferNode with the "buffer" having size elements.
-  static BufferNode* allocate(size_t size);
-
-  // Free a BufferNode.
-  static void deallocate(BufferNode* node);
-
 public:
   static BufferNode* volatile* next_ptr(BufferNode& bn) { return &bn._next; }
   typedef LockFreeStack<BufferNode, &next_ptr> Stack;
@@ -163,87 +157,35 @@ public:
       reinterpret_cast<char*>(node) + buffer_offset());
   }
 
-  class Allocator;              // Free-list based allocator.
-  class TestSupport;            // Unit test support.
+  class Arena;
 };
 
-// Allocation is based on a lock-free free list of nodes, linked through
-// BufferNode::_next (see BufferNode::Stack).  To solve the ABA problem,
-// popping a node from the free list is performed within a GlobalCounter
-// critical section, and pushing nodes onto the free list is done after
-// a GlobalCounter synchronization associated with the nodes to be pushed.
-// This is documented behavior so that other parts of the node life-cycle
-// can depend on and make use of it too.
-class BufferNode::Allocator {
-  friend class TestSupport;
-
-  // Since we don't expect many instances, and measured >15% speedup
-  // on stress gtest, padding seems like a good tradeoff here.
-#define DECLARE_PADDED_MEMBER(Id, Type, Name) \
-  Type Name; DEFINE_PAD_MINUS_SIZE(Id, DEFAULT_CACHE_LINE_SIZE, sizeof(Type))
-
-  class PendingList {
-    BufferNode* _tail;
-    DECLARE_PADDED_MEMBER(1, BufferNode* volatile, _head);
-    DECLARE_PADDED_MEMBER(2, volatile size_t, _count);
-
-    NONCOPYABLE(PendingList);
-
-  public:
-    PendingList();
-    ~PendingList();
-
-    // Add node to the list.  Returns the number of nodes in the list.
-    // Thread-safe against concurrent add operations.
-    size_t add(BufferNode* node);
-
-    // Return the nodes in the list, leaving the list empty.
-    // Not thread-safe.
-    BufferNodeList take_all();
-  };
-
-  const size_t _buffer_size;
-  char _name[DEFAULT_CACHE_LINE_SIZE - sizeof(size_t)]; // Use name as padding.
-  PendingList _pending_lists[2];
-  DECLARE_PADDED_MEMBER(1, volatile uint, _active_pending_list);
-  DECLARE_PADDED_MEMBER(2, Stack, _free_list);
-  DECLARE_PADDED_MEMBER(3, volatile size_t, _free_count);
-  DECLARE_PADDED_MEMBER(4, volatile bool, _transfer_lock);
-
-#undef DECLARE_PADDED_MEMBER
-
-  static void delete_list(BufferNode* list);
-  bool try_transfer_pending();
-
-  NONCOPYABLE(Allocator);
-
+class BufferNode::Arena {
 public:
-  Allocator(const char* name, size_t buffer_size);
-  ~Allocator();
+    // Allocate a new BufferNode with the "buffer" having size elements.
+  BufferNode* allocate(size_t size);
 
-  const char* name() const { return _name; }
-  size_t buffer_size() const { return _buffer_size; }
-  size_t free_count() const;
-  BufferNode* allocate();
-  void release(BufferNode* node);
+  // Free a BufferNode.
+  void deallocate(BufferNode* node);
 
-  // Deallocate some of the available buffers.  remove_goal is the target
-  // number to remove.  Returns the number actually deallocated, which may
-  // be less than the goal if there were fewer available.
-  size_t reduce_free_list(size_t remove_goal);
+  void reset() {}
+
 };
 
 // A PtrQueueSet represents resources common to a set of pointer queues.
 // In particular, the individual queues allocate buffers from this shared
 // set, and return completed buffers to the set.
 class PtrQueueSet {
-  BufferNode::Allocator* _allocator;
+public:
+  typedef NodeAllocator<BufferNode, BufferNode::Arena> BufferNodeAllocator;
+private:
+  BufferNodeAllocator* _allocator;
 
   NONCOPYABLE(PtrQueueSet);
 
 protected:
   // Create an empty ptr queue set.
-  PtrQueueSet(BufferNode::Allocator* allocator);
+  PtrQueueSet(BufferNodeAllocator* allocator);
   ~PtrQueueSet();
 
   // Discard any buffered enqueued data.
@@ -271,7 +213,7 @@ protected:
 public:
 
   // Return the associated BufferNode allocator.
-  BufferNode::Allocator* allocator() const { return _allocator; }
+  BufferNodeAllocator* allocator() const { return _allocator; }
 
   // Return the buffer for a BufferNode of size buffer_size().
   void** allocate_buffer();

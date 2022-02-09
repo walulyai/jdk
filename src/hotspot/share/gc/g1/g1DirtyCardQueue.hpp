@@ -28,7 +28,7 @@
 #include "gc/g1/g1FreeIdSet.hpp"
 #include "gc/g1/g1CardTable.hpp"
 #include "gc/g1/g1ConcurrentRefineStats.hpp"
-#include "gc/shared/bufferNodeList.hpp"
+#include "gc/shared/bufferNodeList.inline.hpp"
 #include "gc/shared/ptrQueue.hpp"
 #include "memory/allocation.hpp"
 #include "memory/padded.hpp"
@@ -68,6 +68,7 @@ public:
 };
 
 class G1DirtyCardQueueSet: public PtrQueueSet {
+  using PtrQueueSet::BufferNodeAllocator;
   // Head and tail of a list of BufferNodes, linked through their next()
   // fields.  Similar to BufferNodeList, but without the _entry_count.
   struct HeadTail {
@@ -236,7 +237,7 @@ class G1DirtyCardQueueSet: public PtrQueueSet {
   void handle_completed_buffer(BufferNode* node, G1ConcurrentRefineStats* stats);
 
 public:
-  G1DirtyCardQueueSet(BufferNode::Allocator* allocator);
+  G1DirtyCardQueueSet(BufferNodeAllocator* allocator);
   ~G1DirtyCardQueueSet();
 
   // The number of parallel ids that can be claimed to allow collector or
@@ -260,7 +261,7 @@ public:
 
   void merge_bufferlists(G1RedirtyCardsQueueSet* src);
 
-  BufferNodeList take_all_completed_buffers();
+  BufferNodeList<> take_all_completed_buffers();
 
   void flush_queue(G1DirtyCardQueue& queue);
 

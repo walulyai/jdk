@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2001, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2001, 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -38,8 +38,9 @@ class G1CardTable;
 class G1BarrierSet: public CardTableBarrierSet {
   friend class VMStructs;
  private:
-  BufferNode::Allocator _satb_mark_queue_buffer_allocator;
-  BufferNode::Allocator _dirty_card_queue_buffer_allocator;
+  typedef typename PtrQueueSet::BufferNodeAllocator BufferNodeAllocator;
+  BufferNodeAllocator _satb_mark_queue_buffer_allocator;
+  BufferNodeAllocator _dirty_card_queue_buffer_allocator;
   G1SATBMarkQueueSet _satb_mark_queue_set;
   G1DirtyCardQueueSet _dirty_card_queue_set;
 
