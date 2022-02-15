@@ -25,9 +25,73 @@
 #ifndef SHARE_GC_SHARED_NODEALLOCATOR_HPP
 #define SHARE_GC_SHARED_NODEALLOCATOR_HPP
 
+#include <type_traits>
+
 #include "gc/shared/bufferNodeList.inline.hpp"
 #include "memory/padded.hpp"
 #include "utilities/globalDefinitions.hpp"
+
+template <class Node, bool padding = true>
+struct NodeAllocatorBase {
+  // If we don't expect many instances, padding seems like a good tradeoff here.
+#define DECLARE_PADDED_MEMBER(Id, Type, Name) \
+  Type Name; DEFINE_PAD_MINUS_SIZE(Id, DEFAULT_CACHE_LINE_SIZE, sizeof(Type))
+  const size_t _buffer_size = 0;
+  char _name[DEFAULT_CACHE_LINE_SIZE - sizeof(size_t)]; // Use name as padding.
+  DECLARE_PADDED_MEMBER(1, volatile uint, _active_pending_list);
+  DECLARE_PADDED_MEMBER(2, typename Node::Stack, _free_list);
+  DECLARE_PADDED_MEMBER(3, volatile size_t, _free_count);
+  DECLARE_PADDED_MEMBER(4, volatile bool, _transfer_lock);
+
+  struct PendingListBase {
+    Node* _tail;
+    DECLARE_PADDED_MEMBER(1, Node* volatile, _head);
+    DECLARE_PADDED_MEMBER(2, volatile size_t, _count);
+    PendingListBase() : _tail(nullptr), _head(nullptr), _count(0) {}
+  };
+
+  NodeAllocatorBase(const char* name, size_t buffer_size) :
+    _buffer_size(buffer_size),
+    _active_pending_list(0),
+    _free_list(),
+    _free_count(0),
+    _transfer_lock(false)
+  {
+    strncpy(_name, name, sizeof(_name) - 1);
+    _name[sizeof(_name) - 1] = '\0';
+  }
+#undef DECLARE_PADDED_MEMBER
+
+  const char* name() const { return _name; }
+
+};
+
+template <class Node>
+struct NodeAllocatorBase<Node, false> {
+  const size_t _buffer_size = 0;
+  volatile uint _active_pending_list;
+  typename Node::Stack _free_list;
+  volatile size_t _free_count;
+  volatile bool _transfer_lock;
+  struct PendingListBase {
+    Node* _tail;
+    Node* volatile _head;
+    volatile size_t _count;
+
+    PendingListBase() : _tail(nullptr), _head(nullptr), _count(0) {}
+  };
+
+  NodeAllocatorBase(const char* name, size_t buffer_size) :
+    _buffer_size(buffer_size),
+    _active_pending_list(0),
+    _free_list(),
+    _free_count(0),
+    _transfer_lock(false)
+  { }
+
+  const char* name() const { return ""; }
+
+};
 
 // Allocation is based on a lock-free free list of nodes, linked through
 // Node::_next (see BufferNode::Stack).  To solve the ABA problem,
@@ -36,17 +100,18 @@
 // a GlobalCounter synchronization associated with the nodes to be pushed.
 // This is documented behavior so that other parts of the node life-cycle
 // can depend on and make use of it too.
-template <class Node, class Arena>
-class NodeAllocator {
+template <class Node, class Arena, bool padding = true>
+class NodeAllocator: NodeAllocatorBase<Node, padding>  {
   friend class BufferNodeAllocatorTest;
-  // Since we don't expect many instances, padding seems like a good tradeoff here.
-#define DECLARE_PADDED_MEMBER(Id, Type, Name) \
-  Type Name; DEFINE_PAD_MINUS_SIZE(Id, DEFAULT_CACHE_LINE_SIZE, sizeof(Type))
-
-  class PendingList {
-    Node* _tail;
-    DECLARE_PADDED_MEMBER(1, Node* volatile, _head);
-    DECLARE_PADDED_MEMBER(2, volatile size_t, _count);
+  using  NodeAllocatorBase<Node, padding>::_buffer_size;
+  using  NodeAllocatorBase<Node, padding>::_active_pending_list;
+  using  NodeAllocatorBase<Node, padding>::_free_list;
+  using  NodeAllocatorBase<Node, padding>:: _free_count;
+  using  NodeAllocatorBase<Node, padding>::_transfer_lock;
+  class PendingList: NodeAllocatorBase<Node, padding>::PendingListBase {
+    using NodeAllocatorBase<Node, padding>::PendingListBase::_tail;
+    using NodeAllocatorBase<Node, padding>::PendingListBase::_head;
+    using NodeAllocatorBase<Node, padding>::PendingListBase::_count;
 
     NONCOPYABLE(PendingList);
 
@@ -65,15 +130,7 @@ class NodeAllocator {
     BufferNodeList<Node> take_all();
   };
 
-  const size_t _buffer_size = 0;
-  char _name[DEFAULT_CACHE_LINE_SIZE - sizeof(size_t)]; // Use name as padding.
   PendingList _pending_lists[2];
-  DECLARE_PADDED_MEMBER(1, volatile uint, _active_pending_list);
-  DECLARE_PADDED_MEMBER(2, typename Node::Stack, _free_list);
-  DECLARE_PADDED_MEMBER(3, volatile size_t, _free_count);
-  DECLARE_PADDED_MEMBER(4, volatile bool, _transfer_lock);
-#undef DECLARE_PADDED_MEMBER
-
   Arena _arena;
 
   void delete_list(Node* list);
@@ -85,7 +142,7 @@ public:
   template <typename... Args>
   NodeAllocator(const char* name, size_t buffer_size, Args&&... args);
 
-  const char* name() const { return _name; }
+  const char* name() const { return NodeAllocatorBase<Node, padding>::name(); }
 
   ~NodeAllocator();
 

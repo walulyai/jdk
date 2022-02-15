@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2021, 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -69,7 +69,7 @@ class G1CardSetMemoryManager : public CHeapObj<mtGCCardSet> {
   G1CardSetConfiguration* _config;
 
   typedef G1SegmentedArray<G1CardSetContainer, mtGCCardSet> SegmentedArray;
-  typedef NodeAllocator<G1CardSetContainer, SegmentedArray> G1CardSetAllocator;
+  typedef NodeAllocator<G1CardSetContainer, SegmentedArray, false /* padding */> G1CardSetAllocator;
   G1CardSetAllocator* _allocators;
 
   uint num_mem_object_types() const;

@@ -31,15 +31,15 @@
 #include "runtime/atomic.hpp"
 #include "utilities/globalCounter.inline.hpp"
 
-template <class Node, class Arena>
-NodeAllocator<Node, Arena>::PendingList::PendingList() :
-  _tail(nullptr), _head(nullptr), _count(0) {}
+template <class Node, class Arena, bool padding>
+NodeAllocator<Node, Arena, padding>::PendingList::PendingList() :
+  NodeAllocatorBase<Node, padding>::PendingListBase() {}
 
-template <class Node, class Arena>
-NodeAllocator<Node, Arena>::PendingList::~PendingList() { }
+template <class Node, class Arena, bool padding>
+NodeAllocator<Node, Arena, padding>::PendingList::~PendingList() { }
 
-template <class Node, class Arena>
-size_t NodeAllocator<Node, Arena>::PendingList::add(Node* node) {
+template <class Node, class Arena, bool padding>
+size_t NodeAllocator<Node, Arena, padding>::PendingList::add(Node* node) {
   assert(node->next() == nullptr, "precondition");
   Node* old_head = Atomic::xchg(&_head, node);
   if (old_head != nullptr) {
@@ -51,8 +51,8 @@ size_t NodeAllocator<Node, Arena>::PendingList::add(Node* node) {
   return Atomic::add(&_count, size_t(1));
 }
 
-template <class Node, class Arena>
-BufferNodeList<Node> NodeAllocator<Node, Arena>::PendingList::take_all() {
+template <class Node, class Arena, bool padding>
+BufferNodeList<Node> NodeAllocator<Node, Arena, padding>::PendingList::take_all() {
   BufferNodeList<Node> result{Atomic::load(&_head), _tail, Atomic::load(&_count)};
   Atomic::store(&_head, (Node*)nullptr);
   _tail = nullptr;
@@ -60,28 +60,23 @@ BufferNodeList<Node> NodeAllocator<Node, Arena>::PendingList::take_all() {
   return result;
 }
 
-template <class Node, class Arena>
-size_t NodeAllocator<Node, Arena>::PendingList::count() const {
+template <class Node, class Arena, bool padding>
+size_t NodeAllocator<Node, Arena, padding>::PendingList::count() const {
   return  Atomic::load(&_count);
 }
 
-template <class Node, class Arena>
+template <class Node, class Arena, bool padding>
 template <typename... Args>
-NodeAllocator<Node, Arena>::NodeAllocator(const char* name, size_t buffer_size, Args&&... args) :
-  _buffer_size(buffer_size),
+NodeAllocator<Node, Arena, padding>::NodeAllocator(const char* name, size_t buffer_size, Args&&... args) :
+  NodeAllocatorBase<Node, padding>(name, buffer_size),
   _pending_lists(),
-  _active_pending_list(0),
-  _free_list(),
-  _free_count(0),
-  _transfer_lock(false),
   _arena(static_cast<Args&&>(args)...)
 {
-  strncpy(_name, name, sizeof(_name) - 1);
-  _name[sizeof(_name) - 1] = '\0';
+
 }
 
-template <class Node, class Arena>
-void NodeAllocator<Node, Arena>::delete_list(Node* list) {
+template <class Node, class Arena, bool padding>
+void NodeAllocator<Node, Arena, padding>::delete_list(Node* list) {
   while (list != NULL) {
     Node* next = list->next();
     DEBUG_ONLY(list->set_next(NULL);)
@@ -90,15 +85,15 @@ void NodeAllocator<Node, Arena>::delete_list(Node* list) {
   }
 }
 
-template <class Node, class Arena>
-NodeAllocator<Node, Arena>::~NodeAllocator() {
+template <class Node, class Arena, bool padding>
+NodeAllocator<Node, Arena, padding>::~NodeAllocator() {
   try_transfer_pending();
   delete_list(_free_list.pop_all());
   _arena.reset();
 }
 
-template <class Node, class Arena>
-void NodeAllocator<Node, Arena>::reset() {
+template <class Node, class Arena, bool padding>
+void NodeAllocator<Node, Arena, padding>::reset() {
   try_transfer_pending();
   _free_list.pop_all();
   _free_count = 0;
@@ -106,19 +101,19 @@ void NodeAllocator<Node, Arena>::reset() {
 }
 
 
-template <class Node, class Arena>
-size_t NodeAllocator<Node, Arena>::free_count() const {
+template <class Node, class Arena, bool padding>
+size_t NodeAllocator<Node, Arena, padding>::free_count() const {
   return Atomic::load(&_free_count);
 }
 
-template <class Node, class Arena>
-size_t NodeAllocator<Node, Arena>::pending_count() const {
+template <class Node, class Arena, bool padding>
+size_t NodeAllocator<Node, Arena, padding>::pending_count() const {
   uint index = Atomic::load(&_active_pending_list);
   return _pending_lists[index].count();;
 }
 
-template <class Node, class Arena>
-Node* NodeAllocator<Node, Arena>::allocate() {
+template <class Node, class Arena, bool padding>
+Node* NodeAllocator<Node, Arena, padding>::allocate() {
   Node* node = NULL;
   if (free_count() > 0) {
     // Protect against ABA; see release().
@@ -146,8 +141,8 @@ Node* NodeAllocator<Node, Arena>::allocate() {
 // permitted, with a lock bit to control access to that phase.  While
 // a transfer is in progress, other threads might be adding other nodes
 // to the pending list, to be dealt with by some later transfer.
-template <class Node, class Arena>
-void NodeAllocator<Node, Arena>::release(Node* node) {
+template <class Node, class Arena, bool padding>
+void NodeAllocator<Node, Arena, padding>::release(Node* node) {
   assert(node != NULL, "precondition");
   assert(node->next() == NULL, "precondition");
 
@@ -178,8 +173,8 @@ void NodeAllocator<Node, Arena>::release(Node* node) {
 // to solve ABA there.  Return true if performed a (possibly empty)
 // transfer, false if blocked from doing so by some other thread's
 // in-progress transfer.
-template <class Node, class Arena>
-bool NodeAllocator<Node, Arena>::try_transfer_pending() {
+template <class Node, class Arena, bool padding>
+bool NodeAllocator<Node, Arena, padding>::try_transfer_pending() {
   // Attempt to claim the lock.
   if (Atomic::load(&_transfer_lock) || // Skip CAS if likely to fail.
       Atomic::cmpxchg(&_transfer_lock, false, true)) {
@@ -212,8 +207,8 @@ bool NodeAllocator<Node, Arena>::try_transfer_pending() {
   return true;
 }
 
-template <class Node, class Arena>
-size_t NodeAllocator<Node, Arena>::reduce_free_list(size_t remove_goal) {
+template <class Node, class Arena, bool padding>
+size_t NodeAllocator<Node, Arena, padding>::reduce_free_list(size_t remove_goal) {
   try_transfer_pending();
   size_t removed = 0;
   for ( ; removed < remove_goal; ++removed) {
