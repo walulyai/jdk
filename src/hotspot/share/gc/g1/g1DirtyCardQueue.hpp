@@ -28,7 +28,7 @@
 #include "gc/g1/g1FreeIdSet.hpp"
 #include "gc/g1/g1CardTable.hpp"
 #include "gc/g1/g1ConcurrentRefineStats.hpp"
-#include "gc/shared/bufferNodeList.inline.hpp"
+#include "gc/shared/bufferNodeList.hpp"
 #include "gc/shared/ptrQueue.hpp"
 #include "memory/allocation.hpp"
 #include "memory/padded.hpp"
@@ -261,7 +261,7 @@ public:
 
   void merge_bufferlists(G1RedirtyCardsQueueSet* src);
 
-  BufferNodeList<> take_all_completed_buffers();
+  BufferNodeList take_all_completed_buffers();
 
   void flush_queue(G1DirtyCardQueue& queue);
 

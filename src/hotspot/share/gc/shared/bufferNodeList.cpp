@@ -21,26 +21,19 @@
  * questions.
  *
  */
-#ifndef SHARE_GC_SHARED_BUFFERNODELIST_INLINE_HPP
-#define SHARE_GC_SHARED_BUFFERNODELIST_INLINE_HPP
 
-
+#include "precompiled.hpp"
 #include "gc/shared/bufferNodeList.hpp"
-
 #include "utilities/debug.hpp"
 
-template<typename T>
-BufferNodeList<T>::BufferNodeList() :
+BufferNodeList::BufferNodeList() :
   _head(NULL), _tail(NULL), _entry_count(0) {}
 
-template<typename T>
-BufferNodeList<T>::BufferNodeList(T* head,
-                               T* tail,
+BufferNodeList::BufferNodeList(BufferNode* head,
+                               BufferNode* tail,
                                size_t entry_count) :
   _head(head), _tail(tail), _entry_count(entry_count)
 {
   assert((_head == NULL) == (_tail == NULL), "invariant");
   assert((_head == NULL) == (_entry_count == 0), "invariant");
 }
-
-#endif // SHARE_GC_SHARED_BUFFERNODELIST_INLINE_HPP

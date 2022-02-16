@@ -29,14 +29,13 @@
 
 class BufferNode;
 
-template<typename T = BufferNode>
 struct BufferNodeList {
-  T* _head;            // First node in list or NULL if empty.
-  T* _tail;            // Last node in list or NULL if empty.
+  BufferNode* _head;            // First node in list or NULL if empty.
+  BufferNode* _tail;            // Last node in list or NULL if empty.
   size_t _entry_count;          // Sum of entries in nodes in list.
 
   BufferNodeList();
-  BufferNodeList(T* head, T* tail, size_t entry_count);
+  BufferNodeList(BufferNode* head, BufferNode* tail, size_t entry_count);
 };
 
 #endif // SHARE_GC_SHARED_BUFFERNODELIST_HPP

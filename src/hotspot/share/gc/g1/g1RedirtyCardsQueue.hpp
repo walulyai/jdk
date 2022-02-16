@@ -25,7 +25,7 @@
 #ifndef SHARE_GC_G1_G1REDIRTYCARDSQUEUE_HPP
 #define SHARE_GC_G1_G1REDIRTYCARDSQUEUE_HPP
 
-#include "gc/shared/bufferNodeList.inline.hpp"
+#include "gc/shared/bufferNodeList.hpp"
 #include "gc/shared/ptrQueue.hpp"
 #include "memory/padded.hpp"
 #include "utilities/macros.hpp"
@@ -42,7 +42,7 @@ class G1RedirtyCardsLocalQueueSet : private PtrQueueSet {
   };
 
   G1RedirtyCardsQueueSet* _shared_qset;
-  BufferNodeList<> _buffers;
+  BufferNodeList _buffers;
   Queue _queue;
 
   // Add the buffer to the local list.
@@ -85,12 +85,12 @@ public:
   // Collect buffers.  These functions are thread-safe.
   // precondition: Must not be concurrent with buffer processing.
   virtual void enqueue_completed_buffer(BufferNode* node);
-  void add_bufferlist(const BufferNodeList<>& buffers);
+  void add_bufferlist(const BufferNodeList& buffers);
 
   // Processing phase operations.
   // precondition: Must not be concurrent with buffer collection.
   BufferNode* all_completed_buffers() const;
-  BufferNodeList<> take_all_completed_buffers();
+  BufferNodeList take_all_completed_buffers();
 };
 
 #endif // SHARE_GC_G1_G1REDIRTYCARDSQUEUE_HPP

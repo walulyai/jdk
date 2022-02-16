@@ -33,7 +33,7 @@
 
 template <class Node, class Arena, bool padding>
 NodeAllocator<Node, Arena, padding>::PendingList::PendingList() :
-  NodeAllocatorBase<Node, padding>::PendingListBase() {}
+  _tail(nullptr), _head(nullptr), _count(0) {}
 
 template <class Node, class Arena, bool padding>
 NodeAllocator<Node, Arena, padding>::PendingList::~PendingList() { }
@@ -52,8 +52,8 @@ size_t NodeAllocator<Node, Arena, padding>::PendingList::add(Node* node) {
 }
 
 template <class Node, class Arena, bool padding>
-BufferNodeList<Node> NodeAllocator<Node, Arena, padding>::PendingList::take_all() {
-  BufferNodeList<Node> result{Atomic::load(&_head), _tail, Atomic::load(&_count)};
+typename NodeAllocator<Node, Arena, padding>::NodeList NodeAllocator<Node, Arena, padding>::PendingList::take_all() {
+  NodeList result{Atomic::load(&_head), _tail, Atomic::load(&_count)};
   Atomic::store(&_head, (Node*)nullptr);
   _tail = nullptr;
   Atomic::store(&_count, size_t(0));
@@ -68,11 +68,13 @@ size_t NodeAllocator<Node, Arena, padding>::PendingList::count() const {
 template <class Node, class Arena, bool padding>
 template <typename... Args>
 NodeAllocator<Node, Arena, padding>::NodeAllocator(const char* name, size_t buffer_size, Args&&... args) :
-  NodeAllocatorBase<Node, padding>(name, buffer_size),
+  NodeAllocatorBase<Node, padding>(),
+  _buffer_size(buffer_size),
   _pending_lists(),
   _arena(static_cast<Args&&>(args)...)
 {
-
+  strncpy(_name, name, sizeof(_name) - 1);
+  _name[sizeof(_name) - 1] = '\0';
 }
 
 template <class Node, class Arena, bool padding>
@@ -194,7 +196,7 @@ bool NodeAllocator<Node, Arena, padding>::try_transfer_pending() {
   GlobalCounter::write_synchronize();
 
   // Transfer the inactive pending list to _free_list.
-  BufferNodeList<Node> transfer_list = _pending_lists[index].take_all();
+  NodeList transfer_list = _pending_lists[index].take_all();
   size_t count = transfer_list._entry_count;
   if (count > 0) {
     // Update count first so no underflow in allocate().
