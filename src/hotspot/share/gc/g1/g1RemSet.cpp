@@ -369,7 +369,7 @@ public:
     // Make sure that all chunks that contain the range are marked. Calculate the
     // chunk of the last card that is actually marked.
     size_t const end_chunk = (region_card_idx + card_length - 1) >> _scan_chunks_shift;
-    //TODO: comment about the +(end_chunk + 1)
+    // BitMap ranges are half-open [beg, end), so we include the end_chunk with (end_chunk + 1)
     _region_scan_chunks.par_set_range(chunk_idx, (end_chunk + 1), BitMap::unknown_range);
   }
 
