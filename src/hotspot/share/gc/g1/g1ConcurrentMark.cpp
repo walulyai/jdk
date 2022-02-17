@@ -2003,17 +2003,63 @@ class G1RebuildRSAndScrubTask : public WorkerTask {
       }
     }
 
+    // Checks the top at rebuild start value for the given region. If the value
+    // is NULL the regions has either:
+    //  - been allocated after rebuild start, or
+    //  - been eagerly reclaimed by a young collection (only humongous)
+    // In these cases we should not rebuild using the given region.
+    bool should_handle_region(HeapRegion* hr) {
+      return _cm->top_at_rebuild_start(hr->hrm_index()) != NULL;
+    }
+
+    // Helper used by both humongous objects and when chunking an object larger than the
+    // G1RebuildRemSetChunkSize. The heap region is needed to ensure a humongous object
+    // is not eagerly reclaimed during yielding.
+    void rebuild_large_obj(HeapRegion* hr, const oop obj, MemRegion rebuild_range) {
+      HeapWord* limit = rebuild_range.end();
+      HeapWord* start = rebuild_range.start();
+      do {
+        MemRegion mr(start, MIN2(start + PROCESSED_YIELD_LIMIT_IN_WORDS, limit));
+        obj->oop_iterate(&_rebuild_closure, mr);
+
+        // Update processed words and yield, for humongous we will yield after each chunk.
+        add_processed_words(mr.word_size());
+        yield_if_necessary();
+        if (_concurrent_cycle_aborted) {
+          return;
+        } else if (!should_handle_region(hr)) {
+          // We need to check this for humongous object because the might be eagerly
+          // reclaimed during a yield.
+          log_trace(gc, marking)("Rebuild aborted for eagerly reclaimed humongous region: %u", hr->hrm_index());
+          return;
+        }
+
+        // Step to next chunk of the humongous object
+        start = mr.end();
+      } while (start < limit);
+    }
+
     // Rebuild for the given live object, returns the offset to the next object.
-    size_t rebuild_obj(HeapWord* current_obj) {
+    size_t rebuild_obj(HeapRegion* hr, HeapWord* current_obj) {
       oop current = cast_to_oop(current_obj);
-      // Only rebuild if we are going to do mixed collections.
-      if (_should_rebuild_remset) {
+      size_t obj_size = current->size();
+
+      if (!_should_rebuild_remset) {
+        // Not rebuilding, just step to next object.
+        return obj_size;
+      } else if (obj_size > PROCESSED_YIELD_LIMIT_IN_WORDS) {
+        // Large object, need to be chunked to avoid stalling safepoints.
+        MemRegion mr(current_obj, obj_size);
+        rebuild_large_obj(hr, current, mr);
+        // No need to add to processed, this is all handled by the above call.
+      } else {
+        // Object smaller than yield limit, process it fully.
         current->oop_iterate(&_rebuild_closure);
+        // Update how much we have processed. Yield check in main loop
+        // will handle
+        add_processed_words(obj_size);
       }
 
-      // Update how much we have processed to know if it is time to yield below.
-      size_t obj_size = current->size();
-      add_processed_words(obj_size);
       return obj_size;
     }
 
@@ -2040,6 +2086,14 @@ class G1RebuildRSAndScrubTask : public WorkerTask {
     void scrub_and_rebuild_region(HeapRegion* hr) {
       HeapWord* limit = hr->parsable_bottom();
       HeapWord* current_obj = hr->bottom();
+
+      if (!should_handle_region(hr)) {
+        // Region allocated during rebuild, no need to rebuild remembered sets
+        // or scrub this region.
+        assert(hr->bottom() == hr->parsable_bottom(), "Region must be fully parsable");
+        return;
+      }
+
       log_debug(gc, marking)("Scrub and rebuild region: " HR_FORMAT " limit: " PTR_FORMAT,
                              HR_FORMAT_PARAMS(hr), p2i(hr->parsable_bottom()));
 
@@ -2048,7 +2102,7 @@ class G1RebuildRSAndScrubTask : public WorkerTask {
         if (_bitmap->is_marked(current_obj)) {
           assert(!cast_to_oop(current_obj)->is_gc_marked(), "No live objects in G1 should be GC marked");
           //  Live object, need to rebuild remembered sets for this object.
-          current_obj += rebuild_obj(current_obj);
+          current_obj += rebuild_obj(hr, current_obj);
         } else {
           // Found dead object, which is potentially unloaded. Scrub to next
           // marked object and return it.
@@ -2067,7 +2121,7 @@ class G1RebuildRSAndScrubTask : public WorkerTask {
       // Rebuild from TAMS to TOP.
       limit = hr->top();
       while (current_obj < limit) {
-        current_obj += rebuild_obj(current_obj);
+        current_obj += rebuild_obj(hr, current_obj);
         // Avoid stalling safepoints and stop iteration if mark cycle has been aborted.
         yield_if_necessary();
         if (_concurrent_cycle_aborted) {
@@ -2075,15 +2129,6 @@ class G1RebuildRSAndScrubTask : public WorkerTask {
           return;
         }
       }
-    }
-
-    // Checks the top at rebuild start value for the given humongous region. If the value
-    // is NULL the regions has either:
-    //  - been allocated after rebuild start, or
-    //  - been eagerly reclaimed by a young collection
-    // In these cases we should not rebuild using the given region.
-    bool should_rebuild_humongous(HeapRegion* hr) {
-      return _cm->top_at_rebuild_start(hr->hrm_index()) != NULL;
     }
 
     // Rebuild the remembered set for a humongous region. Does the rebuild in chunks to avoid
@@ -2094,8 +2139,9 @@ class G1RebuildRSAndScrubTask : public WorkerTask {
         return;
       }
 
-      if (!should_rebuild_humongous(hr)) {
-        // Region allocated during rebuild, nothing to do.
+      if (!should_handle_region(hr)) {
+        // Region allocated during rebuild, no need to rebuild remembered sets.
+        assert(hr->bottom() == hr->parsable_bottom(), "Region must be fully parsable");
         return;
       }
 
@@ -2111,28 +2157,11 @@ class G1RebuildRSAndScrubTask : public WorkerTask {
                              HR_FORMAT_PARAMS(hr), p2i(hr->parsable_bottom()));
 
       // Scan the humongous object in chunks from bottom to top to rebuild remembered sets.
-      HeapWord* limit = hr->top();
-      HeapWord* start = hr->bottom();
-      do {
-        MemRegion mr(start, MIN2(start + PROCESSED_YIELD_LIMIT_IN_WORDS, limit));
-        humongous->oop_iterate(&_rebuild_closure, mr);
-
-        // Update processed words and yield, for humongous we will yield after each chunk.
-        add_processed_words(mr.word_size());
-        yield_if_necessary();
-        if (_concurrent_cycle_aborted) {
-          log_trace(gc, marking)("Rebuild aborted for humongous region: %u", hr->hrm_index());
-          return;
-        } else if (!should_rebuild_humongous(hr)) {
-          // We need to check that this humongous object has not been eagerly
-          // reclaimed while yielded.
-          log_trace(gc, marking)("Rebuild aborted for eagerly reclaimed humongous region: %u", hr->hrm_index());
-          return;
-        }
-
-        // Step to next chunk of the humongous object
-        start = mr.end();
-      } while (start < limit);
+      MemRegion mr(hr->bottom(), hr->top());
+      rebuild_large_obj(hr, humongous, mr);
+      if (_concurrent_cycle_aborted) {
+        log_trace(gc, marking)("Rebuild aborted for humongous region: %u", hr->hrm_index());
+      }
     }
 
   public:
@@ -2165,7 +2194,7 @@ class G1RebuildRSAndScrubTask : public WorkerTask {
         return true;
       }
 
-      // Scrubbing and or rebuild completed, mark region fully parsable.
+      // Scrubbing and/or rebuild completed, mark region fully parsable.
       hr->note_end_of_scrubbing();
       return false;
     }
