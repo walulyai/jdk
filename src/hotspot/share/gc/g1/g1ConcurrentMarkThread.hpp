@@ -67,8 +67,7 @@ class G1ConcurrentMarkThread: public ConcurrentGCThread {
   bool subphase_delay_to_keep_mmu_before_remark();
   bool subphase_remark();
 
-  bool phase_scrub_dead_objects();
-  bool phase_rebuild_remembered_sets();
+  bool phase_rebuild_and_scrub();
   bool phase_delay_to_keep_mmu_before_cleanup();
   bool phase_cleanup();
   bool phase_clear_bitmap_for_next_mark();
