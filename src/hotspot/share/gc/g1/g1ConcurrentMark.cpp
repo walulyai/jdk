@@ -2084,9 +2084,6 @@ class G1RebuildRSAndScrubTask : public WorkerTask {
     }
 
     void scrub_and_rebuild_region(HeapRegion* hr) {
-      HeapWord* limit = hr->parsable_bottom();
-      HeapWord* current_obj = hr->bottom();
-
       if (!should_handle_region(hr)) {
         // Region allocated during rebuild, no need to rebuild remembered sets
         // or scrub this region.
@@ -2098,6 +2095,8 @@ class G1RebuildRSAndScrubTask : public WorkerTask {
                              HR_FORMAT_PARAMS(hr), p2i(hr->parsable_bottom()));
 
       // Scrub and rebuild from bottom to TAMS/parsable bottom.
+      HeapWord* limit = hr->parsable_bottom();
+      HeapWord* current_obj = hr->bottom();
       while (current_obj < limit) {
         if (_bitmap->is_marked(current_obj)) {
           assert(!cast_to_oop(current_obj)->is_gc_marked(), "No live objects in G1 should be GC marked");
