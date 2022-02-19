@@ -29,10 +29,9 @@
 #include "gc/g1/g1CardSetContainers.hpp"
 #include "gc/g1/g1SegmentedArray.hpp"
 #include "gc/g1/g1SegmentedArrayFreePool.hpp"
-#include "gc/shared/nodeFreeList.inline.hpp"
+#include "gc/shared/nodeFreeList.hpp"
 #include "memory/allocation.hpp"
 #include "utilities/growableArray.hpp"
-#include "utilities/lockFreeStack.hpp"
 
 class G1CardSetConfiguration;
 class outputStream;
@@ -94,8 +93,7 @@ class G1CardSetAllocator {
   // by this allocator.
 
   SegmentedArray _segmented_array;
-  NodeFreeList<false /* padding */> _free_slots_list;
-
+  NodeFreeList _free_slots_list;
 
 public:
   G1CardSetAllocator(const char* name,

@@ -26,7 +26,6 @@
 #define SHARE_GC_G1_G1CARDSETCONTAINERS_HPP
 
 #include "gc/g1/g1CardSet.hpp"
-#include "gc/shared/nodeFreeList.inline.hpp"
 #include "memory/allocation.hpp"
 #include "runtime/atomic.hpp"
 #include "utilities/bitMap.inline.hpp"

@@ -31,9 +31,15 @@
 #include "utilities/globalDefinitions.hpp"
 #include "utilities/lockFreeStack.hpp"
 
+// Allocation is based on a lock-free free list of nodes, linked through
+// Node::_next (see BufferNode::Stack).  To solve the ABA problem,
+// popping a node from the free list is performed within a GlobalCounter
+// critical section, and pushing nodes onto the free list is done after
+// a GlobalCounter synchronization associated with the nodes to be pushed.
+// This is documented behavior so that other parts of the node life-cycle
+// can depend on and make use of it too.
+class NodeFreeList {
   struct FreeNode {
-    static FreeNode* volatile* next_ptr(FreeNode& node) { return node.next_addr(); }
-    typedef LockFreeStack<FreeNode, &next_ptr> Stack;
     FreeNode * _next;
 
     FreeNode() : _next (nullptr) { }
@@ -44,59 +50,6 @@
 
     void set_next(FreeNode* next) { _next = next; }
   };
-
-template <bool padding>
-struct NodeFreeListBase;
-
-template <>
-struct NodeFreeListBase<true> {
-  // If we don't expect many instances, padding seems like a good tradeoff here.
-#define DECLARE_PADDED_MEMBER(Id, Type, Name) \
-  Type Name; DEFINE_PAD_MINUS_SIZE(Id, DEFAULT_CACHE_LINE_SIZE, sizeof(Type))
-  DECLARE_PADDED_MEMBER(1, volatile size_t, _free_count);
-  DECLARE_PADDED_MEMBER(2, typename FreeNode::Stack, _free_list);
-  DECLARE_PADDED_MEMBER(3, volatile uint, _active_pending_list);
-  DECLARE_PADDED_MEMBER(4, volatile bool, _transfer_lock);
-
-  NodeFreeListBase() :
-    _free_count(0),
-    _free_list(),
-    _active_pending_list(0),
-    _transfer_lock(false)
-  { }
-#undef DECLARE_PADDED_MEMBER
-};
-
-template <>
-struct NodeFreeListBase<false> {
-  volatile size_t _free_count;
-  typename FreeNode::Stack _free_list;
-  volatile uint _active_pending_list;
-  volatile bool _transfer_lock;
-
-  NodeFreeListBase() :
-    _free_count(0),
-    _free_list(),
-    _active_pending_list(0),
-    _transfer_lock(false)
-  { }
-};
-
-// Allocation is based on a lock-free free list of nodes, linked through
-// Node::_next (see BufferNode::Stack).  To solve the ABA problem,
-// popping a node from the free list is performed within a GlobalCounter
-// critical section, and pushing nodes onto the free list is done after
-// a GlobalCounter synchronization associated with the nodes to be pushed.
-// This is documented behavior so that other parts of the node life-cycle
-// can depend on and make use of it too.
-template <bool padding = true>
-class NodeFreeList: NodeFreeListBase<padding>  {
-  friend class BufferNodeAllocatorTest;
-
-  using  NodeFreeListBase<padding>:: _free_count;
-  using  NodeFreeListBase<padding>::_free_list;
-  using  NodeFreeListBase<padding>::_active_pending_list;
-  using  NodeFreeListBase<padding>::_transfer_lock;
 
   struct NodeList {
     FreeNode* _head;            // First node in list or NULL if empty.
@@ -113,6 +66,7 @@ class NodeFreeList: NodeFreeListBase<padding>  {
       assert((_head == NULL) == (_entry_count == 0), "invariant");
     }
   };
+
   class PendingList {
     FreeNode* _tail;
     FreeNode* volatile _head;
@@ -135,7 +89,17 @@ class NodeFreeList: NodeFreeListBase<padding>  {
     NodeList take_all();
   };
 
-  char _name[DEFAULT_CACHE_LINE_SIZE];
+  static FreeNode* volatile* next_ptr(FreeNode& node) { return node.next_addr(); }
+  typedef LockFreeStack<FreeNode, &next_ptr> Stack;
+
+  volatile size_t _free_count;
+  char _name[DEFAULT_CACHE_LINE_SIZE - sizeof(size_t)];  // Use name as padding.
+#define DECLARE_PADDED_MEMBER(Id, Type, Name) \
+  Type Name; DEFINE_PAD_MINUS_SIZE(Id, DEFAULT_CACHE_LINE_SIZE, sizeof(Type))
+  DECLARE_PADDED_MEMBER(1, Stack, _free_list);
+  DECLARE_PADDED_MEMBER(2, volatile uint, _active_pending_list);
+  DECLARE_PADDED_MEMBER(3, volatile bool, _transfer_lock);
+#undef DECLARE_PADDED_MEMBER
 
   PendingList _pending_lists[2];
 
