@@ -26,6 +26,7 @@
 #define SHARE_GC_G1_G1CARDSETCONTAINERS_HPP
 
 #include "gc/g1/g1CardSet.hpp"
+#include "gc/shared/nodeFreeList.inline.hpp"
 #include "memory/allocation.hpp"
 #include "runtime/atomic.hpp"
 #include "utilities/bitMap.inline.hpp"
@@ -174,9 +175,6 @@ public:
     return &_next;
   }
 
-  static G1CardSetContainer* volatile* next_ptr(G1CardSetContainer& node) { return node.next_addr(); }
-  typedef LockFreeStack<G1CardSetContainer, &next_ptr> Stack;
-
   void set_next(G1CardSetContainer* next) {
     _next = next;
   }
@@ -264,11 +262,6 @@ public:
 
   template <class CardVisitor>
   void iterate(CardVisitor& found, size_t const size_in_bits, uint offset);
-
-  uint next(uint const idx, size_t const size_in_bits) {
-    BitMapView bm(_bits, size_in_bits);
-    return static_cast<uint>(bm.get_next_one_offset(idx));
-  }
 
   static size_t header_size_in_bytes() { return header_size_in_bytes_internal<G1CardSetBitMap>(); }
 

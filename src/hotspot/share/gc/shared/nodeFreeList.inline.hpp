@@ -31,17 +31,17 @@
 #include "runtime/atomic.hpp"
 #include "utilities/globalCounter.inline.hpp"
 
-template <class Node, bool padding>
-NodeFreeList<Node, padding>::PendingList::PendingList() :
+template <bool padding>
+NodeFreeList<padding>::PendingList::PendingList() :
   _tail(nullptr), _head(nullptr), _count(0) {}
 
-template <class Node, bool padding>
-NodeFreeList<Node, padding>::PendingList::~PendingList() { }
+template <bool padding>
+NodeFreeList<padding>::PendingList::~PendingList() { }
 
-template <class Node, bool padding>
-size_t NodeFreeList<Node, padding>::PendingList::add(Node* node) {
+template <bool padding>
+size_t NodeFreeList<padding>::PendingList::add(FreeNode* node) {
   assert(node->next() == nullptr, "precondition");
-  Node* old_head = Atomic::xchg(&_head, node);
+  FreeNode* old_head = Atomic::xchg(&_head, node);
   if (old_head != nullptr) {
     node->set_next(old_head);
   } else {
@@ -51,71 +51,70 @@ size_t NodeFreeList<Node, padding>::PendingList::add(Node* node) {
   return Atomic::add(&_count, size_t(1));
 }
 
-template <class Node, bool padding>
-typename NodeFreeList<Node, padding>::NodeList NodeFreeList<Node, padding>::PendingList::take_all() {
+template <bool padding>
+typename NodeFreeList<padding>::NodeList NodeFreeList<padding>::PendingList::take_all() {
   NodeList result{Atomic::load(&_head), _tail, Atomic::load(&_count)};
-  Atomic::store(&_head, (Node*)nullptr);
+  Atomic::store(&_head, (FreeNode*)nullptr);
   _tail = nullptr;
   Atomic::store(&_count, size_t(0));
   return result;
 }
 
-template <class Node, bool padding>
-size_t NodeFreeList<Node, padding>::PendingList::count() const {
+template <bool padding>
+size_t NodeFreeList<padding>::PendingList::count() const {
   return  Atomic::load(&_count);
 }
 
-template <class Node, bool padding>
-template <typename... Args>
-NodeFreeList<Node, padding>::NodeFreeList(const char* name) :
-  NodeFreeListBase<Node, padding>(),
+template <bool padding>
+NodeFreeList<padding>::NodeFreeList(const char* name) :
+  NodeFreeListBase<padding>(),
   _pending_lists()
 {
   strncpy(_name, name, sizeof(_name) - 1);
   _name[sizeof(_name) - 1] = '\0';
 }
 
-template <class Node, bool padding>
+template <bool padding>
 template<class DELETE_FUNC>
-void NodeFreeList<Node, padding>::delete_list(Node* list, DELETE_FUNC& delete_fn) {
+void NodeFreeList<padding>::delete_list(FreeNode* list, DELETE_FUNC& delete_fn) {
   try_transfer_pending();
   while (list != NULL) {
-    Node* next = list->next();
+    FreeNode* next = list->next();
     DEBUG_ONLY(list->set_next(NULL);)
-    delete_fn(list);
+    delete_fn((void *)list);
     list = next;
     --_free_count;
   }
   assert(_free_count == 0, "Post-condition");
 }
 
-template <class Node, bool padding>
-NodeFreeList<Node, padding>::~NodeFreeList() {
+template <bool padding>
+NodeFreeList<padding>::~NodeFreeList() {
   assert(_free_count == 0, "Post-condition");
 }
 
-template <class Node, bool padding>
-void NodeFreeList<Node, padding>::reset() {
+template <bool padding>
+void NodeFreeList<padding>::reset() {
   try_transfer_pending();
   _free_list.pop_all();
   _free_count = 0;
 }
 
 
-template <class Node, bool padding>
-size_t NodeFreeList<Node, padding>::free_count() const {
+template <bool padding>
+size_t NodeFreeList<padding>::free_count() const {
   return Atomic::load(&_free_count);
 }
 
-template <class Node, bool padding>
-size_t NodeFreeList<Node, padding>::pending_count() const {
+template <bool padding>
+size_t NodeFreeList<padding>::pending_count() const {
   uint index = Atomic::load(&_active_pending_list);
   return _pending_lists[index].count();;
 }
 
-template <class Node, bool padding>
-Node* NodeFreeList<Node, padding>::get() {
-  Node* node = nullptr;
+template <bool padding>
+void* NodeFreeList<padding>::get() {
+  FreeNode* node = nullptr;
   if (free_count() > 0) {
 
     // Protect against ABA; see release().
@@ -131,7 +130,7 @@ Node* NodeFreeList<Node, padding>::get() {
     assert((count + 1) != 0, "_free_count underflow");
   }
 
-  return node;
+  return (void *)node;
 }
 
 // To solve the ABA problem for lock-free stack pop, allocate does the
@@ -143,11 +142,11 @@ Node* NodeFreeList<Node, padding>::get() {
 // permitted, with a lock bit to control access to that phase.  While
 // a transfer is in progress, other threads might be adding other nodes
 // to the pending list, to be dealt with by some later transfer.
-template <class Node, bool padding>
-void NodeFreeList<Node, padding>::release(Node* node) {
-  assert(node != NULL, "precondition");
-  assert(node->next() == NULL, "precondition");
-
+template <bool padding>
+void NodeFreeList<padding>::release(void* free_node) {
+  assert(free_node != nullptr, "precondition");
+  assert(is_aligned(free_node, sizeof(FreeNode)), "Unaligned addr " PTR_FORMAT, p2i(free_node));
+  FreeNode* node = new (free_node) FreeNode();
   // Desired minimum transfer batch size.  There is relatively little
   // importance to the specific number.  It shouldn't be too big, else
   // we're wasting space when the release rate is low.  If the release
@@ -175,8 +174,8 @@ void NodeFreeList<Node, padding>::release(Node* node) {
 // to solve ABA there.  Return true if performed a (possibly empty)
 // transfer, false if blocked from doing so by some other thread's
 // in-progress transfer.
-template <class Node, bool padding>
-bool NodeFreeList<Node, padding>::try_transfer_pending() {
+template <bool padding>
+bool NodeFreeList<padding>::try_transfer_pending() {
   // Attempt to claim the lock.
   if (Atomic::load(&_transfer_lock) || // Skip CAS if likely to fail.
       Atomic::cmpxchg(&_transfer_lock, false, true)) {
@@ -209,15 +208,15 @@ bool NodeFreeList<Node, padding>::try_transfer_pending() {
   return true;
 }
 
-template <class Node, bool padding>
+template <bool padding>
 template<class DELETE_FUNC>
-size_t NodeFreeList<Node, padding>::reduce_free_list(size_t remove_goal, DELETE_FUNC& delete_fn) {
+size_t NodeFreeList<padding>::reduce_free_list(size_t remove_goal, DELETE_FUNC& delete_fn) {
   try_transfer_pending();
   size_t removed = 0;
   for ( ; removed < remove_goal; ++removed) {
-    Node* node = _free_list.pop();
+    NodeList* node = _free_list.pop();
     if (node == NULL) break;
-    delete_fn(node);
+    delete_fn((void *)node);
   }
   size_t new_count = Atomic::sub(&_free_count, removed);
   log_debug(gc, ptrqueue, freelist)

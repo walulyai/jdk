@@ -37,7 +37,7 @@ template <class Slot>
 Slot* G1CardSetAllocator<Slot>::allocate() {
   assert(_segmented_array.slot_size() > 0, "instance size not set.");
 
-  G1CardSetContainer* container = _free_slots_list.get();
+  G1CardSetContainer* container = static_cast<G1CardSetContainer*>(_free_slots_list.get());
 
   if (container != nullptr) {
     Slot* slot = reinterpret_cast<Slot*>(reinterpret_cast<char*>(container));

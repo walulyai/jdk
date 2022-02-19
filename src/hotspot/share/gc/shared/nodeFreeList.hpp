@@ -29,37 +29,55 @@
 
 #include "memory/padded.hpp"
 #include "utilities/globalDefinitions.hpp"
+#include "utilities/lockFreeStack.hpp"
 
-template <class Node, bool padding = true>
-struct NodeFreeListBase {
+  struct FreeNode {
+    static FreeNode* volatile* next_ptr(FreeNode& node) { return node.next_addr(); }
+    typedef LockFreeStack<FreeNode, &next_ptr> Stack;
+    FreeNode * _next;
+
+    FreeNode() : _next (nullptr) { }
+
+    FreeNode* next() { return _next; }
+
+    FreeNode** next_addr() { return &_next; }
+
+    void set_next(FreeNode* next) { _next = next; }
+  };
+
+template <bool padding>
+struct NodeFreeListBase;
+
+template <>
+struct NodeFreeListBase<true> {
   // If we don't expect many instances, padding seems like a good tradeoff here.
 #define DECLARE_PADDED_MEMBER(Id, Type, Name) \
   Type Name; DEFINE_PAD_MINUS_SIZE(Id, DEFAULT_CACHE_LINE_SIZE, sizeof(Type))
-  DECLARE_PADDED_MEMBER(1, volatile uint, _active_pending_list);
-  DECLARE_PADDED_MEMBER(2, typename Node::Stack, _free_list);
-  DECLARE_PADDED_MEMBER(3, volatile size_t, _free_count);
+  DECLARE_PADDED_MEMBER(1, volatile size_t, _free_count);
+  DECLARE_PADDED_MEMBER(2, typename FreeNode::Stack, _free_list);
+  DECLARE_PADDED_MEMBER(3, volatile uint, _active_pending_list);
   DECLARE_PADDED_MEMBER(4, volatile bool, _transfer_lock);
 
   NodeFreeListBase() :
-    _active_pending_list(0),
-    _free_list(),
     _free_count(0),
+    _free_list(),
+    _active_pending_list(0),
     _transfer_lock(false)
   { }
 #undef DECLARE_PADDED_MEMBER
 };
 
-template <class Node>
-struct NodeFreeListBase<Node, false> {
-  volatile uint _active_pending_list;
-  typename Node::Stack _free_list;
+template <>
+struct NodeFreeListBase<false> {
   volatile size_t _free_count;
+  typename FreeNode::Stack _free_list;
+  volatile uint _active_pending_list;
   volatile bool _transfer_lock;
 
   NodeFreeListBase() :
-    _active_pending_list(0),
-    _free_list(),
     _free_count(0),
+    _free_list(),
+    _active_pending_list(0),
     _transfer_lock(false)
   { }
 };
@@ -71,24 +89,24 @@ struct NodeFreeListBase<Node, false> {
 // a GlobalCounter synchronization associated with the nodes to be pushed.
 // This is documented behavior so that other parts of the node life-cycle
 // can depend on and make use of it too.
-template <class Node, bool padding = true>
-class NodeFreeList: NodeFreeListBase<Node, padding>  {
+template <bool padding = true>
+class NodeFreeList: NodeFreeListBase<padding>  {
   friend class BufferNodeAllocatorTest;
 
-  using  NodeFreeListBase<Node, padding>::_active_pending_list;
-  using  NodeFreeListBase<Node, padding>::_free_list;
-  using  NodeFreeListBase<Node, padding>:: _free_count;
-  using  NodeFreeListBase<Node, padding>::_transfer_lock;
+  using  NodeFreeListBase<padding>:: _free_count;
+  using  NodeFreeListBase<padding>::_free_list;
+  using  NodeFreeListBase<padding>::_active_pending_list;
+  using  NodeFreeListBase<padding>::_transfer_lock;
 
   struct NodeList {
-    Node* _head;            // First node in list or NULL if empty.
-    Node* _tail;            // Last node in list or NULL if empty.
+    FreeNode* _head;            // First node in list or NULL if empty.
+    FreeNode* _tail;            // Last node in list or NULL if empty.
     size_t _entry_count; // Sum of entries in nodes in list.
 
     NodeList() :
       _head(NULL), _tail(NULL), _entry_count(0) {}
 
-    NodeList(Node* head, Node* tail, size_t entry_count) :
+    NodeList(FreeNode* head, FreeNode* tail, size_t entry_count) :
       _head(head), _tail(tail), _entry_count(entry_count)
     {
       assert((_head == NULL) == (_tail == NULL), "invariant");
@@ -96,8 +114,8 @@ class NodeFreeList: NodeFreeListBase<Node, padding>  {
     }
   };
   class PendingList {
-    Node* _tail;
-    Node* volatile _head;
+    FreeNode* _tail;
+    FreeNode* volatile _head;
     volatile size_t _count;
 
     NONCOPYABLE(PendingList);
@@ -108,7 +126,7 @@ class NodeFreeList: NodeFreeListBase<Node, padding>  {
 
     // Add node to the list.  Returns the number of nodes in the list.
     // Thread-safe against concurrent add operations.
-    size_t add(Node* node);
+    size_t add(FreeNode* node);
 
     size_t count() const;
 
@@ -122,14 +140,13 @@ class NodeFreeList: NodeFreeListBase<Node, padding>  {
   PendingList _pending_lists[2];
 
   template<class DELETE_FUNC>
-  void delete_list(Node* list, DELETE_FUNC& delete_fn);
+  void delete_list(FreeNode* list, DELETE_FUNC& delete_fn);
 
   bool try_transfer_pending();
 
   NONCOPYABLE(NodeFreeList);
 
 public:
-  template <typename... Args>
   NodeFreeList(const char* name);
 
   const char* name() const { return _name; }
@@ -139,9 +156,8 @@ public:
   size_t free_count() const;
   size_t pending_count() const;
 
-  Node* get();
-  Node* get_all();
-  void release(Node* node);
+  void* get();
+  void release(void* node);
   void reset();
 
   size_t mem_size() const {

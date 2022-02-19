@@ -94,7 +94,7 @@ class G1CardSetAllocator {
   // by this allocator.
 
   SegmentedArray _segmented_array;
-  NodeFreeList<G1CardSetContainer, false /* padding */> _free_slots_list;
+  NodeFreeList<false /* padding */> _free_slots_list;
 
 
 public:

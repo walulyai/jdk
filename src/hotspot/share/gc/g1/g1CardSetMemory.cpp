@@ -49,8 +49,7 @@ G1CardSetAllocator<Slot>::~G1CardSetAllocator() {
 template <class Slot>
 void G1CardSetAllocator<Slot>::free(Slot* slot) {
   assert(slot != nullptr, "precondition");
-  G1CardSetContainer* container =  reinterpret_cast<G1CardSetContainer*>(reinterpret_cast<char*>(slot));
-  _free_slots_list.release(container);
+  _free_slots_list.release((void *)slot);
 }
 
 template <class Slot>
