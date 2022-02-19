@@ -262,6 +262,11 @@ public:
   template <class CardVisitor>
   void iterate(CardVisitor& found, size_t const size_in_bits, uint offset);
 
+  uint next(uint const idx, size_t const size_in_bits) {
+    BitMapView bm(_bits, size_in_bits);
+    return static_cast<uint>(bm.get_next_one_offset(idx));
+  }
+
   static size_t header_size_in_bytes() { return header_size_in_bytes_internal<G1CardSetBitMap>(); }
 
   static size_t size_in_bytes(size_t size_in_bits) { return header_size_in_bytes() + BitMap::calc_size_in_words(size_in_bits) * BytesPerWord; }
