@@ -31,9 +31,9 @@
 #include "utilities/globalDefinitions.hpp"
 #include "utilities/lockFreeStack.hpp"
 
-// Allocation is based on a lock-free free list of nodes, linked through
-// Node::_next (see BufferNode::Stack).  To solve the ABA problem,
-// popping a node from the free list is performed within a GlobalCounter
+// A lock-free free list of recycled nodes, linked through
+// FreeNode::_next.  To solve the ABA problem, popping a node from
+// the free list is performed within a GlobalCounter critical section,
 // critical section, and pushing nodes onto the free list is done after
 // a GlobalCounter synchronization associated with the nodes to be pushed.
 // This is documented behavior so that other parts of the node life-cycle
@@ -91,7 +91,6 @@ class NodeFreeList {
 
   static FreeNode* volatile* next_ptr(FreeNode& node) { return node.next_addr(); }
   typedef LockFreeStack<FreeNode, &next_ptr> Stack;
-  typedef void (*DELETE_FUNC)(void *);
 
   volatile size_t _free_count;
   char _name[DEFAULT_CACHE_LINE_SIZE - sizeof(size_t)];  // Use name as padding.
@@ -131,9 +130,10 @@ public:
 
   void delete_list(DeleteFn delete_fn);
 
-  // Deallocate some of the available buffers.  remove_goal is the target
-  // number to remove.  Returns the number actually deallocated, which may
-  // be less than the goal if there were fewer available.
+  // Deallocate some of the available nodes in the free_list.
+  // remove_goal is the target number to remove.  Returns the number
+  // actually deallocated, which may be less than the goal if there
+  // were fewer available.
   size_t reduce_free_list(size_t remove_goal, DeleteFn delete_fn);
 };
 

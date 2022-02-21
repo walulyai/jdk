@@ -193,7 +193,7 @@ public:
   void release(BufferNode* node);
 
   // If free_list has items buffered in the pending list, transfer
-  // these to the free_list.
+  // these to make them available for re-allocation.
   bool flush_free_list() { return _free_list.flush(); }
 
   // Deallocate some of the available buffers.  remove_goal is the target
