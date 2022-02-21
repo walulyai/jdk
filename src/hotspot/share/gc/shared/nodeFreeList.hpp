@@ -91,6 +91,7 @@ class NodeFreeList {
 
   static FreeNode* volatile* next_ptr(FreeNode& node) { return node.next_addr(); }
   typedef LockFreeStack<FreeNode, &next_ptr> Stack;
+  typedef void (*DELETE_FUNC)(void *);
 
   volatile size_t _free_count;
   char _name[DEFAULT_CACHE_LINE_SIZE - sizeof(size_t)];  // Use name as padding.
@@ -102,9 +103,6 @@ class NodeFreeList {
 #undef DECLARE_PADDED_MEMBER
 
   PendingList _pending_lists[2];
-
-  template<class DELETE_FUNC>
-  void delete_list(FreeNode* list, DELETE_FUNC& delete_fn);
 
   bool try_transfer_pending();
 
@@ -123,16 +121,20 @@ public:
   void* get();
   void release(void* node);
   void reset();
+  bool flush();
 
   size_t mem_size() const {
     return sizeof(*this);
   }
 
+  typedef void (*DeleteFn)(void *);
+
+  void delete_list(DeleteFn delete_fn);
+
   // Deallocate some of the available buffers.  remove_goal is the target
   // number to remove.  Returns the number actually deallocated, which may
   // be less than the goal if there were fewer available.
-  template<class DELETE_FUNC>
-  size_t reduce_free_list(size_t remove_goal, DELETE_FUNC& delete_fn);
+  size_t reduce_free_list(size_t remove_goal, DeleteFn delete_fn);
 };
 
 #endif // SHARE_GC_SHARED_NODEFREELIST_HPP
