@@ -35,7 +35,7 @@
 
 template <class Slot>
 Slot* G1CardSetAllocator<Slot>::allocate() {
-  Slot* slot = ::new (_free_slots_list.get()) Slot();
+  Slot* slot = ::new (_free_slots_list.allocate()) Slot();
   assert(slot != nullptr, "must be");
   return slot;
 }

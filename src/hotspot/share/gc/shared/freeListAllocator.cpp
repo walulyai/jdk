@@ -116,10 +116,9 @@ size_t FreeListAllocator::pending_count() const {
   return _pending_lists[index].count();;
 }
 
-void* FreeListAllocator::get() {
+void* FreeListAllocator::allocate() {
   FreeNode* node = nullptr;
   if (free_count() > 0) {
-
     // Protect against ABA; see release().
     GlobalCounter::CriticalSection cs(Thread::current());
     node = _free_list.pop();

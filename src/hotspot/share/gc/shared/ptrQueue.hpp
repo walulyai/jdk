@@ -185,7 +185,7 @@ public:
 class BufferNode::Allocator {
   friend class TestSupport;
 
-  AllocatorConfig _arena;
+  AllocatorConfig _config;
   FreeListAllocator _free_list;
 
   NONCOPYABLE(Allocator);
@@ -194,7 +194,7 @@ public:
   Allocator(const char* name, size_t buffer_size);
   ~Allocator();
 
-  size_t buffer_size() const { return _arena.buffer_size(); }
+  size_t buffer_size() const { return _config.buffer_size(); }
   size_t free_count() const;
   BufferNode* allocate();
   void release(BufferNode* node);

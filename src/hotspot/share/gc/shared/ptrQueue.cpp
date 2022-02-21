@@ -58,8 +58,8 @@ void BufferNode::AllocatorConfig::deallocate(void* node) {
 }
 
 BufferNode::Allocator::Allocator(const char* name, size_t buffer_size) :
-  _arena(buffer_size),
-  _free_list(name, &_arena)
+  _config(buffer_size),
+  _free_list(name, &_config)
 {
 
 }
@@ -73,7 +73,7 @@ size_t BufferNode::Allocator::free_count() const {
 }
 
 BufferNode* BufferNode::Allocator::allocate() {
-  return ::new (_free_list.get()) BufferNode();
+  return ::new (_free_list.allocate()) BufferNode();
 }
 
 void BufferNode::Allocator::release(BufferNode* node) {

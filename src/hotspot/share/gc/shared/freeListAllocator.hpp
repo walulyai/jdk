@@ -120,7 +120,7 @@ public:
   size_t free_count() const;
   size_t pending_count() const;
 
-  void* get();
+  void* allocate();
   void release(void* node);
 
   void reset();
