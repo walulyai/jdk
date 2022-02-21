@@ -29,7 +29,7 @@
 #include "gc/g1/g1CardSetContainers.hpp"
 #include "gc/g1/g1SegmentedArray.hpp"
 #include "gc/g1/g1SegmentedArrayFreePool.hpp"
-#include "gc/shared/nodeFreeList.hpp"
+#include "gc/shared/freeListAllocator.hpp"
 #include "memory/allocation.hpp"
 #include "utilities/growableArray.hpp"
 
@@ -93,7 +93,7 @@ class G1CardSetAllocator {
   // by this allocator.
 
   SegmentedArray _segmented_array;
-  NodeFreeList _free_slots_list;
+  FreeListAllocator _free_slots_list;
 
 public:
   G1CardSetAllocator(const char* name,

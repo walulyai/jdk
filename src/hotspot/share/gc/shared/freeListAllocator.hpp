@@ -22,8 +22,8 @@
  *
  */
 
-#ifndef SHARE_GC_SHARED_NODEFREELIST_HPP
-#define SHARE_GC_SHARED_NODEFREELIST_HPP
+#ifndef SHARE_GC_SHARED_FREELISTALLOCATOR_HPP
+#define SHARE_GC_SHARED_FREELISTALLOCATOR_HPP
 
 #include <type_traits>
 
@@ -31,40 +31,41 @@
 #include "utilities/globalDefinitions.hpp"
 #include "utilities/lockFreeStack.hpp"
 
-// A lock-free free list of recycled nodes, linked through
-// FreeNode::_next.  To solve the ABA problem, popping a node from
-// the free list is performed within a GlobalCounter critical section,
+class FreeListConfig {
+public:
+  virtual void* allocate() = 0;
+
+  virtual  void deallocate(void* node) = 0;
+};
+
+// Allocation is based on a lock-free free list of nodes, linked through
+// BufferNode::_next (see BufferNode::Stack).  To solve the ABA problem,
+// popping a node from the free list is performed within a GlobalCounter
 // critical section, and pushing nodes onto the free list is done after
 // a GlobalCounter synchronization associated with the nodes to be pushed.
 // This is documented behavior so that other parts of the node life-cycle
 // can depend on and make use of it too.
-class NodeFreeList {
+class FreeListAllocator {
   struct FreeNode {
-    FreeNode * _next;
+    FreeNode* volatile _next;
 
     FreeNode() : _next (nullptr) { }
 
     FreeNode* next() { return _next; }
 
-    FreeNode** next_addr() { return &_next; }
+    FreeNode* volatile* next_addr() { return &_next; }
 
     void set_next(FreeNode* next) { _next = next; }
   };
 
   struct NodeList {
-    FreeNode* _head;            // First node in list or NULL if empty.
-    FreeNode* _tail;            // Last node in list or NULL if empty.
+    FreeNode* _head;     // First node in list or NULL if empty.
+    FreeNode* _tail;     // Last node in list or NULL if empty.
     size_t _entry_count; // Sum of entries in nodes in list.
 
-    NodeList() :
-      _head(NULL), _tail(NULL), _entry_count(0) {}
+    NodeList();
 
-    NodeList(FreeNode* head, FreeNode* tail, size_t entry_count) :
-      _head(head), _tail(tail), _entry_count(entry_count)
-    {
-      assert((_head == NULL) == (_tail == NULL), "invariant");
-      assert((_head == NULL) == (_entry_count == 0), "invariant");
-    }
+    NodeList(FreeNode* head, FreeNode* tail, size_t entry_count);
   };
 
   class PendingList {
@@ -76,7 +77,7 @@ class NodeFreeList {
 
   public:
     PendingList();
-    ~PendingList();
+    ~PendingList() = default;
 
     // Add node to the list.  Returns the number of nodes in the list.
     // Thread-safe against concurrent add operations.
@@ -92,33 +93,36 @@ class NodeFreeList {
   static FreeNode* volatile* next_ptr(FreeNode& node) { return node.next_addr(); }
   typedef LockFreeStack<FreeNode, &next_ptr> Stack;
 
-  volatile size_t _free_count;
+  FreeListConfig* _config;
   char _name[DEFAULT_CACHE_LINE_SIZE - sizeof(size_t)];  // Use name as padding.
+
 #define DECLARE_PADDED_MEMBER(Id, Type, Name) \
   Type Name; DEFINE_PAD_MINUS_SIZE(Id, DEFAULT_CACHE_LINE_SIZE, sizeof(Type))
-  DECLARE_PADDED_MEMBER(1, Stack, _free_list);
-  DECLARE_PADDED_MEMBER(2, volatile uint, _active_pending_list);
+  DECLARE_PADDED_MEMBER(1, volatile size_t, _free_count);
+  DECLARE_PADDED_MEMBER(2, Stack, _free_list);
   DECLARE_PADDED_MEMBER(3, volatile bool, _transfer_lock);
 #undef DECLARE_PADDED_MEMBER
 
+  volatile uint _active_pending_list;
   PendingList _pending_lists[2];
 
   bool try_transfer_pending();
 
-  NONCOPYABLE(NodeFreeList);
+  NONCOPYABLE(FreeListAllocator);
 
 public:
-  NodeFreeList(const char* name);
+  FreeListAllocator(const char* name, FreeListConfig* config);
 
   const char* name() const { return _name; }
 
-  ~NodeFreeList();
+  ~FreeListAllocator();
 
   size_t free_count() const;
   size_t pending_count() const;
 
   void* get();
   void release(void* node);
+
   void reset();
   bool flush();
 
@@ -126,15 +130,13 @@ public:
     return sizeof(*this);
   }
 
-  typedef void (*DeleteFn)(void *);
-
-  void delete_list(DeleteFn delete_fn);
+  void delete_list();
 
   // Deallocate some of the available nodes in the free_list.
   // remove_goal is the target number to remove.  Returns the number
   // actually deallocated, which may be less than the goal if there
   // were fewer available.
-  size_t reduce_free_list(size_t remove_goal, DeleteFn delete_fn);
+  size_t reduce_free_list(size_t remove_goal);
 };
 
-#endif // SHARE_GC_SHARED_NODEFREELIST_HPP
+#endif // SHARE_GC_SHARED_FREELISTALLOCATOR_HPP

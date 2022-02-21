@@ -210,7 +210,7 @@ void G1SegmentedArray<Slot, flag>::drop_all() {
 }
 
 template <class Slot, MEMFLAGS flag>
-Slot* G1SegmentedArray<Slot, flag>::allocate() {
+void* G1SegmentedArray<Slot, flag>::allocate() {
   assert(slot_size() > 0, "instance size not set.");
 
   G1SegmentedArraySegment<flag>* cur = Atomic::load_acquire(&_first);
@@ -224,7 +224,7 @@ Slot* G1SegmentedArray<Slot, flag>::allocate() {
       Atomic::inc(&_num_allocated_slots, memory_order_relaxed);
       guarantee(is_aligned(slot, _alloc_options->slot_alignment()),
                 "result " PTR_FORMAT " not aligned at %u", p2i(slot), _alloc_options->slot_alignment());
-      return slot;
+      return (void *)slot;
     }
     // The segment is full. Next round.
     assert(cur->is_full(), "must be");

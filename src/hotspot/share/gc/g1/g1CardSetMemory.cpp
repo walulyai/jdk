@@ -35,7 +35,7 @@ G1CardSetAllocator<Slot>::G1CardSetAllocator(const char* name,
                                              const G1CardSetAllocOptions* alloc_options,
                                              G1CardSetFreeList* free_segment_list) :
   _segmented_array(alloc_options, free_segment_list),
-  _free_slots_list(name)
+  _free_slots_list(name, &_segmented_array)
 {
   uint slot_size = _segmented_array.slot_size();
   assert(slot_size >= sizeof(G1CardSetContainer), "Slot instance size %u for allocator %s too small", slot_size, name);
@@ -49,6 +49,7 @@ G1CardSetAllocator<Slot>::~G1CardSetAllocator() {
 template <class Slot>
 void G1CardSetAllocator<Slot>::free(Slot* slot) {
   assert(slot != nullptr, "precondition");
+  slot->~Slot();
   _free_slots_list.release((void *)slot);
 }
 

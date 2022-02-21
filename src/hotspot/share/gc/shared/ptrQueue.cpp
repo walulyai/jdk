@@ -45,28 +45,27 @@ PtrQueue::~PtrQueue() {
   assert(_buf == NULL, "queue must be flushed before delete");
 }
 
-BufferNode* BufferNode::allocate(size_t size) {
-  size_t byte_size = size * sizeof(void*);
-  void* data = NEW_C_HEAP_ARRAY(char, buffer_offset() + byte_size, mtGC);
-  return new (data) BufferNode;
+BufferNode::AllocatorConfig::AllocatorConfig(size_t size) : _buffer_size(size) {}
+
+void* BufferNode::AllocatorConfig::allocate() {
+  size_t byte_size = _buffer_size * sizeof(void*);
+  return NEW_C_HEAP_ARRAY(char, buffer_offset() + byte_size, mtGC);
 }
 
-void BufferNode::deallocate(void* free_node) {
+void BufferNode::AllocatorConfig::deallocate(void* node) {
   assert(free_node != nullptr, "precondition");
-  BufferNode* node = (BufferNode*)free_node;
-  node->~BufferNode();
   FREE_C_HEAP_ARRAY(char, node);
 }
 
 BufferNode::Allocator::Allocator(const char* name, size_t buffer_size) :
-  _buffer_size(buffer_size),
-  _free_list(name)
+  _arena(buffer_size),
+  _free_list(name, &_arena)
 {
 
 }
 
 BufferNode::Allocator::~Allocator() {
-  _free_list.delete_list(BufferNode::deallocate);
+  _free_list.delete_list();
 }
 
 size_t BufferNode::Allocator::free_count() const {
@@ -74,22 +73,18 @@ size_t BufferNode::Allocator::free_count() const {
 }
 
 BufferNode* BufferNode::Allocator::allocate() {
-  BufferNode* node = (BufferNode*)_free_list.get();
-
-  if (node == nullptr) {
-    node = BufferNode::allocate(_buffer_size);
-  }
-  return node;
+  return ::new (_free_list.get()) BufferNode();
 }
 
 void BufferNode::Allocator::release(BufferNode* node) {
   assert(node != NULL, "precondition");
   assert(node->next() == NULL, "precondition");
+  node->~BufferNode();
   _free_list.release((void*)node);
 }
 
 size_t BufferNode::Allocator::reduce_free_list(size_t remove_goal) {
-  return _free_list.reduce_free_list(remove_goal, BufferNode::deallocate);
+  return _free_list.reduce_free_list(remove_goal);
 }
 
 PtrQueueSet::PtrQueueSet(BufferNode::Allocator* allocator) :

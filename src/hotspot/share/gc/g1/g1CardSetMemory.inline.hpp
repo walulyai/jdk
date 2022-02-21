@@ -35,17 +35,7 @@
 
 template <class Slot>
 Slot* G1CardSetAllocator<Slot>::allocate() {
-  assert(_segmented_array.slot_size() > 0, "instance size not set.");
-
-  G1CardSetContainer* container = static_cast<G1CardSetContainer*>(_free_slots_list.get());
-
-  if (container != nullptr) {
-    Slot* slot = reinterpret_cast<Slot*>(reinterpret_cast<char*>(container));
-    guarantee(is_aligned(slot, 8), "result " PTR_FORMAT " not aligned", p2i(slot));
-    return slot;
-  }
-
-  Slot* slot = _segmented_array.allocate();
+  Slot* slot = ::new (_free_slots_list.get()) Slot();
   assert(slot != nullptr, "must be");
   return slot;
 }

@@ -26,7 +26,7 @@
 #define SHARE_GC_SHARED_PTRQUEUE_HPP
 
 #include "gc/shared/bufferNodeList.hpp"
-#include "gc/shared/nodeFreeList.hpp"
+#include "gc/shared/freeListAllocator.hpp"
 #include "memory/padded.hpp"
 #include "utilities/align.hpp"
 #include "utilities/debug.hpp"
@@ -134,12 +134,6 @@ class BufferNode {
   }
 
 public:
-  // Allocate a new BufferNode with the "buffer" having size elements.
-  static BufferNode* allocate(size_t size);
-
-  // Free a BufferNode.
-  static void deallocate(void* node);
-
   static BufferNode* volatile* next_ptr(BufferNode& bn) { return &bn._next; }
   typedef LockFreeStack<BufferNode, &next_ptr> Stack;
 
@@ -164,8 +158,21 @@ public:
       reinterpret_cast<char*>(node) + buffer_offset());
   }
 
+  class AllocatorConfig;
   class Allocator;              // Free-list based allocator.
   class TestSupport;            // Unit test support.
+};
+
+class BufferNode::AllocatorConfig : public FreeListConfig {
+  const size_t _buffer_size;
+public:
+  explicit AllocatorConfig(size_t size);
+
+  void* allocate() override;
+
+  void deallocate(void* node) override;
+
+  size_t buffer_size() const { return _buffer_size; }
 };
 
 // Allocation is based on a lock-free free list of nodes, linked through
@@ -178,8 +185,8 @@ public:
 class BufferNode::Allocator {
   friend class TestSupport;
 
-  const size_t _buffer_size;
-  NodeFreeList _free_list;
+  AllocatorConfig _arena;
+  FreeListAllocator _free_list;
 
   NONCOPYABLE(Allocator);
 
@@ -187,7 +194,7 @@ public:
   Allocator(const char* name, size_t buffer_size);
   ~Allocator();
 
-  size_t buffer_size() const { return _buffer_size; }
+  size_t buffer_size() const { return _arena.buffer_size(); }
   size_t free_count() const;
   BufferNode* allocate();
   void release(BufferNode* node);
