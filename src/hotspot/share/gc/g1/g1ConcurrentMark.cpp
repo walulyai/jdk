@@ -1184,13 +1184,27 @@ public:
   static const uint RegionsPerThread = 384;
 };
 
-class G1UpdateRemSetTrackingAfterRebuild : public HeapRegionClosure {
+class G1UpdateRegionsAfterRebuild : public HeapRegionClosure {
   G1CollectedHeap* _g1h;
+  bool _remsets_rebuilt;
 public:
-  G1UpdateRemSetTrackingAfterRebuild(G1CollectedHeap* g1h) : _g1h(g1h) { }
+  G1UpdateRegionsAfterRebuild(G1CollectedHeap* g1h, bool remsets_rebuilt) :
+    _g1h(g1h),
+    _remsets_rebuilt(remsets_rebuilt) {
+    if (!_remsets_rebuilt) {
+      log_debug(gc, phases)("No Remembered Sets to update after rebuild");
+    }
+  }
 
   virtual bool do_heap_region(HeapRegion* r) {
-    _g1h->policy()->remset_tracker()->update_after_rebuild(r);
+    // Update the remset tracking state from updating to complete
+    // if remembered sets have been rebuilt.
+    if (_remsets_rebuilt) {
+      _g1h->policy()->remset_tracker()->update_after_rebuild(r);
+    }
+    // Update the scrubbing state for the region to mark that all
+    // regions are fully parsable after the cleanup pause.
+    r->note_end_of_scrubbing();
     return false;
   }
 };
@@ -1421,12 +1435,12 @@ void G1ConcurrentMark::cleanup() {
 
   verify_during_pause(G1HeapVerifier::G1VerifyCleanup, VerifyOption_G1UsePrevMarking, "Cleanup before");
 
-  if (needs_remembered_set_rebuild()) {
+  {
+    // Update the remset tracking information as well as marking all regions
+    // as fully parsable.
     GCTraceTime(Debug, gc, phases) debug("Update Remembered Set Tracking After Rebuild", _gc_timer_cm);
-    G1UpdateRemSetTrackingAfterRebuild cl(_g1h);
+    G1UpdateRegionsAfterRebuild cl(_g1h, needs_remembered_set_rebuild());
     _g1h->heap_region_iterate(&cl);
-  } else {
-    log_debug(gc, phases)("No Remembered Sets to update after rebuild");
   }
 
   verify_during_pause(G1HeapVerifier::G1VerifyCleanup, VerifyOption_G1UsePrevMarking, "Cleanup after");
@@ -2117,8 +2131,8 @@ class G1RebuildRSAndScrubTask : public WorkerTask {
       // Check that the initial scan is consistent.
       assert(current_obj == limit, "Should not step past limit");
 
-      // Rebuild from TAMS to TOP.
-      limit = hr->top();
+      // Rebuild from TAMS to TARS.
+      limit = _cm->top_at_rebuild_start(hr->hrm_index());
       while (current_obj < limit) {
         current_obj += rebuild_obj(hr, current_obj);
         // Avoid stalling safepoints and stop iteration if mark cycle has been aborted.
@@ -2193,8 +2207,6 @@ class G1RebuildRSAndScrubTask : public WorkerTask {
         return true;
       }
 
-      // Scrubbing and/or rebuild completed, mark region fully parsable.
-      hr->note_end_of_scrubbing();
       return false;
     }
   };
