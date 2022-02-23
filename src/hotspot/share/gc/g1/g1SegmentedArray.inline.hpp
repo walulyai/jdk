@@ -224,7 +224,7 @@ void* G1SegmentedArray<Slot, flag>::allocate() {
       Atomic::inc(&_num_allocated_slots, memory_order_relaxed);
       guarantee(is_aligned(slot, _alloc_options->slot_alignment()),
                 "result " PTR_FORMAT " not aligned at %u", p2i(slot), _alloc_options->slot_alignment());
-      return (void *)slot;
+      return slot;
     }
     // The segment is full. Next round.
     assert(cur->is_full(), "must be");

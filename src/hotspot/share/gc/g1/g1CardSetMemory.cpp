@@ -50,7 +50,7 @@ template <class Slot>
 void G1CardSetAllocator<Slot>::free(Slot* slot) {
   assert(slot != nullptr, "precondition");
   slot->~Slot();
-  _free_slots_list.release((void *)slot);
+  _free_slots_list.release(slot);
 }
 
 template <class Slot>

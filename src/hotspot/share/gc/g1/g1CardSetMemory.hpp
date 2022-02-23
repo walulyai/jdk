@@ -110,13 +110,15 @@ public:
 
   size_t mem_size() const {
     return sizeof(*this) +
-      _segmented_array.num_segments() * sizeof(G1CardSetSegment) + _segmented_array.num_available_slots() *
-                                                                   _segmented_array.slot_size();
+      _segmented_array.num_segments() * sizeof(G1CardSetSegment) +
+      _segmented_array.num_available_slots() * _segmented_array.slot_size();
   }
 
   size_t wasted_mem_size() const {
-    return (_segmented_array.num_available_slots() - (_segmented_array.num_allocated_slots() - (uint)_free_slots_list.pending_count())) *
-           _segmented_array.slot_size();
+    uint num_wasted_slots = _segmented_array.num_available_slots() -
+                            _segmented_array.num_allocated_slots() -
+                            (uint)_free_slots_list.pending_count();
+    return num_wasted_slots * _segmented_array.slot_size();
   }
 
   inline uint num_segments() { return _segmented_array.num_segments(); }

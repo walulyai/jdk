@@ -25,15 +25,28 @@
 #ifndef SHARE_GC_SHARED_FREELISTALLOCATOR_HPP
 #define SHARE_GC_SHARED_FREELISTALLOCATOR_HPP
 
+#include "memory/allocation.hpp"
 #include "memory/padded.hpp"
+#include "runtime/atomic.hpp"
 #include "utilities/globalDefinitions.hpp"
 #include "utilities/lockFreeStack.hpp"
 
-class FreeListConfig {
+class FreeListConfig : public CHeapObj<mtGC> {
+  // Desired minimum transfer batch size.  There is relatively little
+  // importance to the specific number.  It shouldn't be too big, else
+  // we're wasting space when the release rate is low.  If the release
+  // rate is high, we might accumulate more than this before being
+  // able to start a new transfer, but that's okay.
+  const size_t _transfer_threshold;
 public:
+  explicit FreeListConfig(size_t threshold = 10) : _transfer_threshold(threshold) {}
+  size_t transfer_threshold() { return _transfer_threshold; }
+
   virtual void* allocate() = 0;
 
   virtual  void deallocate(void* node) = 0;
+
+  virtual ~FreeListConfig() {}
 };
 
 // Allocation is based on a lock-free free list of nodes, linked through
@@ -49,11 +62,11 @@ class FreeListAllocator {
 
     FreeNode() : _next (nullptr) { }
 
-    FreeNode* next() { return _next; }
+    FreeNode* next() { return Atomic::load(&_next); }
 
     FreeNode* volatile* next_addr() { return &_next; }
 
-    void set_next(FreeNode* next) { _next = next; }
+    void set_next(FreeNode* next) { Atomic::store(&_next, next); }
   };
 
   struct NodeList {
@@ -75,7 +88,7 @@ class FreeListAllocator {
 
   public:
     PendingList();
-    ~PendingList() = default;
+    ~PendingList();
 
     // Add node to the list.  Returns the number of nodes in the list.
     // Thread-safe against concurrent add operations.
@@ -92,7 +105,7 @@ class FreeListAllocator {
   typedef LockFreeStack<FreeNode, &next_ptr> Stack;
 
   FreeListConfig* _config;
-  char _name[DEFAULT_CACHE_LINE_SIZE - sizeof(size_t)];  // Use name as padding.
+  char _name[DEFAULT_CACHE_LINE_SIZE - sizeof(FreeListConfig*)];  // Use name as padding.
 
 #define DECLARE_PADDED_MEMBER(Id, Type, Name) \
   Type Name; DEFINE_PAD_MINUS_SIZE(Id, DEFAULT_CACHE_LINE_SIZE, sizeof(Type))
@@ -104,6 +117,7 @@ class FreeListAllocator {
   volatile uint _active_pending_list;
   PendingList _pending_lists[2];
 
+  void delete_list(FreeNode* list);
   bool try_transfer_pending();
 
   NONCOPYABLE(FreeListAllocator);
@@ -127,8 +141,6 @@ public:
   size_t mem_size() const {
     return sizeof(*this);
   }
-
-  void delete_list();
 
   // Deallocate some of the available nodes in the free_list.
   // remove_goal is the target number to remove.  Returns the number

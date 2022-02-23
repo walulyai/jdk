@@ -168,6 +168,8 @@ class BufferNode::AllocatorConfig : public FreeListConfig {
 public:
   explicit AllocatorConfig(size_t size);
 
+  ~AllocatorConfig() {}
+
   void* allocate() override;
 
   void deallocate(void* node) override;

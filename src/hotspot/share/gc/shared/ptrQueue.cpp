@@ -64,9 +64,7 @@ BufferNode::Allocator::Allocator(const char* name, size_t buffer_size) :
 
 }
 
-BufferNode::Allocator::~Allocator() {
-  _free_list.delete_list();
-}
+BufferNode::Allocator::~Allocator() {}
 
 size_t BufferNode::Allocator::free_count() const {
   return _free_list.free_count();
@@ -80,7 +78,7 @@ void BufferNode::Allocator::release(BufferNode* node) {
   assert(node != NULL, "precondition");
   assert(node->next() == NULL, "precondition");
   node->~BufferNode();
-  _free_list.release((void*)node);
+  _free_list.release(node);
 }
 
 size_t BufferNode::Allocator::reduce_free_list(size_t remove_goal) {

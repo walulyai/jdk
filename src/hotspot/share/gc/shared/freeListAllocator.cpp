@@ -25,7 +25,6 @@
 #include "precompiled.hpp"
 #include "gc/shared/freeListAllocator.hpp"
 #include "logging/log.hpp"
-#include "runtime/atomic.hpp"
 #include "utilities/globalCounter.inline.hpp"
 
 FreeListAllocator::NodeList::NodeList() :
@@ -40,6 +39,8 @@ FreeListAllocator::NodeList::NodeList(FreeNode* head, FreeNode* tail, size_t ent
 
 FreeListAllocator::PendingList::PendingList() :
   _tail(nullptr), _head(nullptr), _count(0) {}
+
+FreeListAllocator::PendingList::~PendingList() {}
 
 size_t FreeListAllocator::PendingList::add(FreeNode* node) {
   assert(node->next() == nullptr, "precondition");
@@ -77,28 +78,26 @@ FreeListAllocator::FreeListAllocator(const char* name, FreeListConfig* config) :
   _name[sizeof(_name) - 1] = '\0';
 }
 
-void FreeListAllocator::delete_list() {
-  try_transfer_pending();
-
-  FreeNode* list = _free_list.pop_all();
-
+void FreeListAllocator::delete_list(FreeNode* list) {
   while (list != NULL) {
     FreeNode* next = list->next();
     DEBUG_ONLY(list->set_next(NULL);)
     list->~FreeNode();
-    _config->deallocate((void *)list);
+    _config->deallocate(list);
     list = next;
-    --_free_count;
   }
-  assert(_free_count == 0, "post-condition");
 }
 
 FreeListAllocator::~FreeListAllocator() {
-  assert(_free_count == 0, "post-condition");
+  uint index = Atomic::load(&_active_pending_list);
+  NodeList pending_list = _pending_lists[index].take_all();
+  delete_list(Atomic::load(&pending_list._head));
+  delete_list(_free_list.pop_all());
 }
 
 void FreeListAllocator::reset() {
-  try_transfer_pending();
+  uint index = Atomic::load(&_active_pending_list);
+  _pending_lists[index].take_all();
   _free_list.pop_all();
   _free_count = 0;
 }
@@ -131,7 +130,7 @@ void* FreeListAllocator::allocate() {
     // never underflows.
     size_t count = Atomic::sub(&_free_count, 1u);
     assert((count + 1) != 0, "_free_count underflow");
-    return (void *)node;
+    return node;
   } else {
     return _config->allocate();
   }
@@ -150,14 +149,6 @@ void FreeListAllocator::release(void* free_node) {
   assert(free_node != nullptr, "precondition");
   assert(is_aligned(free_node, sizeof(FreeNode)), "Unaligned addr " PTR_FORMAT, p2i(free_node));
   FreeNode* node = ::new (free_node) FreeNode();
-  // Desired minimum transfer batch size.  There is relatively little
-  // importance to the specific number.  It shouldn't be too big, else
-  // we're wasting space when the release rate is low.  If the release
-  // rate is high, we might accumulate more than this before being
-  // able to start a new transfer, but that's okay.  Also note that
-  // the allocation rate and the release rate are going to be fairly
-  // similar, due to how the buffers are used.
-  const size_t trigger_transfer = 10;
 
   // The pending list is double-buffered.  Add node to the currently active
   // pending list, within a critical section so a transfer will wait until
@@ -166,7 +157,7 @@ void FreeListAllocator::release(void* free_node) {
     GlobalCounter::CriticalSection cs(Thread::current());
     uint index = Atomic::load_acquire(&_active_pending_list);
     size_t count = _pending_lists[index].add(node);
-    if (count <= trigger_transfer) return;
+    if (count <= _config->transfer_threshold()) return;
   }
   // Attempt transfer when number pending exceeds the transfer threshold.
   try_transfer_pending();
@@ -217,7 +208,7 @@ size_t FreeListAllocator::reduce_free_list(size_t remove_goal) {
     FreeNode* node = _free_list.pop();
     if (node == NULL) break;
     node->~FreeNode();
-    _config->deallocate((void *)node);
+    _config->deallocate(node);
   }
   size_t new_count = Atomic::sub(&_free_count, removed);
   log_debug(gc, freelist)
