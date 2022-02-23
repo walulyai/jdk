@@ -83,6 +83,57 @@ inline HeapWord* HeapRegion::block_start(const void* p) {
   return _bot_part.block_start(p);
 }
 
+inline HeapWord* HeapRegion::live_block_at_or_spanning(HeapWord* start) {
+  assert(is_aligned(start, BOTConstants::card_size_in_words()), "Start not aligned: " PTR_FORMAT, p2i(start));
+  G1CMBitMap* bitmap = G1CollectedHeap::heap()->concurrent_mark()->mark_bitmap();
+  // We need to find an object starting at start or before.
+  if (bitmap->is_marked(start)) {
+    // If start is marked, or this is the first block in a region,
+    // simply return start.
+    return start;
+  }
+
+  // Need to search the blocks before start if still in the current region.
+  HeapWord* block_start = start;
+  while (block_start > _bottom) {
+    // The limit for this round is the previous block_start.
+    HeapWord* limit = block_start;
+    // Step to the previous block.
+    block_start -= BOTConstants::card_size_in_words();
+    assert(is_in(block_start), "Should never search outside the region");
+
+    // Now find the last marked object in this block.
+    HeapWord* current = bitmap->get_next_marked_addr(block_start, limit);
+    HeapWord* last_marked_in_block = NULL;
+    // Entering this loop mean we found a marked object in the block
+    // and should return it. Step forward to the last marked and
+    // keep it recorded in last_marked_in_block.
+    while (current < limit) {
+      last_marked_in_block = current;
+      current = bitmap->get_next_marked_addr(current + 1, limit);
+    }
+    assert(current == limit, "invariant");
+
+    // When we have found a marked object, we check if it is spanning
+    // into the chunk starting at start.
+    if (last_marked_in_block != NULL) {
+      oop last_marked = cast_to_oop<HeapWord*>(last_marked_in_block);
+      HeapWord* next = last_marked_in_block + last_marked->size();
+      if (next > start) {
+        return last_marked_in_block;
+      } else {
+        // Found object not spanning into block starting at start.
+        return NULL;
+      }
+    }
+   }
+
+  // Did not find any marked objects return NULL.
+  assert (block_start == _bottom, "Must search the whole region");
+  assert (!bitmap->is_marked(_bottom), "Should not be marked, should have been found above");
+  return NULL;
+}
+
 inline bool HeapRegion::obj_is_parsable(const HeapWord* addr) const {
   return addr >= _parsable_bottom;
 }
@@ -322,24 +373,38 @@ HeapWord* HeapRegion::do_oops_on_memregion_in_humongous(MemRegion mr,
   }
 }
 
-template <class Closure>
+template <class Closure, bool is_gc_active>
 inline HeapWord* HeapRegion::oops_on_memregion_iterate(MemRegion mr, Closure* cl) {
   // Cache the boundaries of the memory region in some const locals
   HeapWord* const start = mr.start();
   HeapWord* const end = mr.end();
 
   // Find the obj that extends onto mr.start().
-  HeapWord* cur = block_start(start);
-
+  HeapWord* cur;
+  if (obj_is_parsable(start) || is_gc_active) {
+    // If start is in the the parsable part of the region or we
+    // are in a safepoint the BOT is stable and we can use
+    // block_start to find the object start.
+    cur = block_start(start);
 #ifdef ASSERT
-  {
     assert(cur <= start,
            "cur: " PTR_FORMAT ", start: " PTR_FORMAT, p2i(cur), p2i(start));
     HeapWord* next = cur + block_size(cur);
     assert(start < next,
            "start: " PTR_FORMAT ", next: " PTR_FORMAT, p2i(start), p2i(next));
-  }
 #endif
+  } else {
+    // Doing concurrent refinement and during the scrubbing phase.
+    // At this point the BOT is not stable and we need to get the
+    // object potentially spanning into the chunk by searching the
+    // bitmap.
+    cur = live_block_at_or_spanning(start);
+    if (cur == NULL) {
+      // No live object spanning into this memory region. Find
+      // the first live after start.
+      cur = start + size_of_block(start);
+    }
+  }
 
   while (true) {
     oop obj = cast_to_oop(cur);
@@ -391,7 +456,7 @@ HeapWord* HeapRegion::oops_on_memregion_seq_iterate_careful(MemRegion mr,
   // case there might be objects that have their classes unloaded and
   // therefore needs to be scanned using the bitmap.
 
-  return oops_on_memregion_iterate(mr, cl);
+  return oops_on_memregion_iterate<Closure, is_gc_active>(mr, cl);
 }
 
 inline int HeapRegion::age_in_surv_rate_group() const {

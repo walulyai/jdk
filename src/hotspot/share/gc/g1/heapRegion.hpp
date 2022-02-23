@@ -146,6 +146,9 @@ private:
   // This version synchronizes with other calls to par_allocate_impl().
   inline HeapWord* par_allocate_impl(size_t min_word_size, size_t desired_word_size, size_t* actual_word_size);
 
+  // Find a live object spanning over the given address or starting at it. Returns
+  // NULL if there is no such object.
+  inline HeapWord* live_block_at_or_spanning(HeapWord* start);
 public:
   HeapWord* block_start(const void* p);
 
@@ -270,7 +273,7 @@ private:
 
   void report_region_type_change(G1HeapRegionTraceType::Type to);
 
-  template <class Closure>
+  template <class Closure, bool is_gc_active>
   inline HeapWord* oops_on_memregion_iterate(MemRegion mr, Closure* cl);
 
   // Iterate over the references covered by the given MemRegion in a humongous
