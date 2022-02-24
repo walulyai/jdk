@@ -40,8 +40,6 @@ FreeListAllocator::NodeList::NodeList(FreeNode* head, FreeNode* tail, size_t ent
 FreeListAllocator::PendingList::PendingList() :
   _tail(nullptr), _head(nullptr), _count(0) {}
 
-FreeListAllocator::PendingList::~PendingList() {}
-
 size_t FreeListAllocator::PendingList::add(FreeNode* node) {
   assert(node->next() == nullptr, "precondition");
   FreeNode* old_head = Atomic::xchg(&_head, node);
@@ -95,15 +93,17 @@ FreeListAllocator::~FreeListAllocator() {
   delete_list(_free_list.pop_all());
 }
 
+// Free nodes in the allocator could have been allocated out of an arena.
+// Therefore, the nodes can be freed at once when entire arena is discarded
+// without running destructors for the individual nodes. In such cases, reset
+// method should be called before the ~FreeListAllocator(). Calling the reset
+// method on nodes not managed by an arena will leak the memory by just dropping
+// the nodes to the floor.
 void FreeListAllocator::reset() {
   uint index = Atomic::load(&_active_pending_list);
   _pending_lists[index].take_all();
   _free_list.pop_all();
   _free_count = 0;
-}
-
-bool FreeListAllocator::flush() {
-  return try_transfer_pending();
 }
 
 size_t FreeListAllocator::free_count() const {
@@ -115,6 +115,9 @@ size_t FreeListAllocator::pending_count() const {
   return _pending_lists[index].count();;
 }
 
+// To solve the ABA problem, popping a node from the _free_list is performed within
+// a GlobalCounter critical section, and pushing nodes onto the _free_list is done
+// after a GlobalCounter synchronization associated with the nodes to be pushed.
 void* FreeListAllocator::allocate() {
   FreeNode* node = nullptr;
   if (free_count() > 0) {
@@ -136,15 +139,13 @@ void* FreeListAllocator::allocate() {
   }
 }
 
-// To solve the ABA problem for lock-free stack pop, allocate does the
-// pop inside a critical section, and release synchronizes on the
-// critical sections before adding to the _free_list.  But we don't
-// want to make every release have to do a synchronize.  Instead, we
-// initially place released nodes on the pending list, and transfer
-// them to the _free_list in batches.  Only one transfer at a time is
-// permitted, with a lock bit to control access to that phase.  While
-// a transfer is in progress, other threads might be adding other nodes
-// to the pending list, to be dealt with by some later transfer.
+// The release synchronizes on the critical sections before adding to
+// the _free_list. But we don't want to make every release have to do a
+// synchronize. Instead, we initially place released nodes on the pending list,
+// and transfer them to the _free_list in batches. Only one transfer at a time is
+// permitted, with a lock bit to control access to that phase. While a transfer
+// is in progress, other threads might be adding other nodes to the pending list,
+// to be dealt with by some later transfer.
 void FreeListAllocator::release(void* free_node) {
   assert(free_node != nullptr, "precondition");
   assert(is_aligned(free_node, sizeof(FreeNode)), "Unaligned addr " PTR_FORMAT, p2i(free_node));

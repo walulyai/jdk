@@ -163,12 +163,14 @@ public:
   class TestSupport;            // Unit test support.
 };
 
+// We use BufferNode::AllocatorConfig to set the allocation options for the
+// FreeListAllocator.
 class BufferNode::AllocatorConfig : public FreeListConfig {
   const size_t _buffer_size;
 public:
   explicit AllocatorConfig(size_t size);
 
-  ~AllocatorConfig() {}
+  ~AllocatorConfig() = default;
 
   void* allocate() override;
 
@@ -177,13 +179,6 @@ public:
   size_t buffer_size() const { return _buffer_size; }
 };
 
-// Allocation is based on a lock-free free list of nodes, linked through
-// BufferNode::_next (see BufferNode::Stack).  To solve the ABA problem,
-// popping a node from the free list is performed within a GlobalCounter
-// critical section, and pushing nodes onto the free list is done after
-// a GlobalCounter synchronization associated with the nodes to be pushed.
-// This is documented behavior so that other parts of the node life-cycle
-// can depend on and make use of it too.
 class BufferNode::Allocator {
   friend class TestSupport;
 
@@ -194,16 +189,16 @@ class BufferNode::Allocator {
 
 public:
   Allocator(const char* name, size_t buffer_size);
-  ~Allocator();
+  ~Allocator() = default;
 
   size_t buffer_size() const { return _config.buffer_size(); }
   size_t free_count() const;
   BufferNode* allocate();
   void release(BufferNode* node);
 
-  // If free_list has items buffered in the pending list, transfer
+  // If _free_list has items buffered in the pending list, transfer
   // these to make them available for re-allocation.
-  bool flush_free_list() { return _free_list.flush(); }
+  bool flush_free_list() { return _free_list.try_transfer_pending(); }
 
   // Deallocate some of the available buffers.  remove_goal is the target
   // number to remove.  Returns the number actually deallocated, which may

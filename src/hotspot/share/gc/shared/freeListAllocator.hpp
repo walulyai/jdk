@@ -31,31 +31,35 @@
 #include "utilities/globalDefinitions.hpp"
 #include "utilities/lockFreeStack.hpp"
 
-class FreeListConfig : public CHeapObj<mtGC> {
+class FreeListConfig {
   // Desired minimum transfer batch size.  There is relatively little
   // importance to the specific number.  It shouldn't be too big, else
   // we're wasting space when the release rate is low.  If the release
   // rate is high, we might accumulate more than this before being
   // able to start a new transfer, but that's okay.
   const size_t _transfer_threshold;
+protected:
+  ~FreeListConfig() = default;
 public:
   explicit FreeListConfig(size_t threshold = 10) : _transfer_threshold(threshold) {}
+
   size_t transfer_threshold() { return _transfer_threshold; }
 
   virtual void* allocate() = 0;
 
   virtual  void deallocate(void* node) = 0;
-
-  virtual ~FreeListConfig() {}
 };
 
-// Allocation is based on a lock-free free list of nodes, linked through
-// BufferNode::_next (see BufferNode::Stack).  To solve the ABA problem,
-// popping a node from the free list is performed within a GlobalCounter
-// critical section, and pushing nodes onto the free list is done after
-// a GlobalCounter synchronization associated with the nodes to be pushed.
-// This is documented behavior so that other parts of the node life-cycle
-// can depend on and make use of it too.
+// Allocation is based on a lock-free list of nodes. To reduce synchronization
+// overhead on the free list between allocation and release calls, the released
+// nodes are first placed on a pending list, then transferred to the free list in
+// batches. While on the pending list, the nodes are not available for allocation.
+// The allocator uses allocation options specified by an instance of
+// FreeListConfig. The FreeListConfig includes an allocation method to use in case
+// the free list is empty and a deallocation method used to deallocate nodes in
+// the free list. Additionally, the FreeListConfig configures the threshold used
+// as a minimum batch size for transferring released nodes from the pending list
+// to the free list making them available for re-allocation.
 class FreeListAllocator {
   struct FreeNode {
     FreeNode* volatile _next;
@@ -88,7 +92,7 @@ class FreeListAllocator {
 
   public:
     PendingList();
-    ~PendingList();
+    ~PendingList() = default;
 
     // Add node to the list.  Returns the number of nodes in the list.
     // Thread-safe against concurrent add operations.
@@ -118,7 +122,6 @@ class FreeListAllocator {
   PendingList _pending_lists[2];
 
   void delete_list(FreeNode* list);
-  bool try_transfer_pending();
 
   NONCOPYABLE(FreeListAllocator);
 
@@ -136,7 +139,7 @@ public:
   void release(void* node);
 
   void reset();
-  bool flush();
+  bool try_transfer_pending();
 
   size_t mem_size() const {
     return sizeof(*this);

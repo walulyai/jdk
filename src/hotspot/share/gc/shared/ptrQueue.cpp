@@ -64,8 +64,6 @@ BufferNode::Allocator::Allocator(const char* name, size_t buffer_size) :
 
 }
 
-BufferNode::Allocator::~Allocator() {}
-
 size_t BufferNode::Allocator::free_count() const {
   return _free_list.free_count();
 }
