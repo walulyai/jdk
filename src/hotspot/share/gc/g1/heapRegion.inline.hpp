@@ -386,13 +386,10 @@ inline HeapWord* HeapRegion::oops_on_memregion_iterate(MemRegion mr, Closure* cl
     // are in a safepoint the BOT is stable and we can use
     // block_start to find the object start.
     cur = block_start(start);
-#ifdef ASSERT
-    assert(cur <= start,
-           "cur: " PTR_FORMAT ", start: " PTR_FORMAT, p2i(cur), p2i(start));
-    HeapWord* next = cur + block_size(cur);
-    assert(start < next,
-           "start: " PTR_FORMAT ", next: " PTR_FORMAT, p2i(start), p2i(next));
-#endif
+
+    assert(cur <= start, "cur: " PTR_FORMAT ", start: " PTR_FORMAT, p2i(cur), p2i(start));
+    DEBUG_ONLY(HeapWord* next = cur + block_size(cur);)
+    assert(start < next, "start: " PTR_FORMAT ", next: " PTR_FORMAT, p2i(start), p2i(next));
   } else {
     // Doing concurrent refinement and during the scrubbing phase.
     // At this point the BOT is not stable and we need to get the
@@ -403,7 +400,13 @@ inline HeapWord* HeapRegion::oops_on_memregion_iterate(MemRegion mr, Closure* cl
       // No live object spanning into this memory region. Find
       // the first live after start.
       cur = start + size_of_block(start);
+      // Not safe to scan past the given MemRegion so we need to
+      // check that cur is still within it.
+      if (cur >= end) {
+        return end;
+      }
     }
+    assert(cur < end, "cur: " PTR_FORMAT ", end: " PTR_FORMAT, p2i(cur), p2i(end));
   }
 
   while (true) {
