@@ -2170,7 +2170,8 @@ class G1RebuildRSAndScrubTask : public WorkerTask {
                              HR_FORMAT_PARAMS(hr), p2i(hr->parsable_bottom()));
 
       // Scan the humongous object in chunks from bottom to top to rebuild remembered sets.
-      MemRegion mr(hr->bottom(), hr->top());
+      HeapWord* humongous_end = hr->humongous_start_region()->bottom() + humongous->size();
+      MemRegion mr(hr->bottom(), MIN2(hr->top(), humongous_end));
       rebuild_large_obj(hr, humongous, mr);
       if (_concurrent_cycle_aborted) {
         log_trace(gc, marking)("Rebuild aborted for humongous region: %u", hr->hrm_index());
