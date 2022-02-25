@@ -1998,18 +1998,34 @@ class G1RebuildRSAndScrubTask : public WorkerTask {
     bool _should_rebuild_remset;
     bool _concurrent_cycle_aborted;
 
+    size_t _marked_words;
     size_t _processed_words;
     const size_t PROCESSED_YIELD_LIMIT_IN_WORDS = G1RebuildRemSetChunkSize / HeapWordSize;
 
+    void reset_marked_words() {
+      _marked_words = 0;
+    }
+
+    void reset_processed_words() {
+      _processed_words = 0;
+    }
+
+    void assert_marked_words(HeapRegion* hr) {
+      assert((_marked_words * HeapWordSize) == hr->marked_bytes(),
+             "Missmatch between marking and re-calculation for region %u, %zu != %zu",
+             hr->hrm_index(), (_marked_words * HeapWordSize), hr->marked_bytes());
+    }
+
     void add_processed_words(size_t processed) {
       _processed_words += processed;
+      _marked_words += processed;
     }
 
     // Yield if enough has been processed and also check if the concurrent
     // marking cycle has been aborted.
     void yield_if_necessary() {
       if (_processed_words >= PROCESSED_YIELD_LIMIT_IN_WORDS) {
-        _processed_words = 0;
+        reset_processed_words();
         _cm->do_yield_check();
         if (_cm->has_aborted()) {
           _concurrent_cycle_aborted = true;
@@ -2060,6 +2076,7 @@ class G1RebuildRSAndScrubTask : public WorkerTask {
 
       if (!_should_rebuild_remset) {
         // Not rebuilding, just step to next object.
+        add_processed_words(obj_size);
         return obj_size;
       } else if (obj_size > PROCESSED_YIELD_LIMIT_IN_WORDS) {
         // Large object, need to be chunked to avoid stalling safepoints.
@@ -2105,6 +2122,7 @@ class G1RebuildRSAndScrubTask : public WorkerTask {
         return;
       }
 
+      reset_marked_words();
       log_debug(gc, marking)("Scrub and rebuild region: " HR_FORMAT " limit: " PTR_FORMAT,
                              HR_FORMAT_PARAMS(hr), p2i(hr->parsable_bottom()));
 
@@ -2130,6 +2148,11 @@ class G1RebuildRSAndScrubTask : public WorkerTask {
       }
       // Check that the initial scan is consistent.
       assert(current_obj == limit, "Should not step past limit");
+      // Assert that the size of marked objects from the marking matches
+      // the size of the objects for which we have rebuilt rememebered sets.
+      // Since the marking information is only taking bottom to TAMS into
+      // consideration we only include that part here as well.
+      assert_marked_words(hr);
 
       // Rebuild from TAMS to TARS.
       limit = _cm->top_at_rebuild_start(hr->hrm_index());
@@ -2166,8 +2189,9 @@ class G1RebuildRSAndScrubTask : public WorkerTask {
       assert(_bitmap->is_marked(humongous) || hr->parsable_bottom() == hr->bottom(),
              "Humongous object not considered live");
 
-      log_debug(gc, marking)("Rebuild for humongous region: " HR_FORMAT " limit: " PTR_FORMAT,
-                             HR_FORMAT_PARAMS(hr), p2i(hr->parsable_bottom()));
+      reset_marked_words();
+      log_debug(gc, marking)("Rebuild for humongous region: " HR_FORMAT " limit: " PTR_FORMAT " TARS: " PTR_FORMAT,
+                             HR_FORMAT_PARAMS(hr), p2i(hr->parsable_bottom()), p2i(_cm->top_at_rebuild_start(hr->hrm_index())));
 
       // Scan the humongous object in chunks from bottom to top to rebuild remembered sets.
       HeapWord* humongous_end = hr->humongous_start_region()->bottom() + humongous->size();
@@ -2175,6 +2199,12 @@ class G1RebuildRSAndScrubTask : public WorkerTask {
       rebuild_large_obj(hr, humongous, mr);
       if (_concurrent_cycle_aborted) {
         log_trace(gc, marking)("Rebuild aborted for humongous region: %u", hr->hrm_index());
+      } else if (_bitmap->is_marked(humongous) && should_handle_region(hr)) {
+        // Only verify that the marked size matches the rebuilt size if this object was marked
+        // and the object should still be handled. The should handle state can change during
+        // rebuild for humongous objects that are eagerly reclaim so we need to check this and
+        // if the object is not marked the size from marking will be 0.
+        assert_marked_words(hr);
       }
     }
 
@@ -2184,7 +2214,9 @@ class G1RebuildRSAndScrubTask : public WorkerTask {
       _bitmap(bitmap),
       _rebuild_closure(G1CollectedHeap::heap(), worker_id),
       _should_rebuild_remset(should_rebuild),
-      _concurrent_cycle_aborted(false) { }
+      _concurrent_cycle_aborted(false),
+      _marked_words(0),
+      _processed_words(0) { }
 
     bool do_heap_region(HeapRegion* hr) {
       // Avoid stalling safepoints and stop iteration if mark cycle has been aborted.
