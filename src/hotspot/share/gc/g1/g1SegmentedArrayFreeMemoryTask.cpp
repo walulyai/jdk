@@ -52,7 +52,7 @@ bool G1SegmentedArrayFreeMemoryTask::calculate_return_infos(jlong deadline) {
   // Ignore the deadline in this step as it is very short.
 
   G1SegmentedArrayMemoryStats used = _total_used;
-  G1SegmentedArrayMemoryStats free = G1SegmentedArrayFreePool<mtGCCardSet>::free_list_sizes();
+  G1SegmentedArrayMemoryStats free = G1SegmentedArrayFreePool::free_list_sizes();
 
   _return_info = new G1ReturnMemoryProcessorSet(used.num_pools());
   for (uint i = 0; i < used.num_pools(); i++) {
@@ -68,7 +68,7 @@ bool G1SegmentedArrayFreeMemoryTask::calculate_return_infos(jlong deadline) {
     _return_info->append(new G1ReturnMemoryProcessor(return_to_vm_size));
   }
 
-  G1SegmentedArrayFreePool<mtGCCardSet>::update_unlink_processors(_return_info);
+  G1SegmentedArrayFreePool::update_unlink_processors(_return_info);
   return false;
 }
 

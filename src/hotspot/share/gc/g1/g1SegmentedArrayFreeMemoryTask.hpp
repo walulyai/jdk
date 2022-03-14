@@ -56,8 +56,8 @@ class G1SegmentedArrayFreeMemoryTask : public G1ServiceTask {
   // Current total segmented array memory usage.
   G1SegmentedArrayMemoryStats _total_used;
 
-  typedef G1SegmentedArrayFreePool<mtGCCardSet>::G1ReturnMemoryProcessor G1ReturnMemoryProcessor;
-  typedef G1SegmentedArrayFreePool<mtGCCardSet>::G1ReturnMemoryProcessorSet G1ReturnMemoryProcessorSet;
+  using G1ReturnMemoryProcessor = G1SegmentedArrayFreePool::G1ReturnMemoryProcessor;
+  using G1ReturnMemoryProcessorSet = G1SegmentedArrayFreePool::G1ReturnMemoryProcessorSet;
 
   G1ReturnMemoryProcessorSet* _return_info;
 

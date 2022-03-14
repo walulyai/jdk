@@ -81,7 +81,7 @@ HeapRegionRemSet::HeapRegionRemSet(HeapRegion* hr,
                                    G1CardSetConfiguration* config) :
   _m(Mutex::service - 1, FormatBuffer<128>("HeapRegionRemSet#%u_lock", hr->hrm_index())),
   _code_roots(),
-  _card_set_mm(config, G1SegmentedArrayFreePool<mtGCCardSet>::free_list_pool()),
+  _card_set_mm(config, G1SegmentedArrayFreePool::free_list_pool()),
   _card_set(config, &_card_set_mm),
   _hr(hr),
   _state(Untracked) { }
