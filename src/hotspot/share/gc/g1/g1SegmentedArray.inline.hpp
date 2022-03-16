@@ -38,7 +38,7 @@ inline void* G1SegmentedArraySegment::get_new_slot() {
   if (result >= _num_slots) {
     return nullptr;
   }
-  void* r = _bottom + result * _slot_size;
+  void* r = _bottom + (size_t)result * _slot_size;
   return r;
 }
 

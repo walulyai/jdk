@@ -48,6 +48,13 @@ class G1SegmentedArraySegment {
 
   static size_t header_size_in_bytes() { return align_up(offset_of(G1SegmentedArraySegment, _bottom), DEFAULT_CACHE_LINE_SIZE); }
 
+  static size_t payload_size(uint slot_size, uint num_slots) {
+    // The cast (size_t) is required to guard against overflow wrap around.
+    return (size_t)slot_size * num_slots;
+  }
+
+  size_t payload_size() const { return payload_size(_slot_size, _num_slots); }
+
   NONCOPYABLE(G1SegmentedArraySegment);
 
   G1SegmentedArraySegment(uint slot_size, uint num_slots, G1SegmentedArraySegment* next, MEMFLAGS flag);
@@ -71,12 +78,12 @@ public:
     _next_allocate = 0;
     assert(next != this, " loop condition");
     set_next(next);
-    memset((void*)_bottom, 0, (size_t)_num_slots * _slot_size);
+    memset((void*)_bottom, 0, payload_size());
   }
 
   uint slot_size() const { return _slot_size; }
 
-  size_t mem_size() const { return header_size_in_bytes() + (size_t)_num_slots * _slot_size; }
+  size_t mem_size() const { return header_size_in_bytes() + payload_size(); }
 
   uint length() const {
     // _next_allocate might grow larger than _num_slots in multi-thread environments
@@ -85,7 +92,7 @@ public:
   }
 
   static size_t size_in_bytes(uint slot_size, uint num_slots) {
-    return header_size_in_bytes() + (size_t)num_slots * slot_size;
+    return header_size_in_bytes() + payload_size(slot_size, num_slots);
   }
 
   static G1SegmentedArraySegment* create_segment(uint slot_size, uint num_slots, G1SegmentedArraySegment* next, MEMFLAGS mem_flag);
