@@ -207,13 +207,13 @@ class G1SegmentedArray : public FreeListConfig  {
   // sizing and expansion.
   const G1SegmentedArrayAllocOptions* _alloc_options;
 
-  G1SegmentedArraySegment* volatile _first;             // The (start of the) list of all segments.
-  G1SegmentedArraySegment* _last;                       // The last segment of the list of all segments.
-  volatile uint _num_segments;                          // Number of assigned segments to this allocator.
-  volatile size_t _mem_size;                            // Memory used by all segments.
+  G1SegmentedArraySegment* volatile _first;         // The (start of the) list of all segments.
+  G1SegmentedArraySegment* _last;                   // The last segment of the list of all segments.
+  volatile uint _num_segments;                      // Number of assigned segments to this allocator.
+  volatile size_t _mem_size;                        // Memory used by all segments.
 
-  G1SegmentedArrayFreeList* _free_segment_list;         // The global free segment list to
-                                                        // preferentially get new segments from.
+  G1SegmentedArrayFreeList* _free_segment_list;     // The global free segment list to preferentially
+                                                    // get new segments from.
 
   volatile uint _num_available_slots; // Number of slots available in all segments (allocated + free + pending + not yet used).
   volatile uint _num_allocated_slots; // Number of total slots allocated and in use.
