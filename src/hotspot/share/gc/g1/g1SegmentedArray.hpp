@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2021, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2021, Huawei Technologies Co. Ltd. All rights reserved.
+ * Copyright (c) 2021, 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2021, 2022, Huawei Technologies Co. Ltd. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -153,7 +153,7 @@ protected:
 public:
   G1SegmentedArrayAllocOptions(MEMFLAGS mem_flag, uint slot_size, uint initial_num_slots, uint max_num_slots, uint alignment) :
     _mem_flag(mem_flag),
-    _slot_size(slot_size),
+    _slot_size(align_up(slot_size, alignment)),
     _initial_num_slots(initial_num_slots),
     _max_num_slots(max_num_slots),
     _slot_alignment(alignment) {

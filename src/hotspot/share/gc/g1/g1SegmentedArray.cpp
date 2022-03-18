@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -30,11 +30,18 @@
 #include "utilities/globalCounter.inline.hpp"
 
 G1SegmentedArraySegment::G1SegmentedArraySegment(uint slot_size, uint num_slots, G1SegmentedArraySegment* next, MEMFLAGS flag) :
-  _slot_size(slot_size), _num_slots(num_slots), _mem_flag(flag), _next(next), _next_allocate(0) {
-    _bottom = ((char*) this) + header_size_in_bytes();
-  }
+  _slot_size(slot_size),
+  _num_slots(num_slots),
+  _mem_flag(flag),
+  _next(next),
+  _next_allocate(0) {
+  _bottom = ((char*) this) + header_size_in_bytes();
+}
 
-G1SegmentedArraySegment* G1SegmentedArraySegment::create_segment(uint slot_size, uint num_slots, G1SegmentedArraySegment* next, MEMFLAGS mem_flag) {
+G1SegmentedArraySegment* G1SegmentedArraySegment::create_segment(uint slot_size,
+                                                                 uint num_slots,
+                                                                 G1SegmentedArraySegment* next,
+                                                                 MEMFLAGS mem_flag) {
   size_t block_size = size_in_bytes(slot_size, num_slots);
   char* alloc_block = NEW_C_HEAP_ARRAY(char, block_size, mem_flag);
   return new (alloc_block) G1SegmentedArraySegment(slot_size, num_slots, next, mem_flag);
@@ -124,15 +131,15 @@ G1SegmentedArraySegment* G1SegmentedArray::create_new_segment(G1SegmentedArraySe
 }
 
 G1SegmentedArray::G1SegmentedArray(const G1SegmentedArrayAllocOptions* alloc_options,
-                                         G1SegmentedArrayFreeList* free_segment_list) :
-     _alloc_options(alloc_options),
-     _first(nullptr),
-     _last(nullptr),
-     _num_segments(0),
-     _mem_size(0),
-     _free_segment_list(free_segment_list),
-     _num_available_slots(0),
-     _num_allocated_slots(0) {
+                                   G1SegmentedArrayFreeList* free_segment_list) :
+  _alloc_options(alloc_options),
+  _first(nullptr),
+  _last(nullptr),
+  _num_segments(0),
+  _mem_size(0),
+  _free_segment_list(free_segment_list),
+  _num_available_slots(0),
+  _num_allocated_slots(0) {
   assert(_free_segment_list != nullptr, "precondition!");
 }
 

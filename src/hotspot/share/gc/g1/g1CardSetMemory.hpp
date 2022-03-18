@@ -50,7 +50,7 @@ public:
   static const uint SlotAlignment = 8;
 
   G1CardSetAllocOptions(uint slot_size, uint initial_num_slots = MinimumNumSlots, uint max_num_slots = MaximumNumSlots) :
-    G1SegmentedArrayAllocOptions(mtGCCardSet, align_up(slot_size, SlotAlignment), initial_num_slots, max_num_slots, SlotAlignment) {
+    G1SegmentedArrayAllocOptions(mtGCCardSet, slot_size, initial_num_slots, max_num_slots, SlotAlignment) {
   }
 
   virtual uint next_num_slots(uint prev_num_slots) const override {
