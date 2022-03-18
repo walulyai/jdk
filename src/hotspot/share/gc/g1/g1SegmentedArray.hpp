@@ -46,7 +46,7 @@ class G1SegmentedArraySegment {
   char* _bottom;  // Actual data.
   // Do not add class member variables beyond this point
 
-  static size_t header_size_in_bytes() { return align_up(offset_of(G1SegmentedArraySegment, _bottom), DEFAULT_CACHE_LINE_SIZE); }
+  static size_t header_size() { return align_up(offset_of(G1SegmentedArraySegment, _bottom), DEFAULT_CACHE_LINE_SIZE); }
 
   static size_t payload_size(uint slot_size, uint num_slots) {
     // The cast (size_t) is required to guard against overflow wrap around.
@@ -60,7 +60,6 @@ class G1SegmentedArraySegment {
   G1SegmentedArraySegment(uint slot_size, uint num_slots, G1SegmentedArraySegment* next, MEMFLAGS flag);
   ~G1SegmentedArraySegment() = default;
 public:
-
   G1SegmentedArraySegment* volatile* next_addr() { return &_next; }
 
   void* get_new_slot();
@@ -83,7 +82,7 @@ public:
 
   uint slot_size() const { return _slot_size; }
 
-  size_t mem_size() const { return header_size_in_bytes() + payload_size(); }
+  size_t mem_size() const { return header_size() + payload_size(); }
 
   uint length() const {
     // _next_allocate might grow larger than _num_slots in multi-thread environments
@@ -92,7 +91,7 @@ public:
   }
 
   static size_t size_in_bytes(uint slot_size, uint num_slots) {
-    return header_size_in_bytes() + payload_size(slot_size, num_slots);
+    return header_size() + payload_size(slot_size, num_slots);
   }
 
   static G1SegmentedArraySegment* create_segment(uint slot_size, uint num_slots, G1SegmentedArraySegment* next, MEMFLAGS mem_flag);

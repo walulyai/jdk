@@ -35,7 +35,7 @@ G1SegmentedArraySegment::G1SegmentedArraySegment(uint slot_size, uint num_slots,
   _mem_flag(flag),
   _next(next),
   _next_allocate(0) {
-  _bottom = ((char*) this) + header_size_in_bytes();
+  _bottom = ((char*) this) + header_size();
 }
 
 G1SegmentedArraySegment* G1SegmentedArraySegment::create_segment(uint slot_size,
