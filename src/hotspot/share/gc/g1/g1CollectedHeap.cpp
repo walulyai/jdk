@@ -1077,7 +1077,7 @@ void G1CollectedHeap::verify_after_full_collection() {
   _verifier->verify_region_sets_optional();
   _verifier->verify_after_gc(G1HeapVerifier::G1VerifyFull);
 
-  // This call implicitly verifies that the next bitmap is clear after Full GC.
+  // This call implicitly verifies that the marking bitmap is cleared after Full GC.
   _verifier->check_bitmaps("Full GC End");
 
   // At this point there should be no regions in the
@@ -1642,12 +1642,10 @@ jint G1CollectedHeap::initialize() {
                              G1CardCounts::heap_map_factor());
 
   size_t bitmap_size = G1CMBitMap::compute_size(heap_rs.size());
-  G1RegionToSpaceMapper* prev_bitmap_storage =
-    create_aux_memory_mapper("Prev Bitmap", bitmap_size, G1CMBitMap::heap_map_factor());
-  G1RegionToSpaceMapper* next_bitmap_storage =
+  G1RegionToSpaceMapper* bitmap_storage =
     create_aux_memory_mapper("Next Bitmap", bitmap_size, G1CMBitMap::heap_map_factor());
 
-  _hrm.initialize(heap_storage, prev_bitmap_storage, next_bitmap_storage, bot_storage, cardtable_storage, card_counts_storage);
+  _hrm.initialize(heap_storage, bitmap_storage, bot_storage, cardtable_storage, card_counts_storage);
   _card_table->initialize(cardtable_storage);
 
   // Do later initialization work for concurrent refinement.
@@ -1694,7 +1692,7 @@ jint G1CollectedHeap::initialize() {
 
   // Create the G1ConcurrentMark data structure and thread.
   // (Must do this late, so that "max_[reserved_]regions" is defined.)
-  _cm = new G1ConcurrentMark(this, prev_bitmap_storage, next_bitmap_storage);
+  _cm = new G1ConcurrentMark(this, bitmap_storage);
   _cm_thread = _cm->cm_thread();
 
   // Now expand into the initial heap size.
@@ -2464,7 +2462,7 @@ void G1CollectedHeap::print_regions_on(outputStream* st) const {
                "HS=humongous(starts), HC=humongous(continues), "
                "CS=collection set, F=free, "
                "OA=open archive, CA=closed archive, "
-               "TAMS=top-at-mark-start (previous, next)");
+               "TAMS=top-at-mark-start (last, current)");
   PrintRegionClosure blk(st);
   heap_region_iterate(&blk);
 }
@@ -2906,7 +2904,7 @@ void G1CollectedHeap::make_pending_list_reachable() {
     oop pll_head = Universe::reference_pending_list();
     if (pll_head != NULL) {
       // Any valid worker id is fine here as we are in the VM thread and single-threaded.
-      _cm->mark_in_next_bitmap(0 /* worker_id */, pll_head);
+      _cm->mark_in_bitmap(0 /* worker_id */, pll_head);
     }
   }
 }
@@ -2949,19 +2947,15 @@ void G1CollectedHeap::record_obj_copy_mem_stats() {
                                                create_g1_evac_summary(&_old_evac_stats));
 }
 
-void G1CollectedHeap::clear_prev_bitmap_for_region(HeapRegion* hr) {
+void G1CollectedHeap::clear_bitmap_for_region(HeapRegion* hr) {
   MemRegion mr(hr->bottom(), hr->end());
-  concurrent_mark()->clear_range_in_prev_bitmap(mr);
+  concurrent_mark()->clear_range_in_bitmap(mr);
 }
 
 void G1CollectedHeap::free_region(HeapRegion* hr, FreeRegionList* free_list) {
   assert(!hr->is_free(), "the region should not be free");
   assert(!hr->is_empty(), "the region should not be empty");
   assert(_hrm.is_available(hr->hrm_index()), "region should be committed");
-
-  if (G1VerifyBitmaps) {
-    clear_prev_bitmap_for_region(hr);
-  }
 
   // Clear the card counts for this region.
   // Note: we only need to do this if the region is not young
@@ -3294,7 +3288,7 @@ void G1CollectedHeap::retire_gc_alloc_region(HeapRegion* alloc_region,
 
   bool const during_im = collector_state()->in_concurrent_start_gc();
   if (during_im && allocated_bytes > 0) {
-    _cm->root_regions()->add(alloc_region->next_top_at_mark_start(), alloc_region->top());
+    _cm->root_regions()->add(alloc_region->top_at_mark_start(), alloc_region->top());
   }
   _hr_printer.retire(alloc_region);
 }

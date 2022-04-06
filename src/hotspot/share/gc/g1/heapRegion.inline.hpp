@@ -83,71 +83,131 @@ inline HeapWord* HeapRegion::block_start(const void* p) {
   return _bot_part.block_start(p);
 }
 
-inline bool HeapRegion::is_obj_dead_with_size(const oop obj, const G1CMBitMap* const prev_bitmap, size_t* size) const {
-  HeapWord* addr = cast_from_oop<HeapWord*>(obj);
-
-  assert(addr < top(), "must be");
-  assert(!is_closed_archive(),
-         "Closed archive regions should not have references into other regions");
-  assert(!is_humongous(), "Humongous objects not handled here");
-  bool obj_is_dead = is_obj_dead(obj, prev_bitmap);
-
-  if (ClassUnloading && obj_is_dead) {
-    assert(!block_is_obj(addr), "must be");
-    *size = block_size_using_bitmap(addr, prev_bitmap);
-  } else {
-    assert(block_is_obj(addr), "must be");
-    *size = obj->size();
+inline HeapWord* HeapRegion::live_block_at_or_spanning(HeapWord* start) {
+  assert(is_aligned(start, BOTConstants::card_size_in_words()), "Start not aligned: " PTR_FORMAT, p2i(start));
+  G1CMBitMap* bitmap = G1CollectedHeap::heap()->concurrent_mark()->mark_bitmap();
+  // We need to find an object starting at start or before.
+  if (bitmap->is_marked(start)) {
+    // If start is marked, or this is the first block in a region,
+    // simply return start.
+    return start;
   }
-  return obj_is_dead;
+
+  // Need to search the blocks before start if still in the current region.
+  HeapWord* block_start = start;
+  while (block_start > _bottom) {
+    // The limit for this round is the previous block_start.
+    HeapWord* limit = block_start;
+    // Step to the previous block.
+    block_start -= BOTConstants::card_size_in_words();
+    assert(is_in(block_start), "Should never search outside the region");
+
+    // Now find the last marked object in this block.
+    HeapWord* current = bitmap->get_next_marked_addr(block_start, limit);
+    HeapWord* last_marked_in_block = NULL;
+    // Entering this loop mean we found a marked object in the block
+    // and should return it. Step forward to the last marked and
+    // keep it recorded in last_marked_in_block.
+    while (current < limit) {
+      last_marked_in_block = current;
+      current = bitmap->get_next_marked_addr(current + 1, limit);
+    }
+    assert(current == limit, "invariant");
+
+    // When we have found a marked object, we check if it is spanning
+    // into the chunk starting at start.
+    if (last_marked_in_block != NULL) {
+      oop last_marked = cast_to_oop<HeapWord*>(last_marked_in_block);
+      HeapWord* next = last_marked_in_block + last_marked->size();
+      if (next > start) {
+        return last_marked_in_block;
+      } else {
+        // Found object not spanning into block starting at start.
+        return NULL;
+      }
+    }
+   }
+
+  // Did not find any marked objects return NULL.
+  assert (block_start == _bottom, "Must search the whole region");
+  assert (!bitmap->is_marked(_bottom), "Should not be marked, should have been found above");
+  return NULL;
+}
+
+inline bool HeapRegion::obj_is_parsable(const HeapWord* addr) const {
+  return addr >= _parsable_bottom;
+}
+
+inline bool HeapRegion::is_marked_in_bitmap(oop obj) const {
+  return G1CollectedHeap::heap()->concurrent_mark()->mark_bitmap()->is_marked(obj);
 }
 
 inline bool HeapRegion::block_is_obj(const HeapWord* p) const {
   assert(p >= bottom() && p < top(), "precondition");
   assert(!is_continues_humongous(), "p must point to block-start");
+
+  if (obj_is_parsable(p)) {
+    return true;
+  }
+
   // When class unloading is enabled it is not safe to only consider top() to conclude if the
   // given pointer is a valid object. The situation can occur both for class unloading in a
   // Full GC and during a concurrent cycle.
-  // During a Full GC regions can be excluded from compaction due to high live ratio, and
-  // because of this there can be stale objects for unloaded classes left in these regions.
-  // During a concurrent cycle class unloading is done after marking is complete and objects
-  // for the unloaded classes will be stale until the regions are collected.
-  if (ClassUnloading) {
-    return !G1CollectedHeap::heap()->is_obj_dead(cast_to_oop(p), this);
-  }
-  return true;
+  // To make sure dead objects can be handled without always keeping an additional bitmap, we
+  // scrub dead objects and create filler objects that are considered dead. We do this even if
+  // class unloading is disabled to avoid special code.
+  // From Remark until the region has been completely scrubbed obj_is_parsable will return false
+  // and we have to use the bitmap to know if a block is a valid object.
+  return is_marked_in_bitmap(cast_to_oop(p));
 }
 
-inline size_t HeapRegion::block_size_using_bitmap(const HeapWord* addr, const G1CMBitMap* const prev_bitmap) const {
-  assert(ClassUnloading,
-         "All blocks should be objects if class unloading isn't used, so this method should not be called. "
-         "HR: [" PTR_FORMAT ", " PTR_FORMAT ", " PTR_FORMAT ") "
-         "addr: " PTR_FORMAT,
-         p2i(bottom()), p2i(top()), p2i(end()), p2i(addr));
-
-  // Old regions' dead objects may have dead classes
-  // We need to find the next live object using the bitmap
-  HeapWord* next = prev_bitmap->get_next_marked_addr(addr, prev_top_at_mark_start());
-
-  assert(next > addr, "must get the next live object");
-  return pointer_delta(next, addr);
+inline bool HeapRegion::obj_is_scrubbed(const oop obj) const {
+  return obj->is_gc_marked();
 }
 
-inline bool HeapRegion::is_obj_dead(const oop obj, const G1CMBitMap* const prev_bitmap) const {
+inline bool HeapRegion::is_obj_dead(const oop obj) const {
   assert(is_in_reserved(obj), "Object " PTR_FORMAT " must be in region", p2i(obj));
-  return !obj_allocated_since_prev_marking(obj) &&
-         !prev_bitmap->is_marked(obj) &&
-         !is_closed_archive();
+  // Any object allocated since the last mark cycle is live. During Remark
+  // the marking completes and what is considered the last cycle is updated.
+  if (obj_allocated_since_last_marking(obj)) {
+    return false;
+  }
+
+  // Objects in closed archive regions are always live.
+  if (is_closed_archive()) {
+    return false;
+  }
+
+  // From Remark until a region has been concurrently scrubbed, parts of the
+  // region is not guaranteed to be parsable. Use the bitmap for liveness.
+  if (!obj_is_parsable(cast_from_oop<HeapWord*>(obj))) {
+    return !is_marked_in_bitmap(obj);
+  }
+
+  // This object is in the parsable part of the heap, live unless scrubbed.
+  return obj_is_scrubbed(obj);
+}
+
+inline size_t HeapRegion::size_of_block(const HeapWord* addr) const {
+  assert(_parsable_bottom > _bottom, "Should only be used when part of the region is un-parsable");
+  assert(!obj_is_parsable(addr), "Should only be used when addr is in un-parsable range");
+
+  const G1CMBitMap* bitmap = G1CollectedHeap::heap()->concurrent_mark()->mark_bitmap();
+  HeapWord* next_live = bitmap->get_next_marked_addr(addr, _parsable_bottom);
+
+  assert(next_live > addr, "Must move forward");
+  return pointer_delta(next_live, addr);
 }
 
 inline size_t HeapRegion::block_size(const HeapWord *addr) const {
   assert(addr < top(), "precondition");
+  //assert(block_is_obj(addr), "All blocks must be valid");
 
-  if (block_is_obj(addr)) {
-    return cast_to_oop(addr)->size();
+  if (!block_is_obj(addr)) {
+    return size_of_block(addr);
   }
 
-  return block_size_using_bitmap(addr, G1CollectedHeap::heap()->concurrent_mark()->prev_mark_bitmap());
+  return cast_to_oop(addr)->size();
 }
 
 inline void HeapRegion::reset_compaction_top_after_compaction() {
@@ -160,7 +220,7 @@ inline void HeapRegion::reset_compacted_after_full_gc() {
 
   reset_compaction_top_after_compaction();
   // After a compaction the mark bitmap in a non-pinned regions is invalid.
-  // We treat all objects as being above PTAMS.
+  // But all objects are live, we get this by setting "prev" TAMS to bottom.
   zero_marked_bytes();
   init_top_at_mark_start();
 
@@ -176,13 +236,16 @@ inline void HeapRegion::reset_skip_compacting_after_full_gc() {
 
   _prev_top_at_mark_start = top(); // Keep existing top and usage.
   _prev_marked_bytes = used();
-  _next_top_at_mark_start = bottom();
+  _top_at_mark_start = bottom();
   _next_marked_bytes = 0;
 
   reset_after_full_gc_common();
 }
 
 inline void HeapRegion::reset_after_full_gc_common() {
+  // Everything above bottom() is parsable and live.
+  _parsable_bottom = bottom();
+
   // Clear unused heap memory in debug builds.
   if (ZapUnusedHeapArea) {
     mangle_unused_area();
@@ -242,15 +305,20 @@ inline void HeapRegion::update_bot_for_obj(HeapWord* obj_start, size_t obj_size)
 
 inline void HeapRegion::note_start_of_marking() {
   _next_marked_bytes = 0;
-  _next_top_at_mark_start = top();
+  _top_at_mark_start = top();
   _gc_efficiency = -1.0;
 }
 
 inline void HeapRegion::note_end_of_marking() {
-  _prev_top_at_mark_start = _next_top_at_mark_start;
-  _next_top_at_mark_start = bottom();
+  _prev_top_at_mark_start = _top_at_mark_start;
+  _parsable_bottom = _top_at_mark_start;
+  _top_at_mark_start = bottom();
   _prev_marked_bytes = _next_marked_bytes;
   _next_marked_bytes = 0;
+}
+
+inline void HeapRegion::note_end_of_scrubbing() {
+  _parsable_bottom = _bottom;
 }
 
 inline bool HeapRegion::in_collection_set() const {
@@ -305,42 +373,52 @@ HeapWord* HeapRegion::do_oops_on_memregion_in_humongous(MemRegion mr,
   }
 }
 
-template <bool is_gc_active, class Closure>
-HeapWord* HeapRegion::oops_on_memregion_seq_iterate_careful(MemRegion mr,
-                                                            Closure* cl) {
-  assert(MemRegion(bottom(), end()).contains(mr), "Card region not in heap region");
-  G1CollectedHeap* g1h = G1CollectedHeap::heap();
-
-  // Special handling for humongous regions.
-  if (is_humongous()) {
-    return do_oops_on_memregion_in_humongous<Closure, is_gc_active>(mr, cl, g1h);
-  }
-  assert(is_old() || is_archive(), "Wrongly trying to iterate over region %u type %s", _hrm_index, get_type_str());
-
-  // Because mr has been trimmed to what's been allocated in this
-  // region, the parts of the heap that are examined here are always
-  // parsable; there's no need to use klass_or_null to detect
-  // in-progress allocation.
-
+template <class Closure, bool is_gc_active>
+inline HeapWord* HeapRegion::oops_on_memregion_iterate(MemRegion mr, Closure* cl) {
   // Cache the boundaries of the memory region in some const locals
   HeapWord* const start = mr.start();
   HeapWord* const end = mr.end();
 
   // Find the obj that extends onto mr.start().
-  HeapWord* cur = block_start(start);
+  HeapWord* cur;
+  if (obj_is_parsable(start) || is_gc_active) {
+    // If start is in the the parsable part of the region or we
+    // are in a safepoint the BOT is stable and we can use
+    // block_start to find the object start.
+    cur = block_start(start);
 
-  const G1CMBitMap* const bitmap = g1h->concurrent_mark()->prev_mark_bitmap();
+    assert(cur <= start, "cur: " PTR_FORMAT ", start: " PTR_FORMAT, p2i(cur), p2i(start));
+    DEBUG_ONLY(HeapWord* next = cur + block_size(cur);)
+    assert(start < next, "start: " PTR_FORMAT ", next: " PTR_FORMAT, p2i(start), p2i(next));
+  } else {
+    // Doing concurrent refinement and during the scrubbing phase.
+    // At this point the BOT is not stable and we need to get the
+    // object potentially spanning into the chunk by searching the
+    // bitmap.
+    cur = live_block_at_or_spanning(start);
+    if (cur == NULL) {
+      // No live object spanning into this memory region. Find
+      // the first live after start.
+      cur = start + size_of_block(start);
+      // Not safe to scan past the given MemRegion so we need to
+      // check that cur is still within it.
+      if (cur >= end) {
+        return end;
+      }
+    }
+    assert(cur < end, "cur: " PTR_FORMAT ", end: " PTR_FORMAT, p2i(cur), p2i(end));
+  }
+
   while (true) {
     oop obj = cast_to_oop(cur);
     assert(oopDesc::is_oop(obj, true), "Not an oop at " PTR_FORMAT, p2i(cur));
     assert(obj->klass_or_null() != NULL,
            "Unparsable heap at " PTR_FORMAT, p2i(cur));
 
-    size_t size;
-    bool is_dead = is_obj_dead_with_size(obj, bitmap, &size);
+    bool is_dead = is_obj_dead(obj);
     bool is_precise = false;
 
-    cur += size;
+    cur += block_size(cur);
     if (!is_dead) {
       // Process live object's references.
 
@@ -359,6 +437,29 @@ HeapWord* HeapRegion::oops_on_memregion_seq_iterate_careful(MemRegion mr,
       return is_precise ? end : cur;
     }
   }
+}
+
+template <bool is_gc_active, class Closure>
+HeapWord* HeapRegion::oops_on_memregion_seq_iterate_careful(MemRegion mr,
+                                                            Closure* cl) {
+  assert(MemRegion(bottom(), end()).contains(mr), "Card region not in heap region");
+  G1CollectedHeap* g1h = G1CollectedHeap::heap();
+
+  // Special handling for humongous regions.
+  if (is_humongous()) {
+    return do_oops_on_memregion_in_humongous<Closure, is_gc_active>(mr, cl, g1h);
+  }
+  assert(is_old() || is_archive(), "Wrongly trying to iterate over region %u type %s", _hrm_index, get_type_str());
+
+  // Because mr has been trimmed to what's been allocated in this
+  // region, the parts of the heap that are examined here are always
+  // parsable; there's no need to use klass_or_null to detect
+  // in-progress allocation.
+  // We might be in the progress of scrubbing this region and in this
+  // case there might be objects that have their classes unloaded and
+  // therefore needs to be scanned using the bitmap.
+
+  return oops_on_memregion_iterate<Closure, is_gc_active>(mr, cl);
 }
 
 inline int HeapRegion::age_in_surv_rate_group() const {

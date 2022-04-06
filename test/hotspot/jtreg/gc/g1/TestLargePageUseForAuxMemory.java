@@ -102,7 +102,6 @@ public class TestLargePageUseForAuxMemory {
     }
 
     static void checkBitmaps(OutputAnalyzer output, long expectedPageSize) throws Exception {
-        checkSize(output, expectedPageSize, "Prev Bitmap: .*page_size=([^ ]+)");
         checkSize(output, expectedPageSize, "Next Bitmap: .*page_size=([^ ]+)");
     }
 

@@ -159,7 +159,7 @@ inline G1ScannerTasksQueue* G1CollectedHeap::task_queue(uint i) const {
 }
 
 inline bool G1CollectedHeap::is_marked_next(oop obj) const {
-  return _cm->next_mark_bitmap()->is_marked(obj);
+  return _cm->mark_bitmap()->is_marked(obj);
 }
 
 inline bool G1CollectedHeap::is_in_cset(oop obj) {
@@ -215,7 +215,7 @@ inline bool G1CollectedHeap::is_in_young(const oop obj) const {
 }
 
 inline bool G1CollectedHeap::is_obj_dead(const oop obj, const HeapRegion* hr) const {
-  return hr->is_obj_dead(obj, _cm->prev_mark_bitmap());
+  return hr->is_obj_dead(obj);
 }
 
 inline bool G1CollectedHeap::is_obj_dead(const oop obj) const {
@@ -231,6 +231,14 @@ inline bool G1CollectedHeap::is_obj_dead_full(const oop obj, const HeapRegion* h
 
 inline bool G1CollectedHeap::is_obj_dead_full(const oop obj) const {
     return is_obj_dead_full(obj, heap_region_containing(obj));
+}
+
+inline void G1CollectedHeap::mark_evac_failure_object(const oop obj, uint worker_id) const {
+    // All objects failing evacuation are live. What we'll do is
+    // that we'll update the next marking info so that they are
+    // all under TAMS and explicitly marked.
+    assert(obj->is_forwarded() && obj->forwardee() == obj, "Should only mark self forwarded");
+    _cm->raw_mark_in_bitmap(obj);
 }
 
 inline void G1CollectedHeap::set_humongous_reclaim_candidate(uint region, bool value) {

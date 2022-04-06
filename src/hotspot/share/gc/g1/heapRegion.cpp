@@ -238,7 +238,8 @@ HeapRegion::HeapRegion(uint hrm_index,
 #ifdef ASSERT
   _containing_set(NULL),
 #endif
-  _prev_top_at_mark_start(NULL), _next_top_at_mark_start(NULL),
+  _top_at_mark_start(NULL), _prev_top_at_mark_start(NULL),
+  _parsable_bottom(NULL),
   _prev_marked_bytes(0), _next_marked_bytes(0),
   _young_index_in_cset(-1),
   _surv_rate_group(NULL), _age_index(G1SurvRateGroup::InvalidAgeIndex), _gc_efficiency(-1.0),
@@ -274,22 +275,23 @@ void HeapRegion::report_region_type_change(G1HeapRegionTraceType::Type to) {
 
 void HeapRegion::note_self_forwarding_removal_start(bool during_concurrent_start,
                                                     bool during_conc_mark) {
-  // We always recreate the prev marking info and we'll explicitly
-  // mark all objects we find to be self-forwarded on the prev
-  // bitmap. So all objects need to be below PTAMS.
+  // We always scrub the region to make sure all dead objects are
+  // parsable after the removal. This also mean that they should be
+  // below "prev" TAMS. The TAMS value is recorded when the region
+  // has been fully processed.
   _prev_marked_bytes = 0;
 
   if (during_concurrent_start) {
     // During concurrent start, we'll also explicitly mark all objects
-    // we find to be self-forwarded on the next bitmap. So all
-    // objects need to be below NTAMS.
-    _next_top_at_mark_start = top();
+    // we find to be self-forwarded in the marking bitmap. So all
+    // objects need to be below TAMS.
+    _top_at_mark_start = top();
     _next_marked_bytes = 0;
   } else if (during_conc_mark) {
     // During concurrent mark, all objects in the CSet (including
     // the ones we find to be self-forwarded) are implicitly live.
-    // So all objects need to be above NTAMS.
-    _next_top_at_mark_start = bottom();
+    // So all objects need to be above TAMS.
+    _top_at_mark_start = bottom();
     _next_marked_bytes = 0;
   }
 }
@@ -457,7 +459,7 @@ void HeapRegion::print_on(outputStream* st) const {
     st->print("|  ");
   }
   st->print("|TAMS " PTR_FORMAT ", " PTR_FORMAT "| %s ",
-               p2i(prev_top_at_mark_start()), p2i(next_top_at_mark_start()), rem_set()->get_state_str());
+               p2i(prev_top_at_mark_start()), p2i(top_at_mark_start()), rem_set()->get_state_str());
   if (UseNUMA) {
     G1NUMA* numa = G1NUMA::numa();
     if (node_index() < numa->num_active_nodes()) {
@@ -807,4 +809,27 @@ void HeapRegion::fill_with_dummy_object(HeapWord* address, size_t word_size, boo
   }
   // Fill in the object.
   CollectedHeap::fill_with_object(address, word_size, zap);
+}
+
+void HeapRegion::fill_range_with_dead_objects(HeapWord* start, HeapWord* end) {
+  size_t range_size = pointer_delta(end, start);
+  if (range_size >= CollectedHeap::min_fill_size()) {
+    // Fill the dead range with objects. G1 might need to create two objects if
+    // the range is larger than half a region, which is the max_fill_size().
+    CollectedHeap::fill_with_objects(start, range_size);
+    HeapWord* current = start;
+    do {
+      // Update header to tell that this object is not live.
+      oop obj = cast_to_oop(current);
+      obj->set_mark(markWord::prototype().set_marked());
+
+      // Update the BOT if the a threshold is crossed.
+      size_t obj_size = obj->size();
+      update_bot_for_block(current, current + obj_size);
+
+      // Advance to the next object.
+      current += obj_size;
+      guarantee(current <= end, "Should never go past end");
+    } while (current != end);
+  }
 }

@@ -138,6 +138,10 @@ bool G1FullGCPrepareTask::G1ResetMetadataClosure::do_heap_region(HeapRegion* hr)
       // performance during scanning their card tables in the collection pauses later.
       hr->update_bot();
     }
+
+    if (_collector->is_skip_compacting(region_idx)) {
+      scrub_skip_compacting_region(hr);
+    }
   }
 
   // Reset data structures not valid after Full GC.
@@ -159,5 +163,39 @@ void G1FullGCPrepareTask::G1CalculatePointersClosure::prepare_for_compaction(Hea
   if (!_collector->is_free(hr->hrm_index())) {
     G1PrepareCompactLiveClosure prepare_compact(_cp);
     hr->apply_to_marked_objects(_bitmap, &prepare_compact);
+  }
+}
+
+void G1FullGCPrepareTask::G1ResetMetadataClosure::scrub_skip_compacting_region(HeapRegion* hr) {
+  if (hr->is_humongous()) {
+    // No need to scrub humongous, if they end up here they are live and since
+    // the region only contain a single object there is nothing to scrub.
+    return;
+  }
+
+  HeapWord* limit = hr->top();
+  HeapWord* current_obj = hr->bottom();
+  G1CMBitMap* bitmap = _collector->mark_bitmap();
+
+  while (current_obj < limit) {
+    if (bitmap->is_marked(current_obj)) {
+      oop current = cast_to_oop(current_obj);
+      guarantee(!current->is_gc_marked(), "No live objects in G1 should be GC marked");
+      current_obj += current->size();
+      continue;
+    }
+    // Found dead object, which is potentially unloaded, scrub to next
+    // marked object.
+    HeapWord* scrub_start = current_obj;
+    HeapWord* scrub_end = bitmap->get_next_marked_addr(scrub_start, limit);
+    if (scrub_start != scrub_end) {
+      hr->fill_range_with_dead_objects(scrub_start, scrub_end);
+    }
+
+    // Check that after scrub the dead object is marked!
+    oop current = cast_to_oop(current_obj);
+    guarantee(current->is_gc_marked(), "Scrubbed objects in G1 should be GC marked");
+
+    current_obj = scrub_end;
   }
 }
