@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2001, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2001, 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -162,7 +162,8 @@ inline bool HeapRegion::block_is_obj(const HeapWord* p) const {
 }
 
 inline bool HeapRegion::obj_is_scrubbed(const oop obj) const {
-  return obj->is_gc_marked();
+  Klass* k = obj->klass();
+  return k == Universe::fillerArrayKlassObj() || k == vmClasses::FillerObject_klass();
 }
 
 inline bool HeapRegion::is_obj_dead(const oop obj) const {

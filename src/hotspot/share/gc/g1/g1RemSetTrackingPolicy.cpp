@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -63,11 +63,11 @@ void G1RemSetTrackingPolicy::update_at_free(HeapRegion* r) {
 static void print_before_rebuild(HeapRegion* r, bool selected_for_rebuild, size_t total_live_bytes, size_t live_bytes) {
   log_trace(gc, remset, tracking)("Before rebuild region %u "
                                   "(tams: " PTR_FORMAT ") "
-                                  "total_live_bytes " SIZE_FORMAT " "
+                                  "total_live_bytes %zu "
                                   "selected %s "
-                                  "(live_bytes " SIZE_FORMAT " "
-                                  "next_marked " SIZE_FORMAT " "
-                                  "marked " SIZE_FORMAT " "
+                                  "(live_bytes %zu "
+                                  "next_marked %zu "
+                                  "marked %zu "
                                   "type %s)",
                                   r->hrm_index(),
                                   p2i(r->top_at_mark_start()),
@@ -164,10 +164,10 @@ void G1RemSetTrackingPolicy::update_after_rebuild(HeapRegion* r) {
     G1ConcurrentMark* cm = G1CollectedHeap::heap()->concurrent_mark();
     log_trace(gc, remset, tracking)("After rebuild region %u "
                                     "(tams " PTR_FORMAT " "
-                                    "liveness " SIZE_FORMAT " "
-                                    "next_marked_bytes " SIZE_FORMAT " "
-                                    "remset occ " SIZE_FORMAT " "
-                                    "size " SIZE_FORMAT ")",
+                                    "liveness %zu "
+                                    "next_marked_bytes %zu "
+                                    "remset occ %zu "
+                                    "size %zu)",
                                     r->hrm_index(),
                                     p2i(r->top_at_mark_start()),
                                     cm->live_bytes(r->hrm_index()),

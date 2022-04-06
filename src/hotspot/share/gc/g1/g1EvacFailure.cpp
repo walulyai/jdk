@@ -94,6 +94,7 @@ public:
     return obj_size;
   }
 
+  // FIXME: fix the comments below
   // Fill the memory area from start to end with filler objects, and update the BOT
   // accordingly. Since we clear and use the prev bitmap for marking objects that
   // failed evacuation, there is no work to be done there.
@@ -104,7 +105,7 @@ public:
 
     _hr->fill_range_with_dead_objects(start, end);
     MemRegion mr(start, end);
-    _cm->clear_range_in_bitmap(mr);
+    _cm->clear_range_in_bitmap(mr); // FIXME: verify with JDK-8280374
   }
 
   void zap_remainder() {

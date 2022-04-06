@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2001, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2001, 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -292,8 +292,7 @@ class G1ConcurrentMark : public CHeapObj<mtGC> {
   G1CollectedHeap*        _g1h;           // The heap
 
   // Concurrent marking support structures
-  G1CMBitMap              _mark_bitmap_2;
-  G1CMBitMap*             _mark_bitmap; // Under-construction mark bitmap
+  G1CMBitMap              _mark_bitmap;
 
   // Heap bounds
   MemRegion const         _heap;
@@ -519,7 +518,7 @@ public:
 
   G1ConcurrentMarkThread* cm_thread() { return _cm_thread; }
 
-  G1CMBitMap* mark_bitmap() const { return _mark_bitmap; }
+  G1CMBitMap* mark_bitmap() const { return (G1CMBitMap*)&_mark_bitmap; }
 
   // Calculates the number of concurrent GC threads to be used in the marking phase.
   uint calc_active_marking_workers();

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2001, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2001, 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -364,8 +364,7 @@ G1ConcurrentMark::G1ConcurrentMark(G1CollectedHeap* g1h,
   // _cm_thread set inside the constructor
   _g1h(g1h),
 
-  _mark_bitmap_2(),
-  _mark_bitmap(&_mark_bitmap_2),
+  _mark_bitmap(),
 
   _heap(_g1h->reserved()),
 
@@ -414,7 +413,7 @@ G1ConcurrentMark::G1ConcurrentMark(G1CollectedHeap* g1h,
 {
   assert(CGC_lock != NULL, "CGC_lock must be initialized");
 
-  _mark_bitmap_2.initialize(g1h->reserved(), bitmap_storage);
+  _mark_bitmap.initialize(g1h->reserved(), bitmap_storage);
 
   // Create & start ConcurrentMark thread.
   _cm_thread = new G1ConcurrentMarkThread(this);
@@ -461,7 +460,7 @@ void G1ConcurrentMark::reset() {
   // Reset all tasks, since different phases will use different number of active
   // threads. So, it's easiest to have all of them ready.
   for (uint i = 0; i < _max_num_tasks; ++i) {
-    _tasks[i]->reset(_mark_bitmap);
+    _tasks[i]->reset(mark_bitmap());
   }
 
   uint max_reserved_regions = _g1h->max_reserved_regions();
@@ -504,7 +503,7 @@ void G1ConcurrentMark::humongous_object_eagerly_reclaimed(HeapRegion* r) {
   assert_at_safepoint();
 
   // Need to clear all mark bits of the humongous object.
-  clear_mark_if_set(_mark_bitmap, r->bottom());
+  clear_mark_if_set(mark_bitmap(), r->bottom());
 
   if (!_g1h->collector_state()->mark_or_rebuild_in_progress()) {
     return;
@@ -1865,7 +1864,7 @@ void G1ConcurrentMark::flush_all_task_caches() {
 
 void G1ConcurrentMark::clear_range_in_bitmap(MemRegion mr) {
   assert_at_safepoint();
-  _mark_bitmap->clear_range(mr);
+  _mark_bitmap.clear_range(mr);
 }
 
 HeapRegion*
@@ -2365,8 +2364,8 @@ void G1ConcurrentMark::threads_do(ThreadClosure* tc) const {
 }
 
 void G1ConcurrentMark::print_on_error(outputStream* st) const {
-  st->print_cr("Marking Bits: (CMBitMap*) " PTR_FORMAT, p2i(_mark_bitmap));
-  _mark_bitmap->print_on_error(st, " Next Bits: ");
+  st->print_cr("Marking Bits: (CMBitMap*) " PTR_FORMAT, p2i(mark_bitmap()));
+  _mark_bitmap.print_on_error(st, " Next Bits: ");
 }
 
 static ReferenceProcessor* get_cm_oop_closure_ref_processor(G1CollectedHeap* g1h) {

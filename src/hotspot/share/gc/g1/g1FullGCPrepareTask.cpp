@@ -180,7 +180,6 @@ void G1FullGCPrepareTask::G1ResetMetadataClosure::scrub_skip_compacting_region(H
   while (current_obj < limit) {
     if (bitmap->is_marked(current_obj)) {
       oop current = cast_to_oop(current_obj);
-      guarantee(!current->is_gc_marked(), "No live objects in G1 should be GC marked");
       current_obj += current->size();
       continue;
     }
@@ -191,10 +190,6 @@ void G1FullGCPrepareTask::G1ResetMetadataClosure::scrub_skip_compacting_region(H
     if (scrub_start != scrub_end) {
       hr->fill_range_with_dead_objects(scrub_start, scrub_end);
     }
-
-    // Check that after scrub the dead object is marked!
-    oop current = cast_to_oop(current_obj);
-    guarantee(current->is_gc_marked(), "Scrubbed objects in G1 should be GC marked");
 
     current_obj = scrub_end;
   }

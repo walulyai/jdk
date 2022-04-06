@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2016, 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -405,7 +405,7 @@ public:
         VerifyObjsInRegionClosure not_dead_yet_cl(r, _vo);
         r->object_iterate(&not_dead_yet_cl);
         if (r->max_live_bytes() < not_dead_yet_cl.live_bytes()) {
-          log_error(gc, verify)(HR_FORMAT " max_live_bytes " SIZE_FORMAT " < calculated " SIZE_FORMAT,
+          log_error(gc, verify)(HR_FORMAT " max_live_bytes %zu < calculated %zu",
                                 HR_FORMAT_PARAMS(r), r->max_live_bytes(), not_dead_yet_cl.live_bytes());
           _failures = true;
         }

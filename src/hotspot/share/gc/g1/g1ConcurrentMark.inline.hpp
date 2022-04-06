@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2001, 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2001, 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -92,7 +92,7 @@ inline bool G1ConcurrentMark::mark_in_bitmap(uint const worker_id, HeapRegion* c
   // Can't assert that this is a valid object at this point, since it might be in the process of being copied by another thread.
   assert(!hr->is_continues_humongous(), "Should not try to mark object " PTR_FORMAT " in Humongous continues region %u above TAMS " PTR_FORMAT, p2i(obj), hr->hrm_index(), p2i(hr->top_at_mark_start()));
 
-  bool success = _mark_bitmap->par_mark(obj);
+  bool success = _mark_bitmap.par_mark(obj);
   if (success) {
     add_to_liveness(worker_id, obj, obj->size());
   }
@@ -287,12 +287,12 @@ inline bool G1CMTask::deal_with_reference(T* p) {
 }
 
 inline void G1ConcurrentMark::raw_mark_in_bitmap(oop p) {
-  _mark_bitmap->par_mark(p);
+  _mark_bitmap.par_mark(p);
 }
 
 bool G1ConcurrentMark::is_marked_in_bitmap(oop p) const {
   assert(p != NULL && oopDesc::is_oop(p), "expected an oop");
-  return _mark_bitmap->is_marked(cast_from_oop<HeapWord*>(p));
+  return _mark_bitmap.is_marked(cast_from_oop<HeapWord*>(p));
 }
 
 inline bool G1ConcurrentMark::do_yield_check() {

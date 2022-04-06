@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2001, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2001, 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -819,12 +819,8 @@ void HeapRegion::fill_range_with_dead_objects(HeapWord* start, HeapWord* end) {
     CollectedHeap::fill_with_objects(start, range_size);
     HeapWord* current = start;
     do {
-      // Update header to tell that this object is not live.
-      oop obj = cast_to_oop(current);
-      obj->set_mark(markWord::prototype().set_marked());
-
       // Update the BOT if the a threshold is crossed.
-      size_t obj_size = obj->size();
+      size_t obj_size = cast_to_oop(current)->size();
       update_bot_for_block(current, current + obj_size);
 
       // Advance to the next object.
