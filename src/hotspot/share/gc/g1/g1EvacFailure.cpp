@@ -94,9 +94,8 @@ public:
     return obj_size;
   }
 
-  // FIXME: fix the comments below
   // Fill the memory area from start to end with filler objects, and update the BOT
-  // accordingly. Since we clear and use the prev bitmap for marking objects that
+  // accordingly. Since we clear and use the bitmap for marking objects that
   // failed evacuation, there is no work to be done there.
   void zap_dead_objects(HeapWord* start, HeapWord* end) {
     if (start == end) {
@@ -104,8 +103,7 @@ public:
     }
 
     _hr->fill_range_with_dead_objects(start, end);
-    MemRegion mr(start, end);
-    _cm->clear_range_in_bitmap(mr); // FIXME: verify with JDK-8280374
+    assert(_cm->mark_bitmap()->get_next_marked_addr(start, end) == end, "Should not be marked in marking bitmap");
   }
 
   void zap_remainder() {

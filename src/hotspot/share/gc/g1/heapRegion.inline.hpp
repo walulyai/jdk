@@ -135,7 +135,7 @@ inline HeapWord* HeapRegion::live_block_at_or_spanning(HeapWord* start) {
 }
 
 inline bool HeapRegion::obj_is_parsable(const HeapWord* addr) const {
-  return addr >= _parsable_bottom;
+  return  is_closed_archive() || addr >= _parsable_bottom;
 }
 
 inline bool HeapRegion::is_marked_in_bitmap(oop obj) const {
@@ -145,20 +145,7 @@ inline bool HeapRegion::is_marked_in_bitmap(oop obj) const {
 inline bool HeapRegion::block_is_obj(const HeapWord* p) const {
   assert(p >= bottom() && p < top(), "precondition");
   assert(!is_continues_humongous(), "p must point to block-start");
-
-  if (obj_is_parsable(p)) {
-    return true;
-  }
-
-  // When class unloading is enabled it is not safe to only consider top() to conclude if the
-  // given pointer is a valid object. The situation can occur both for class unloading in a
-  // Full GC and during a concurrent cycle.
-  // To make sure dead objects can be handled without always keeping an additional bitmap, we
-  // scrub dead objects and create filler objects that are considered dead. We do this even if
-  // class unloading is disabled to avoid special code.
-  // From Remark until the region has been completely scrubbed obj_is_parsable will return false
-  // and we have to use the bitmap to know if a block is a valid object.
-  return is_marked_in_bitmap(cast_to_oop(p));
+  return !is_obj_dead(cast_to_oop(p)) || obj_is_scrubbed(cast_to_oop(p));
 }
 
 inline bool HeapRegion::obj_is_scrubbed(const oop obj) const {
