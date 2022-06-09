@@ -33,6 +33,176 @@
  * @build LotsUnloadApp
  * @run driver jdk.test.lib.helpers.ClassFileInstaller sun.hotspot.WhiteBox
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar LotsUnloadApp.jar LotsUnloadApp DefinedAsHiddenKlass
+ * @test LotsUnloadTest1
+ * @run main/othervm -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI -Xbootclasspath/a:. LotsUnloadTest
+ */
+
+/*
+ * @test
+ * @bug 8278602
+ * @summary Lots of classes being unloaded while we try to dump a dynamic archive
+ * @requires vm.cds
+ * @library /test/lib /test/hotspot/jtreg/runtime/cds/appcds
+ *          /test/hotspot/jtreg/runtime/cds/appcds/dynamicArchive/test-classes
+ * @build sun.hotspot.WhiteBox
+ * @build LotsUnloadApp
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller sun.hotspot.WhiteBox
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar LotsUnloadApp.jar LotsUnloadApp DefinedAsHiddenKlass
+ * @test LotsUnloadTest1
+ * @run main/othervm -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI -Xbootclasspath/a:. LotsUnloadTest
+ */
+ /*
+ * @test
+ * @bug 8278602
+ * @summary Lots of classes being unloaded while we try to dump a dynamic archive
+ * @requires vm.cds
+ * @library /test/lib /test/hotspot/jtreg/runtime/cds/appcds
+ *          /test/hotspot/jtreg/runtime/cds/appcds/dynamicArchive/test-classes
+ * @build sun.hotspot.WhiteBox
+ * @build LotsUnloadApp
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller sun.hotspot.WhiteBox
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar LotsUnloadApp.jar LotsUnloadApp DefinedAsHiddenKlass
+ * @test LotsUnloadTest1
+ * @run main/othervm -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI -Xbootclasspath/a:. LotsUnloadTest
+ */
+ /*
+ * @test
+ * @bug 8278602
+ * @summary Lots of classes being unloaded while we try to dump a dynamic archive
+ * @requires vm.cds
+ * @library /test/lib /test/hotspot/jtreg/runtime/cds/appcds
+ *          /test/hotspot/jtreg/runtime/cds/appcds/dynamicArchive/test-classes
+ * @build sun.hotspot.WhiteBox
+ * @build LotsUnloadApp
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller sun.hotspot.WhiteBox
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar LotsUnloadApp.jar LotsUnloadApp DefinedAsHiddenKlass
+ * @test LotsUnloadTest1
+ * @run main/othervm -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI -Xbootclasspath/a:. LotsUnloadTest
+ */
+ /*
+ * @test
+ * @bug 8278602
+ * @summary Lots of classes being unloaded while we try to dump a dynamic archive
+ * @requires vm.cds
+ * @library /test/lib /test/hotspot/jtreg/runtime/cds/appcds
+ *          /test/hotspot/jtreg/runtime/cds/appcds/dynamicArchive/test-classes
+ * @build sun.hotspot.WhiteBox
+ * @build LotsUnloadApp
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller sun.hotspot.WhiteBox
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar LotsUnloadApp.jar LotsUnloadApp DefinedAsHiddenKlass
+ * @test LotsUnloadTest1
+ * @run main/othervm -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI -Xbootclasspath/a:. LotsUnloadTest
+ */
+ /*
+ * @test
+ * @bug 8278602
+ * @summary Lots of classes being unloaded while we try to dump a dynamic archive
+ * @requires vm.cds
+ * @library /test/lib /test/hotspot/jtreg/runtime/cds/appcds
+ *          /test/hotspot/jtreg/runtime/cds/appcds/dynamicArchive/test-classes
+ * @build sun.hotspot.WhiteBox
+ * @build LotsUnloadApp
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller sun.hotspot.WhiteBox
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar LotsUnloadApp.jar LotsUnloadApp DefinedAsHiddenKlass
+ * @test LotsUnloadTest1
+ * @run main/othervm -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI -Xbootclasspath/a:. LotsUnloadTest
+ */
+ /*
+ * @test
+ * @bug 8278602
+ * @summary Lots of classes being unloaded while we try to dump a dynamic archive
+ * @requires vm.cds
+ * @library /test/lib /test/hotspot/jtreg/runtime/cds/appcds
+ *          /test/hotspot/jtreg/runtime/cds/appcds/dynamicArchive/test-classes
+ * @build sun.hotspot.WhiteBox
+ * @build LotsUnloadApp
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller sun.hotspot.WhiteBox
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar LotsUnloadApp.jar LotsUnloadApp DefinedAsHiddenKlass
+ * @test LotsUnloadTest1
+ * @run main/othervm -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI -Xbootclasspath/a:. LotsUnloadTest
+ */
+ /*
+ * @test
+ * @bug 8278602
+ * @summary Lots of classes being unloaded while we try to dump a dynamic archive
+ * @requires vm.cds
+ * @library /test/lib /test/hotspot/jtreg/runtime/cds/appcds
+ *          /test/hotspot/jtreg/runtime/cds/appcds/dynamicArchive/test-classes
+ * @build sun.hotspot.WhiteBox
+ * @build LotsUnloadApp
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller sun.hotspot.WhiteBox
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar LotsUnloadApp.jar LotsUnloadApp DefinedAsHiddenKlass
+ * @test LotsUnloadTest1
+ * @run main/othervm -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI -Xbootclasspath/a:. LotsUnloadTest
+ */
+ /*
+ * @test
+ * @bug 8278602
+ * @summary Lots of classes being unloaded while we try to dump a dynamic archive
+ * @requires vm.cds
+ * @library /test/lib /test/hotspot/jtreg/runtime/cds/appcds
+ *          /test/hotspot/jtreg/runtime/cds/appcds/dynamicArchive/test-classes
+ * @build sun.hotspot.WhiteBox
+ * @build LotsUnloadApp
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller sun.hotspot.WhiteBox
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar LotsUnloadApp.jar LotsUnloadApp DefinedAsHiddenKlass
+ * @test LotsUnloadTest1
+ * @run main/othervm -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI -Xbootclasspath/a:. LotsUnloadTest
+ */
+ /*
+ * @test
+ * @bug 8278602
+ * @summary Lots of classes being unloaded while we try to dump a dynamic archive
+ * @requires vm.cds
+ * @library /test/lib /test/hotspot/jtreg/runtime/cds/appcds
+ *          /test/hotspot/jtreg/runtime/cds/appcds/dynamicArchive/test-classes
+ * @build sun.hotspot.WhiteBox
+ * @build LotsUnloadApp
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller sun.hotspot.WhiteBox
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar LotsUnloadApp.jar LotsUnloadApp DefinedAsHiddenKlass
+ * @test LotsUnloadTest1
+ * @run main/othervm -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI -Xbootclasspath/a:. LotsUnloadTest
+ */
+ /*
+ * @test
+ * @bug 8278602
+ * @summary Lots of classes being unloaded while we try to dump a dynamic archive
+ * @requires vm.cds
+ * @library /test/lib /test/hotspot/jtreg/runtime/cds/appcds
+ *          /test/hotspot/jtreg/runtime/cds/appcds/dynamicArchive/test-classes
+ * @build sun.hotspot.WhiteBox
+ * @build LotsUnloadApp
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller sun.hotspot.WhiteBox
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar LotsUnloadApp.jar LotsUnloadApp DefinedAsHiddenKlass
+ * @test LotsUnloadTest1
+ * @run main/othervm -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI -Xbootclasspath/a:. LotsUnloadTest
+ */
+ /*
+ * @test
+ * @bug 8278602
+ * @summary Lots of classes being unloaded while we try to dump a dynamic archive
+ * @requires vm.cds
+ * @library /test/lib /test/hotspot/jtreg/runtime/cds/appcds
+ *          /test/hotspot/jtreg/runtime/cds/appcds/dynamicArchive/test-classes
+ * @build sun.hotspot.WhiteBox
+ * @build LotsUnloadApp
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller sun.hotspot.WhiteBox
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar LotsUnloadApp.jar LotsUnloadApp DefinedAsHiddenKlass
+ * @test LotsUnloadTest1
+ * @run main/othervm -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI -Xbootclasspath/a:. LotsUnloadTest
+ */
+ /*
+ * @test
+ * @bug 8278602
+ * @summary Lots of classes being unloaded while we try to dump a dynamic archive
+ * @requires vm.cds
+ * @library /test/lib /test/hotspot/jtreg/runtime/cds/appcds
+ *          /test/hotspot/jtreg/runtime/cds/appcds/dynamicArchive/test-classes
+ * @build sun.hotspot.WhiteBox
+ * @build LotsUnloadApp
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller sun.hotspot.WhiteBox
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar LotsUnloadApp.jar LotsUnloadApp DefinedAsHiddenKlass
+ * @test LotsUnloadTest1
  * @run main/othervm -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI -Xbootclasspath/a:. LotsUnloadTest
  */
 
@@ -73,7 +243,9 @@ public class LotsUnloadTest extends DynamicArchiveTestBase {
 
         run(topArchiveName,
             logging,
-            "-Xmx64m", "-Xms32m",
+            "-Xmx64m", "-Xms32m", "-Xlog:gc,gc+marking=debug,gc+verify",
+            "-XX:+UnlockDiagnosticVMOptions", "-XX:+IgnoreUnrecognizedVMOptions",
+            "-Xcomp", "-XX:+DeoptimizeALot", "-server", "-XX:CompileThreshold=100", "-XX:-TieredCompilation", "-XX:+VerifyDuringGC", "-XX:+VerifyRememberedSets",
             "-cp", appJar, mainClass)
           .assertNormalExit(output -> {
               output.shouldHaveExitValue(0);
