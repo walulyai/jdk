@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -20,14 +20,26 @@
  * or visit www.oracle.com if you need additional information or have any
  * questions.
  */
+/*
+ * @test
+ * @bug 8291657
+ * @summary Javac assertion when compiling a method call with switch expression as argument
+ * @compile --enable-preview -source ${jdk.version} T8291657.java
+ */
+public class T8291657 {
+    static class A { }
+    interface B { }
+    static void f(final B b) { }
 
-#include "native_thread.cpp"
-#include "nsk_tools.cpp"
-#include "jni_tools.cpp"
-#include "jvmti_tools.cpp"
-#include "agent_tools.cpp"
-#include "jvmti_FollowRefObjects.cpp"
-#include "Injector.cpp"
-#include "JVMTITools.cpp"
-#include "agent_common.cpp"
-#include "hs204t001.cpp"
+    static public B minimized(Object o) {
+        return (B) switch (o) {
+            default -> new A();
+        };
+    }
+
+    public static void main(final String... args) {
+        f((B) switch (new Object()) {
+            case Object obj -> new A() {};
+        });
+    }
+}
