@@ -37,7 +37,7 @@ class G1Policy;
 class G1ConcurrentRefineThreadsNeeded : public CHeapObj<mtGC> {
   G1Policy* _policy;
   double _update_period_ms;
-  double _predicted_time_ms;
+  double _predicted_time_ms; // FIXME:_predicted_time_to_gc_ms
   size_t _predicted_cards;
   uint _threads_needed;
 

@@ -247,6 +247,8 @@ double G1Analytics::predict_dirtied_cards_rate_ms() const {
 }
 
 double G1Analytics::predict_dirtied_cards_in_thread_buffers() const {
+  //FIXME: not sure why we need to predict a value when we just saved
+  // that value at the start of the collection.
   return predict_zero_bounded(_dirtied_cards_in_thread_buffers_seq);
 }
 

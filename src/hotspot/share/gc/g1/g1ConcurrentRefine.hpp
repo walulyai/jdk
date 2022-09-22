@@ -99,6 +99,11 @@ public:
 // them.  Between buffers they query this owning object to find out whether
 // they should continue running, deactivating themselves if not.
 //
+
+
+//FIXME: why is the inactive thread periodically recalculating the number of active threads?
+
+
 // The primary thread drives the control system that determines how many
 // refinement threads should be active.  If inactive, it wakes up periodically
 // to recalculate the number of active threads needed, and activates

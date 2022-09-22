@@ -51,7 +51,7 @@ G1ConcurrentRefineThreadsNeeded::G1ConcurrentRefineThreadsNeeded(G1Policy* polic
 //
 // 3. Delay performing refinement work.  Having more dirty cards waiting to
 // be refined can be beneficial, as further writes to the same card don't
-// create more work.
+// create more work. //FIXME: investigate this
 void G1ConcurrentRefineThreadsNeeded::update(uint active_threads,
                                              size_t available_bytes,
                                              size_t num_cards,

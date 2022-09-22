@@ -155,7 +155,7 @@ bool G1PrimaryConcurrentRefineThread::wait_for_completed_buffers() {
     ml.wait(cr()->adjust_threads_wait_ms());
   }
   // Record adjustment needed whenever reactivating.
-  cr()->record_thread_adjustment_needed();
+  cr()->record_thread_adjustment_needed(); //FIXME: what if should_terminate()? should we contnue to record?
   return !should_terminate();
 }
 
