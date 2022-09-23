@@ -163,7 +163,7 @@ static size_t minimum_pending_cards_target() {
 G1ConcurrentRefine::G1ConcurrentRefine(G1Policy* policy) :
   _policy(policy),
   _threads_wanted(0),
-  _pending_cards_target(SIZE_MAX),
+  _pending_cards_target(PendingCardsTargetUninitialized),
   _last_adjust(),
   _needs_adjust(false),
   _threads_needed(policy, adjust_threads_period_ms()),
@@ -217,7 +217,7 @@ void G1ConcurrentRefine::update_pending_cards_target(double logged_cards_scan_ti
   // Deduct predicted cards in thread buffers to get target.
   size_t new_target = budget - MIN2(budget, predicted_thread_buffer_cards);
   // Add some hysterisis with previous values.
-  if (_pending_cards_target != SIZE_MAX) {
+  if (is_pending_cards_target_initialized()) {
     new_target = (new_target + _pending_cards_target) / 2;
   }
   // Apply minimum target.
@@ -226,7 +226,7 @@ void G1ConcurrentRefine::update_pending_cards_target(double logged_cards_scan_ti
   log_debug(gc, ergo, refine)("New pending cards target: %zu", new_target);
 }
 
-void G1ConcurrentRefine::adjust_after_gc(double logged_cards_scan_time_ms,
+void G1ConcurrentRefine::adjust_after_gc(double logged_cards_scan_time_ms, // FIXME: its not just scan time, you also included merge time thus its logged_cards_processing_time_ms
                                          size_t processed_logged_cards,
                                          size_t predicted_thread_buffer_cards,
                                          double goal_ms) {
@@ -243,9 +243,9 @@ void G1ConcurrentRefine::adjust_after_gc(double logged_cards_scan_time_ms,
     // the next periodic adjustment.  Because card state may have changed
     // drastically, record that adjustment is needed and kick the primary
     // thread, in case it is waiting.
-    _dcqs.set_max_cards(SIZE_MAX);
+    _dcqs.set_max_cards(SIZE_MAX); // FIXME: Don't we already set this in G1DirtyCardQueueSet::concatenate_logs() 
     _needs_adjust = true;
-    if (_pending_cards_target != SIZE_MAX) {
+    if (is_pending_cards_target_initialized()) {
       _thread_control.activate(0);
     }
   }
@@ -255,21 +255,21 @@ void G1ConcurrentRefine::adjust_after_gc(double logged_cards_scan_time_ms,
 // the next GC is longer.  But don't increase the wait time too rapidly.
 // This reduces the number of primary thread wakeups that just immediately
 // go back to waiting, while still being responsive to behavior changes.
-static uint64_t compute_adjust_delay(double available_ms) {
+static uint64_t compute_adjust_delay(double available_ms) { // FIXME: delay vs. wait?
   return static_cast<uint64_t>(sqrt(available_ms) * 4.0);
 }
 
 uint64_t G1ConcurrentRefine::adjust_threads_wait_ms() const {
   assert_current_thread_is_primary_refinement_thread();
-  if (_pending_cards_target == SIZE_MAX) {
-    // If target is "unbounded" then wait forever (until explicitly
+  if (is_pending_cards_target_initialized()) {
+    double available_ms = _threads_needed.predicted_time_until_next_gc_ms();
+    uint64_t delay = compute_adjust_delay(available_ms);
+    return MAX2(delay, adjust_threads_period_ms());
+  } else {
+    // If target not yet initialized then wait forever (until explicitly
     // activated).  This happens during startup, when we don't bother with
     // refinement.
     return 0;
-  } else {
-    double available_ms = _threads_needed.predicted_time_ms();
-    uint64_t delay = compute_adjust_delay(available_ms);
-    return MAX2(delay, adjust_threads_period_ms());
   }
 }
 
@@ -306,7 +306,7 @@ bool G1ConcurrentRefine::adjust_threads_periodically() {
 }
 
 bool G1ConcurrentRefine::is_in_last_adjustment_period() const {
-  return _threads_needed.predicted_time_ms() <= adjust_threads_period_ms();
+  return _threads_needed.predicted_time_until_next_gc_ms() <= adjust_threads_period_ms();
 }
 
 void G1ConcurrentRefine::adjust_threads_needed(size_t available_bytes) {
@@ -319,7 +319,7 @@ void G1ConcurrentRefine::adjust_threads_needed(size_t available_bytes) {
                          available_bytes,
                          num_cards,
                          _pending_cards_target);
-  uint new_needed = _threads_needed.threads_needed();
+  uint new_needed = _threads_needed.threads_needed(); // FIXME: clearly we need to change the names
   if (new_needed > _thread_control.max_num_threads()) {
     // If running all the threads can't reach goal, turn on refinement by
     // mutator threads.  Using target as the threshold may be stronger
@@ -335,18 +335,18 @@ void G1ConcurrentRefine::adjust_threads_needed(size_t available_bytes) {
     // worse.
     mutator_threshold = _pending_cards_target;
   }
-  Atomic::store(&_threads_wanted, new_needed);
+  Atomic::store(&_threads_wanted, new_needed); // FIXME: adjust_threads_needed instead modifies _threads_wanted
   _dcqs.set_max_cards(mutator_threshold);
   log_debug(gc, refine)("Updating refinement threads: needed %u, cards: %zu, "
                         "predicted: %zu, time: %1.2fms",
                         new_needed,
                         num_cards,
-                        _threads_needed.predicted_cards(),
-                        _threads_needed.predicted_time_ms());
+                        _threads_needed.predicted_cards_at_next_gc(),
+                        _threads_needed.predicted_time_until_next_gc_ms());
   // Activate newly wanted threads.  The current thread is the primary
   // refinement thread, so is already active.
   for (uint i = MAX2(old_wanted, 1u); i < new_needed; ++i) {
-    if (!_thread_control.activate(i)) {
+    if (!_thread_control.activate(i)) {         // FIXME: then also does more than just adjusting_threads needed
       // Failed to allocate and activate thread.  Stop trying to activate, and
       // instead use mutator threads to make up the gap.
       Atomic::store(&_threads_wanted, i);

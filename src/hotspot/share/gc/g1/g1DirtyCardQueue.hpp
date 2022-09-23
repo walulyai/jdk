@@ -162,7 +162,7 @@ class G1DirtyCardQueueSet: public PtrQueueSet {
   DEFINE_PAD_MINUS_SIZE(1, DEFAULT_CACHE_LINE_SIZE, sizeof(size_t));
   // If the queue contains more cards than configured here, the
   // mutator must start doing some of the concurrent refinement work.
-  volatile size_t _max_cards;
+  volatile size_t _max_cards; // FIXME _mutator_threshold
   DEFINE_PAD_MINUS_SIZE(2, DEFAULT_CACHE_LINE_SIZE, sizeof(size_t));
   // Buffers ready for refinement.
   // NonblockingQueue has inner padding of one cache line.
