@@ -402,16 +402,18 @@ class G1RefineBufferedCards : public StackObj {
   bool refine_cleaned_cards(size_t start_index) {
     bool result = true;
     size_t i = start_index;
+    size_t duplicate_cards = 0;
     for ( ; i < _node_buffer_size; ++i) {
       if (SuspendibleThreadSet::should_yield()) {
         redirty_unrefined_cards(i);
         result = false;
         break;
       }
-      _g1rs->refine_card_concurrently(_node_buffer[i], _worker_id);
+      _g1rs->refine_card_concurrently(_node_buffer[i], _worker_id, duplicate_cards);
     }
     _node->set_index(i);
     _stats->inc_refined_cards(i - start_index);
+    _stats->inc_duplicate_cards(duplicate_cards);
     return result;
   }
 

@@ -1120,6 +1120,10 @@ class G1MergeHeapRootsTask : public WorkerTask {
       _merged[G1GCPhaseTimes::MergeRSDirtyCards] += increment;
     }
 
+    void inc_cards_duplicate(size_t increment = 1) {
+      _merged[G1GCPhaseTimes::MergeRSDupCards] += increment;
+    }
+
     size_t merged(uint i) const { return _merged[i]; }
   };
 
@@ -1174,6 +1178,9 @@ class G1MergeHeapRootsTask : public WorkerTask {
       if (_ct->mark_clean_as_dirty(value)) {
         _stats.inc_cards_dirty();
         _scan_state->set_chunk_dirty(_ct->index_for_cardvalue(value));
+      } else {
+        // card was already dirty, duplicate*
+        _stats.inc_cards_duplicate();
       }
     }
 
@@ -1207,6 +1214,8 @@ class G1MergeHeapRootsTask : public WorkerTask {
     void do_card_range(uint const start_card_idx, uint const length) {
       size_t num_dirtied = _ct->mark_range_dirty(_region_base_idx + start_card_idx, length);
       _stats.inc_cards_dirty(num_dirtied);
+      assert(length >= num_dirtied, "must be!");
+      _stats.inc_cards_duplicate((length - num_dirtied));
       _scan_state->set_chunk_range_dirty(_region_base_idx + start_card_idx, length);
     }
 
@@ -1369,6 +1378,9 @@ class G1MergeHeapRootsTask : public WorkerTask {
         _scan_state->add_dirty_region(region_idx);
         _scan_state->set_chunk_dirty(_ct->index_for_cardvalue(card_ptr));
         _cards_dirty++;
+      } else {
+        // the card is no longer dirty
+        // very low probability, ignored for now
       }
     }
 
@@ -1703,7 +1715,8 @@ bool G1RemSet::clean_card_before_refine(CardValue** const card_ptr_addr) {
 }
 
 void G1RemSet::refine_card_concurrently(CardValue* const card_ptr,
-                                        const uint worker_id) {
+                                        const uint worker_id,
+                                        size_t &duplicate_cards) {
   assert(!_g1h->is_gc_active(), "Only call concurrently");
   check_card_ptr(card_ptr, _ct);
 
@@ -1728,6 +1741,9 @@ void G1RemSet::refine_card_concurrently(CardValue* const card_ptr,
 
   G1ConcurrentRefineOopClosure conc_refine_cl(_g1h, worker_id);
   if (r->oops_on_memregion_seq_iterate_careful<false>(dirty_region, &conc_refine_cl) != NULL) {
+    if (conc_refine_cl._already_in_remset){
+      ++duplicate_cards;
+    }
     return;
   }
 

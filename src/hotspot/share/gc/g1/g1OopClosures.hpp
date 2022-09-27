@@ -210,8 +210,11 @@ class G1ConcurrentRefineOopClosure: public BasicOopIterateClosure {
 public:
   G1ConcurrentRefineOopClosure(G1CollectedHeap* g1h, uint worker_id) :
     _g1h(g1h),
-    _worker_id(worker_id) {
+    _worker_id(worker_id),
+    _already_in_remset(false) {
   }
+
+  bool _already_in_remset;
 
   virtual ReferenceIterationMode reference_iteration_mode() { return DO_FIELDS; }
 

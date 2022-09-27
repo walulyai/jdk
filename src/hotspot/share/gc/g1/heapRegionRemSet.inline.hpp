@@ -120,7 +120,7 @@ uintptr_t HeapRegionRemSet::to_card(OopOrNarrowOopStar from) const {
   return pointer_delta(from, _heap_base_address, 1) >> CardTable::card_shift();
 }
 
-void HeapRegionRemSet::add_reference(OopOrNarrowOopStar from, uint tid) {
+bool HeapRegionRemSet::add_reference(OopOrNarrowOopStar from, uint tid) {
   assert(_state != Untracked, "must be");
 
   uint cur_idx = _hr->hrm_index();
@@ -130,10 +130,11 @@ void HeapRegionRemSet::add_reference(OopOrNarrowOopStar from, uint tid) {
     // We can't check whether the card is in the remembered set - the card container
     // may be coarsened just now.
     //assert(contains_reference(from), "We just found " PTR_FORMAT " in the FromCardCache", p2i(from));
-   return;
+   return false;
   }
 
-  _card_set.add_card(to_card(from));
+  G1AddCardResult result = _card_set.add_card(to_card(from));
+  return (result == Added);
 }
 
 bool HeapRegionRemSet::contains_reference(OopOrNarrowOopStar from) {

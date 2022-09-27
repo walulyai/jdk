@@ -113,13 +113,14 @@ class G1GCPhaseTimes : public CHeapObj<mtGC> {
     MergeRSHowlBitmap,
     MergeRSHowlFull,
     MergeRSDirtyCards,
+    MergeRSDupCards,
     MergeRSContainersSentinel
   };
 
   static constexpr const char* GCMergeRSWorkItemsStrings[MergeRSContainersSentinel] =
     { "Merged Inline", "Merged ArrayOfCards", "Merged Howl", "Merged Full",
       "Merged Howl Inline", "Merged Howl ArrayOfCards", "Merged Howl BitMap", "Merged Howl Full",
-      "Dirty Cards" };
+      "Dirty Cards", "Duplicate Cards" };
 
   enum GCScanHRWorkItems {
     ScanHRScannedCards,

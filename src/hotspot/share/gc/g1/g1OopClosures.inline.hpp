@@ -152,11 +152,14 @@ inline void G1ConcurrentRefineOopClosure::do_oop_work(T* p) {
     return;
   }
 
-  HeapRegionRemSet* to_rem_set = _g1h->heap_region_containing(obj)->rem_set();
+  HeapRegion* hr = _g1h->heap_region_containing(obj);
+  HeapRegionRemSet* to_rem_set = hr->rem_set();
 
   assert(to_rem_set != NULL, "Need per-region 'into' remsets.");
   if (to_rem_set->is_tracked()) {
-    to_rem_set->add_reference(p, _worker_id);
+    if (!to_rem_set->add_reference(p, _worker_id) && hr->in_collection_set()) {
+      _already_in_remset = true;
+    }
   }
 }
 

@@ -34,7 +34,7 @@ template <class T>
 class WorkerDataArray  : public CHeapObj<mtGC> {
   friend class WDAPrinter;
 public:
-  static const uint MaxThreadWorkItems = 9;
+  static const uint MaxThreadWorkItems = 10;
 private:
   T*          _data;
   uint        _length;

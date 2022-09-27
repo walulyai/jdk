@@ -28,6 +28,7 @@
 G1ConcurrentRefineStats::G1ConcurrentRefineStats() :
   _refinement_time(),
   _refined_cards(0),
+  _duplicate_cards(0),
   _precleaned_cards(0),
   _dirtied_cards(0)
 {}
@@ -38,10 +39,17 @@ double G1ConcurrentRefineStats::refinement_rate_ms() const {
   return (secs > 0) ? (refined_cards() / (secs * MILLIUNITS)) : 0.0;
 }
 
+double G1ConcurrentRefineStats::duplicate_ratio() const {
+  assert(_refined_cards >= _duplicate_cards, "Must be!");
+
+  return _duplicate_cards / (_refined_cards * 1.0);
+}
+
 G1ConcurrentRefineStats&
 G1ConcurrentRefineStats::operator+=(const G1ConcurrentRefineStats& other) {
   _refinement_time += other._refinement_time;
   _refined_cards += other._refined_cards;
+  _duplicate_cards += other._duplicate_cards;
   _precleaned_cards += other._precleaned_cards;
   _dirtied_cards += other._dirtied_cards;
   return *this;
@@ -56,6 +64,7 @@ G1ConcurrentRefineStats&
 G1ConcurrentRefineStats::operator-=(const G1ConcurrentRefineStats& other) {
   _refinement_time = clipped_sub(_refinement_time, other._refinement_time);
   _refined_cards = clipped_sub(_refined_cards, other._refined_cards);
+  _duplicate_cards = clipped_sub(_duplicate_cards, other._duplicate_cards);
   _precleaned_cards = clipped_sub(_precleaned_cards, other._precleaned_cards);
   _dirtied_cards = clipped_sub(_dirtied_cards, other._dirtied_cards);
   return *this;

@@ -140,7 +140,8 @@ public:
   // being filtered by clean_card_before_refine(), and after proper
   // fence/synchronization.
   void refine_card_concurrently(CardValue* const card_ptr,
-                                const uint worker_id);
+                                const uint worker_id,
+                                size_t &duplicate_cards);
 
   // Print accumulated summary info from the start of the VM.
   void print_summary_info();

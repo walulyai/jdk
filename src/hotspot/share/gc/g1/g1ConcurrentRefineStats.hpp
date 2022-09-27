@@ -35,6 +35,7 @@
 class G1ConcurrentRefineStats : public CHeapObj<mtGC> {
   Tickspan _refinement_time;
   size_t _refined_cards;
+  size_t _duplicate_cards;
   size_t _precleaned_cards;
   size_t _dirtied_cards;
 
@@ -50,6 +51,12 @@ public:
   // Refinement rate, in cards per ms.
   double refinement_rate_ms() const;
 
+  // Number of duplicate cards.
+  size_t duplicate_cards() const { return _duplicate_cards; }
+
+  // duplicate ratio.
+  double duplicate_ratio() const;
+
   // Number of cards for which refinement was skipped because some other
   // thread had already refined them.
   size_t precleaned_cards() const { return _precleaned_cards; }
@@ -60,6 +67,7 @@ public:
   void inc_refinement_time(Tickspan t) { _refinement_time += t; }
   void inc_refined_cards(size_t cards) { _refined_cards += cards; }
   void inc_precleaned_cards(size_t cards) { _precleaned_cards += cards; }
+  void inc_duplicate_cards(size_t cards) { _duplicate_cards += cards; }
   void inc_dirtied_cards(size_t cards) { _dirtied_cards += cards; }
 
   G1ConcurrentRefineStats& operator+=(const G1ConcurrentRefineStats& other);

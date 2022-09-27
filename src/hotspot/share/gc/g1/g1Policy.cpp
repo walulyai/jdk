@@ -612,7 +612,8 @@ void G1Policy::record_concurrent_refinement_stats() {
   if ((refined_cards > 0) && (refinement_time > Tickspan())) {
     double rate = refined_cards / (refinement_time.seconds() * MILLIUNITS);
     _analytics->report_concurrent_refine_rate_ms(rate);
-    log_debug(gc, refine, stats)("Concurrent refinement rate: %.2f cards/ms", rate);
+    log_debug(gc, refine, stats)("Concurrent refinement rate: %.2f cards/ms Duplicates %zu / %zu (%.3f)",
+                                 rate, total_stats.duplicate_cards(), refined_cards, total_stats.duplicate_ratio());
   }
 
   // Record mutator's card logging rate.
@@ -822,6 +823,12 @@ void G1Policy::record_young_collection_end(bool concurrent_operation_is_full_mar
                                       p->sum_thread_work_items(G1GCPhaseTimes::OptMergeRS, G1GCPhaseTimes::MergeRSDirtyCards) +
                                       total_log_buffer_cards;
 
+    // FIXME:
+    size_t const cards_merged = p->sum_thread_work_items(G1GCPhaseTimes::MergeRS, G1GCPhaseTimes::MergeRSDirtyCards);
+    size_t const cards_dup = p->sum_thread_work_items(G1GCPhaseTimes::MergeRS, G1GCPhaseTimes::MergeRSDupCards);
+    double dup_rate = cards_merged > 0 ?  cards_dup / (1.0*cards_merged) : 0;
+    log_debug(gc, phases) ("Duplicates %zu / %zu (%.3f)", cards_dup, cards_merged, dup_rate);
+
     // The threshold for the number of cards in a given sampling which we consider
     // large enough so that the impact from setup and other costs is negligible.
     size_t const CardsNumSamplingThreshold = 10;
@@ -952,7 +959,7 @@ void G1Policy::record_young_collection_end(bool concurrent_operation_is_full_mar
   G1ConcurrentRefine* cr = _g1h->concurrent_refine();
 
   log_debug(gc, ergo, refine)
-           ("GC refinement: goal: %zu + %zu / %1.2fms, actual: %zu / %1.2fms, HCC: %zu / %1.2fms%s",
+           ("GC refinement: goal: %zu + %zu / %1.2fms, actual: %zu / %1.2fms, HCC: %zu / %1.2fms %s",
             cr->pending_cards_target(),
             predicted_thread_buffer_cards,
             scan_logged_cards_time_goal_ms,
