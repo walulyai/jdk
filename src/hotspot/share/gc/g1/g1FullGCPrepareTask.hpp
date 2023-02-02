@@ -120,11 +120,13 @@ private:
 class G1SerialRePrepareClosure : public StackObj {
   G1FullGCCompactionPoint* _cp;
   HeapRegion* _current;
+  HeapRegion* _start_serial;
 
 public:
-  G1SerialRePrepareClosure(G1FullGCCompactionPoint* hrcp, HeapRegion* hr) :
+  G1SerialRePrepareClosure(G1FullGCCompactionPoint* hrcp, HeapRegion* hr, HeapRegion* start_serial) :
     _cp(hrcp),
-    _current(hr) { }
+    _current(hr),
+    _start_serial(start_serial) { }
 
   inline size_t apply(oop obj);
 };

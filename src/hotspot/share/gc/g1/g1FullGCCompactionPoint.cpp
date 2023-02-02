@@ -119,3 +119,22 @@ void G1FullGCCompactionPoint::add(HeapRegion* hr) {
 HeapRegion* G1FullGCCompactionPoint::remove_last() {
   return _compaction_regions->pop();
 }
+
+void G1FullGCCompactionPoint::truncate_from_current(G1FullGCCompactionPoint* serial_cp) {
+  HeapRegion* cur = current_region();
+  int index_cur = _compaction_regions->find(cur);
+
+  for (; _compaction_region_iterator != _compaction_regions->end(); ++_compaction_region_iterator) {
+    serial_cp->add(*_compaction_region_iterator);
+  }
+  _compaction_regions->truncate_from(index_cur);
+}
+
+void G1FullGCCompactionPoint::copy_after_current(G1FullGCCompactionPoint* cp) {
+  switch_region();
+
+  for (; _compaction_region_iterator != _compaction_regions->end(); ++_compaction_region_iterator) {
+    cp->add(*_compaction_region_iterator);
+  }
+  // FIXME: Don't remove from serial compaction point, they are still source regions for serial compaction
+}

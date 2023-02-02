@@ -121,6 +121,7 @@ G1FullCollector::G1FullCollector(G1CollectedHeap* heap,
     _array_queue_set(_num_workers),
     _preserved_marks_set(true),
     _serial_compaction_point(this),
+    _humongous_compaction_point(this),
     _is_alive(this, heap->concurrent_mark()->mark_bitmap()),
     _is_alive_mutator(heap->ref_processor_stw(), &_is_alive),
     _always_subject_to_discovery(),
@@ -131,6 +132,8 @@ G1FullCollector::G1FullCollector(G1CollectedHeap* heap,
   _preserved_marks_set.init(_num_workers);
   _markers = NEW_C_HEAP_ARRAY(G1FullGCMarker*, _num_workers, mtGC);
   _compaction_points = NEW_C_HEAP_ARRAY(G1FullGCCompactionPoint*, _num_workers, mtGC);
+
+  _humongous_start_regions = new (mtGC) GrowableArray<HeapRegion*>(16, mtGC);
 
   _live_stats = NEW_C_HEAP_ARRAY(G1RegionMarkStats, _heap->max_regions(), mtGC);
   _compaction_tops = NEW_C_HEAP_ARRAY(HeapWord*, _heap->max_regions(), mtGC);
@@ -237,6 +240,8 @@ void G1FullCollector::complete_collection() {
   _heap->gc_epilogue(true);
 
   _heap->verify_after_full_collection();
+
+  _heap->print_heap_after_full_collection();
 }
 
 void G1FullCollector::before_marking_update_attribute_table(HeapRegion* hr) {
@@ -328,7 +333,7 @@ void G1FullCollector::phase2_prepare_compaction() {
   // Try to avoid OOM immediately after Full GC in case there are no free regions
   // left after determining the result locations (i.e. this phase). Prepare to
   // maximally compact the tail regions of the compaction queues serially.
-  if (!has_free_compaction_targets) {
+  if (scope()->do_maximal_compaction() || !has_free_compaction_targets) {
     phase2c_prepare_serial_compaction();
   }
 }
@@ -351,35 +356,172 @@ bool G1FullCollector::phase2b_forward_oops() {
 
 void G1FullCollector::phase2c_prepare_serial_compaction() {
   GCTraceTime(Debug, gc, phases) debug("Phase 2: Prepare serial compaction", scope()->timer());
-  // At this point we know that after parallel compaction there will be no
+  // FIXME: At this point we know that after parallel compaction there will be no
   // completely free regions. That means that the last region of
   // all compaction queues still have data in them. We try to compact
   // these regions in serial to avoid a premature OOM when the mutator wants
   // to allocate the first eden region after gc.
   for (uint i = 0; i < workers(); i++) {
     G1FullGCCompactionPoint* cp = compaction_point(i);
+
+    // FIXME: move leftover regions to the serial compaction point
     if (cp->has_regions()) {
-      serial_compaction_point()->add(cp->remove_last());
+
+      log_debug(gc, region)("Added to serial %u", cp->current_region()->hrm_index());
+      cp->truncate_from_current(serial_compaction_point());
     }
   }
 
+  G1FullGCCompactionPoint* serial_cp = serial_compaction_point();
+  serial_cp->regions()->sort([](HeapRegion** a, HeapRegion** b) { return static_cast<int>((*a)->hrm_index() - (*b)->hrm_index()); });
+
+  log_debug(gc, region)("G1FullCollector::phase2c_prepare_serial_compaction called");
+
   // Update the forwarding information for the regions in the serial
   // compaction point.
-  G1FullGCCompactionPoint* cp = serial_compaction_point();
-  for (GrowableArrayIterator<HeapRegion*> it = cp->regions()->begin(); it != cp->regions()->end(); ++it) {
+  HeapRegion* start_serial = nullptr;
+  for (GrowableArrayIterator<HeapRegion*> it = serial_cp->regions()->begin(); it != serial_cp->regions()->end(); ++it) {
     HeapRegion* current = *it;
-    if (!cp->is_initialized()) {
+    // log_debug(gc, region)("Part of serial %u", current->hrm_index());
+    if (!serial_cp->is_initialized()) {
       // Initialize the compaction point. Nothing more is needed for the first heap region
       // since it is already prepared for compaction.
-      cp->initialize(current);
-    } else {
+      serial_cp->initialize(current);
+      start_serial = current;
+    } else if (!is_free(current->hrm_index())) {
+
+      log_debug(gc, region)("Re-Compact to serial %u >> %u", current->hrm_index(), start_serial->hrm_index()); 
       assert(!current->is_humongous(), "Should be no humongous regions in compaction queue");
-      G1SerialRePrepareClosure re_prepare(cp, current);
+      G1SerialRePrepareClosure re_prepare(serial_cp, current, start_serial);
       set_compaction_top(current, current->bottom());
       current->apply_to_marked_objects(mark_bitmap(), &re_prepare);
     }
   }
-  cp->update();
+  serial_cp->update();
+
+  // FIXME: change name, this shouldn't truncate the serial points.
+  // Just make the regions available for humoungous compaction, but the serial compaction 
+  // Still has to remove objects that are exisiting in those regions, thus should not compact.
+  serial_cp->copy_after_current(humongous_compaction_point());
+
+  // FIXME: At this point, we know that all the regular regions have been compacted.
+  // We also know the last region into which regular objects will be compacted. Beyond that, we can move humongous 
+  // objects that can benefit from a move. But we also need to take not of Pinned Regions that are not humoungous.
+  // This can be achieved since we have added all the available regions to the serial compaction point and also sorted it.
+  // So for each serial compaction. 
+  // So we can repeat the same procedure:
+  //    1. Can humongous object be moved based on current regions in compaction point
+  //    2. if yes, then add humoungous object regions to compaction point, move the humoungous object
+  //    3. Update the compaction point accordingly.
+
+  // _collector->humongous_start_regions();
+
+  HeapRegion* target_region = humongous_compaction_point()->current_region();
+
+  uint target_index = target_region->hrm_index();
+
+  G1CollectedHeap* g1h = G1CollectedHeap::heap();
+
+  for (GrowableArrayIterator<HeapRegion*> it = humongous_start_regions()->begin();
+         it != humongous_start_regions()->end();
+         ++it) {
+    //Add humongous regions above current target to compaction point
+    HeapRegion* hr = *it;
+    if (hr->hrm_index() < target_index) {
+      continue;
+    }
+    // else add all regions to compaction point
+    oop object = cast_to_oop(hr->bottom());
+    size_t obj_size = object->size(); // FIXME: remove
+    uint num_regions = (uint) G1CollectedHeap::humongous_obj_size_in_regions(obj_size); // FIXME: remove
+    uint start_index = hr->hrm_index();
+    humongous_compaction_point()->add(hr);
+    for(uint i = 1; i < num_regions; i++) {
+        HeapRegion* r = g1h->region_at(start_index + i);
+        assert(hr == r->humongous_start_region(), "Must be");
+        humongous_compaction_point()->add(r);
+    }
+  }
+
+  humongous_compaction_point()->regions()->sort([](HeapRegion** a, HeapRegion** b) { return static_cast<int>((*a)->hrm_index() - (*b)->hrm_index()); });
+
+  assert(target_region == humongous_compaction_point()->regions()->first(), "Must still be the first region");
+
+  // We didn't preserve marks during marking as initially humongous objects were not 
+  // compacting.
+  G1FullGCMarker* marker = this->marker(0);
+
+  GrowableArray<HeapRegion *> *target_regions = humongous_compaction_point()->regions();
+  for (GrowableArrayIterator<HeapRegion*> it = humongous_start_regions()->begin();
+         it != humongous_start_regions()->end();
+         ++it) {
+
+    HeapRegion* hr = *it;
+    if (hr->hrm_index() < target_index) {
+      continue;
+    }
+
+    uint range_begin = 0;
+    uint range_end   = 0;
+    uint range_limit = target_regions->find(hr);
+
+    oop obj = cast_to_oop(hr->bottom());
+    size_t obj_size = obj->size(); // FIXME: remove
+    uint num_regions = (uint) G1CollectedHeap::humongous_obj_size_in_regions(obj_size); // FIXME: remove
+
+    HeapRegion* prev = nullptr;
+
+    // Find the end of a run of contiguous free regions
+    while (range_end < range_limit) {
+      HeapRegion* r = target_regions->at(range_end);
+      if (prev == nullptr || prev->hrm_index() == (r->hrm_index() - 1) ) {
+        // regions are contiguous
+        prev = r;
+        range_end++;
+        if (range_end - range_begin == num_regions) {
+          break;
+        }
+        continue;
+      }
+      // need to restart search
+      range_begin = ++range_end;
+      prev = nullptr;
+    }
+
+    if (range_begin != range_end) {
+      // Regions was initially not compacting, so we didn't preserve the mark.
+      marker->preserved_stack()->push_if_necessary(obj, obj->mark());
+      // Object can be relocated
+      // we need to remove regions into which it will be relocated from the the compaction point.
+      HeapRegion* start = target_regions->at(range_begin);
+      HeapRegion* end   = target_regions->at((range_begin + num_regions-1));
+      obj->forward_to(cast_to_oop(start->bottom()));
+      assert(obj->is_forwarded(), "Must be!");
+      _region_attr_table.set_compacting(hr->hrm_index());
+      log_debug(gc, region) ("Forward Region: from %u to %u - %u num_regions %u ",
+                             hr->hrm_index(), start->hrm_index(), end->hrm_index(), num_regions);
+
+      // Change object/region attribute types to compacting
+
+      // Remove covered regions from contention
+      // FIXME: Remember range_end doesn't imply that object end, object can be relocated
+      // and overlap with with previous.
+      for (uint i = range_begin; i < (range_begin + num_regions); i++) {
+        target_regions->delete_at(i);
+      }
+      // delete_at changes the order, so we need to re-sort
+      target_regions->sort([](HeapRegion** a, HeapRegion** b) { return static_cast<int>((*a)->hrm_index() - (*b)->hrm_index()); });
+    } else {
+      // We can't move the object, so we need to remove it from the compaction point also.
+      log_debug(gc, region) ("Region Not Moving: %u num_regions %u ",
+                             hr->hrm_index(), num_regions);
+      for (uint i = range_limit; i < (range_limit + num_regions); i++) {
+        target_regions->delete_at(i);
+      }
+      // delete_at changes the order, so we need to resort
+      target_regions->sort([](HeapRegion** a, HeapRegion** b) { return static_cast<int>((*a)->hrm_index() - (*b)->hrm_index()); });
+    }
+  }
 }
 
 void G1FullCollector::phase3_adjust_pointers() {
@@ -400,6 +542,14 @@ void G1FullCollector::phase4_do_compaction() {
   if (serial_compaction_point()->has_regions()) {
     task.serial_compaction();
   }
+
+  if (scope()->do_maximal_compaction() && !humongous_start_regions()->is_empty()) {
+    assert(scope()->do_maximal_compaction(), "Must be!");
+    log_error(gc)("Humongous Compaction Happenning");
+    task.humongous_compaction();
+  }
+
+
 }
 
 void G1FullCollector::restore_marks() {

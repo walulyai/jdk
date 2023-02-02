@@ -62,6 +62,7 @@ template <class T> inline void G1AdjustClosure::adjust_pointer(T* p) {
   if (!_collector->is_compacting(obj)) {
     // We never forward objects in non-compacting regions so there is no need to
     // process them further.
+    assert(!obj->is_forwarded(), "Should not be forwarded"); // FIXME: Debugging only, remove
     return;
   }
 

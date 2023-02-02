@@ -179,6 +179,9 @@ public:
   // Update skip-compacting heap region to be consistent after Full GC.
   void reset_skip_compacting_after_full_gc();
 
+  // Update heap region that has been compacted to be consistent after Full GC.
+  void reset_compacted_humongous_after_full_gc(HeapWord* new_top);
+
   // All allocated blocks are occupied by objects in a HeapRegion.
   bool block_is_obj(const HeapWord* p, HeapWord* pb) const;
 
@@ -445,6 +448,8 @@ public:
   // region. first_hr is the "start humongous" region of the series
   // which this region will be part of.
   void set_continues_humongous(HeapRegion* first_hr);
+
+  void change_continues_humongous(HeapRegion* first_hr);
 
   // Unsets the humongous-related fields on the region.
   void clear_humongous();

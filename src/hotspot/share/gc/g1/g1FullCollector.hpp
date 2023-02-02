@@ -81,6 +81,8 @@ class G1FullCollector : StackObj {
   ObjArrayTaskQueueSet      _array_queue_set;
   PreservedMarksSet         _preserved_marks_set;
   G1FullGCCompactionPoint   _serial_compaction_point;
+  G1FullGCCompactionPoint   _humongous_compaction_point;
+  GrowableArray<HeapRegion*>* _humongous_start_regions;
   G1IsAliveClosure          _is_alive;
   ReferenceProcessorIsAliveMutator _is_alive_mutator;
   G1RegionMarkStats*        _live_stats;
@@ -114,12 +116,15 @@ public:
   ObjArrayTaskQueueSet*    array_queue_set() { return &_array_queue_set; }
   PreservedMarksSet*       preserved_mark_set() { return &_preserved_marks_set; }
   G1FullGCCompactionPoint* serial_compaction_point() { return &_serial_compaction_point; }
+  G1FullGCCompactionPoint* humongous_compaction_point() { return &_humongous_compaction_point; }
   G1CMBitMap*              mark_bitmap();
   ReferenceProcessor*      reference_processor();
   size_t live_words(uint region_index) const {
     assert(region_index < _heap->max_regions(), "sanity");
     return _live_stats[region_index]._live_words;
   }
+
+  GrowableArray<HeapRegion*>* humongous_start_regions() { return _humongous_start_regions; }
 
   void before_marking_update_attribute_table(HeapRegion* hr);
 

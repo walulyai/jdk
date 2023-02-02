@@ -87,6 +87,8 @@ inline bool G1DetermineCompactionQueueClosure::do_heap_region(HeapRegion* hr) {
       bool is_empty = !_collector->mark_bitmap()->is_marked(obj);
       if (is_empty) {
         free_pinned_region<true>(hr);
+      } else if (_collector->scope()->do_maximal_compaction() && hr->is_starts_humongous()){ // FIXME: only do this on max_compaction
+        _collector->humongous_start_regions()->append(hr);
       }
     } else if (hr->is_open_archive()) {
       bool is_empty = _collector->live_words(hr->hrm_index()) == 0;
@@ -112,11 +114,23 @@ inline bool G1DetermineCompactionQueueClosure::do_heap_region(HeapRegion* hr) {
 inline size_t G1SerialRePrepareClosure::apply(oop obj) {
   // We only re-prepare objects forwarded within the current region, so
   // skip objects that are already forwarded to another region.
-  if (obj->is_forwarded() && !_current->is_in(obj->forwardee())) {
+  // FIXME: objects that were moved to regions earlier than the start of the serial compactio
+  // don't have to be re-prepared.
+    G1CollectedHeap* g1h = G1CollectedHeap::heap();
+
+  uint target = 0;
+  // FIXME: can use addresses insted of hrm_indexs
+  if (obj->is_forwarded() && (_start_serial->is_in(obj->forwardee()) || (void*)obj->forwardee() < (void*)_start_serial->bottom() )) {
+    log_debug(gc, region)("Target is lower the the start of the serial %u > %u", target, _start_serial->hrm_index());
     return obj->size();
   }
 
+  if (obj->is_forwarded()) { // FIXME: Debugging only, remove
+    target = g1h->addr_to_region(obj->forwardee());
+  }
+
   // Get size and forward.
+  log_debug(gc, region)("Object reforwarded %u > %u | %u", target, _cp->current_region()->hrm_index(),  _start_serial->hrm_index());
   size_t size = obj->size();
   _cp->forward(obj, size);
 

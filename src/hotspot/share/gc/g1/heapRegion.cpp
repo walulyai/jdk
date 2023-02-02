@@ -213,6 +213,16 @@ void HeapRegion::set_continues_humongous(HeapRegion* first_hr) {
   _humongous_start_region = first_hr;
 }
 
+void HeapRegion::change_continues_humongous(HeapRegion* first_hr) {
+  // assert(is_humongous(), "sanity / pre-condition");
+  assert(first_hr->is_starts_humongous(), "pre-condition");
+
+  _type.set_free();
+  report_region_type_change(G1HeapRegionTraceType::ContinuesHumongous);
+  _type.set_continues_humongous();
+  _humongous_start_region = first_hr;
+}
+
 void HeapRegion::clear_humongous() {
   assert(is_humongous(), "pre-condition");
 

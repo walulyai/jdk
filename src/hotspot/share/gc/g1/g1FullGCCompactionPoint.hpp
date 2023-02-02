@@ -56,6 +56,8 @@ public:
   void add(HeapRegion* hr);
 
   HeapRegion* remove_last();
+  void truncate_from_current(G1FullGCCompactionPoint* serial_cp);
+  void copy_after_current(G1FullGCCompactionPoint* serial_cp);
   HeapRegion* current_region();
 
   GrowableArray<HeapRegion*>* regions();
