@@ -18,7 +18,7 @@
  *
  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
  * or visit www.oracle.com if you need additional information or have any
- * -XX:VerifyGCType=full -XX:+VerifyAfterGC -XX:+VerifyBeforeGC -XX:+VerifyDuringGC -XX:+G1VerifyBitmaps 
+ * -XX:VerifyGCType=full -XX:+VerifyAfterGC -XX:+VerifyBeforeGC -XX:+VerifyDuringGC -XX:+G1VerifyBitmaps :/home/opc/oracle/oragit/mainline/open/fullgc_loggc.log
  * questions.
  */
 
@@ -29,7 +29,7 @@
  * @requires vm.gc.G1
  * @library /test/lib
  *
- * @run main/othervm -Xmx1g -Xms1g -XX:VerifyGCType=full -XX:+VerifyAfterGC -XX:+VerifyBeforeGC -XX:+VerifyDuringGC -XX:+G1VerifyBitmaps -XX:+UnlockDiagnosticVMOptions -XX:+UnlockExperimentalVMOptions -Xlog:gc+region=trace:/home/opc/oracle/oragit/mainline/open/fullgc_loggc.log
+ * @run main/othervm -Xmx1g -Xms1g -XX:VerifyGCType=full -XX:+VerifyAfterGC -XX:+VerifyBeforeGC -XX:+VerifyDuringGC -XX:+G1VerifyBitmaps -XX:+UnlockDiagnosticVMOptions -XX:+UnlockExperimentalVMOptions -Xlog:gc+region=trace
  *      gc.g1.humongousObjects.TestHumongousAllocFragment
  */
 

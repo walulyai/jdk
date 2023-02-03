@@ -131,10 +131,13 @@ void G1FullGCCompactionPoint::truncate_from_current(G1FullGCCompactionPoint* ser
 }
 
 void G1FullGCCompactionPoint::copy_after_current(G1FullGCCompactionPoint* cp) {
+  if (_current_region == _compaction_regions->last()) {
+    return; // No regions left 
+  }
+
   switch_region();
 
   for (; _compaction_region_iterator != _compaction_regions->end(); ++_compaction_region_iterator) {
     cp->add(*_compaction_region_iterator);
   }
-  // FIXME: Don't remove from serial compaction point, they are still source regions for serial compaction
 }

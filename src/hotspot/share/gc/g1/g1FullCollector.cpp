@@ -361,6 +361,7 @@ void G1FullCollector::phase2c_prepare_serial_compaction() {
   // all compaction queues still have data in them. We try to compact
   // these regions in serial to avoid a premature OOM when the mutator wants
   // to allocate the first eden region after gc.
+  G1FullGCCompactionPoint* serial_cp = serial_compaction_point();
   for (uint i = 0; i < workers(); i++) {
     G1FullGCCompactionPoint* cp = compaction_point(i);
 
@@ -368,11 +369,10 @@ void G1FullCollector::phase2c_prepare_serial_compaction() {
     if (cp->has_regions()) {
 
       log_debug(gc, region)("Added to serial %u", cp->current_region()->hrm_index());
-      cp->truncate_from_current(serial_compaction_point());
+      cp->truncate_from_current(serial_cp);
     }
   }
 
-  G1FullGCCompactionPoint* serial_cp = serial_compaction_point();
   serial_cp->regions()->sort([](HeapRegion** a, HeapRegion** b) { return static_cast<int>((*a)->hrm_index() - (*b)->hrm_index()); });
 
   log_debug(gc, region)("G1FullCollector::phase2c_prepare_serial_compaction called");
@@ -399,6 +399,11 @@ void G1FullCollector::phase2c_prepare_serial_compaction() {
   }
   serial_cp->update();
 
+  if (humongous_start_regions()->is_empty()) {
+    log_debug(gc, region)("Don't bother, we have no humongous"); // FIXME remove
+    return;
+  }
+
   // FIXME: change name, this shouldn't truncate the serial points.
   // Just make the regions available for humoungous compaction, but the serial compaction 
   // Still has to remove objects that are exisiting in those regions, thus should not compact.
@@ -415,6 +420,10 @@ void G1FullCollector::phase2c_prepare_serial_compaction() {
   //    3. Update the compaction point accordingly.
 
   // _collector->humongous_start_regions();
+
+
+  G1FullGCCompactionPoint* humongous_cp = humongous_compaction_point();
+  humongous_cp->initialize(humongous_cp->regions()->first());
 
   HeapRegion* target_region = humongous_compaction_point()->current_region();
 
