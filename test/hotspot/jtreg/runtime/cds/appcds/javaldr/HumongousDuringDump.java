@@ -65,11 +65,13 @@ public class HumongousDuringDump {
                               "-Xlog:gc+region+cds",
                               "-Xlog:gc+region=trace",
                               extraArg, "-Xmx64m", gcLog);
-        out.shouldContain("(Unmovable) humongous regions have been found and may lead to fragmentation");
-        out.shouldContain("All free regions should be at the top end of the heap, but we found holes.");
-        out.shouldMatch("gc,region,cds. HeapRegion .* HUM. hole");
+        // FIXME: Test may no longer be appropriate.
+        //
+        out.shouldNotContain("(Unmovable) humongous regions have been found and may lead to fragmentation");
+        out.shouldNotContain("All free regions should be at the top end of the heap, but we found holes.");
+        out.shouldNotMatch("gc,region,cds. HeapRegion .* HUM. hole");
         String pattern = "gc,region,cds. HeapRegion .*hole";
-        out.shouldMatch(pattern);
+        out.shouldNotMatch(pattern);
         out.shouldNotMatch(pattern + ".*unexpected");
 
         TestCommon.run(

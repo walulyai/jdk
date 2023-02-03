@@ -375,8 +375,6 @@ void G1FullCollector::phase2c_prepare_serial_compaction() {
 
   serial_cp->regions()->sort([](HeapRegion** a, HeapRegion** b) { return static_cast<int>((*a)->hrm_index() - (*b)->hrm_index()); });
 
-  log_debug(gc, region)("G1FullCollector::phase2c_prepare_serial_compaction called");
-
   // Update the forwarding information for the regions in the serial
   // compaction point.
   HeapRegion* start_serial = nullptr;
@@ -422,7 +420,14 @@ void G1FullCollector::phase2c_prepare_serial_compaction() {
   // _collector->humongous_start_regions();
 
 
+
   G1FullGCCompactionPoint* humongous_cp = humongous_compaction_point();
+
+  if (humongous_cp->regions()->is_empty()) {
+    log_debug(gc, region)("Don't bother, we have no humongous"); // FIXME remove
+    return;
+  }
+
   humongous_cp->initialize(humongous_cp->regions()->first());
 
   HeapRegion* target_region = humongous_compaction_point()->current_region();

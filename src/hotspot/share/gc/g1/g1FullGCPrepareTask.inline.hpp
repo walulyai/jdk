@@ -121,7 +121,6 @@ inline size_t G1SerialRePrepareClosure::apply(oop obj) {
   uint target = 0;
   // FIXME: can use addresses insted of hrm_indexs
   if (obj->is_forwarded() && (_start_serial->is_in(obj->forwardee()) || (void*)obj->forwardee() < (void*)_start_serial->bottom() )) {
-    log_debug(gc, region)("Target is lower the the start of the serial %u > %u", target, _start_serial->hrm_index());
     return obj->size();
   }
 

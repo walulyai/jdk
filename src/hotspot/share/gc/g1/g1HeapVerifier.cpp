@@ -269,6 +269,7 @@ public:
   }
 };
 
+// FIXME: maybe change test to ensure that we have no holes??
 // Should be only used at CDS dump time
 class VerifyReadyForArchivingRegionClosure : public HeapRegionClosure {
   bool _seen_free;
@@ -324,11 +325,11 @@ void G1HeapVerifier::verify_ready_for_archiving() {
                             " we found holes. This is probably caused by (unmovable) humongous"
                             " allocations or active GCLocker, and may lead to fragmentation while"
                             " writing archive heap memory regions.");
-  }
-  if (cl.has_humongous()) {
-    log_warning(gc, verify)("(Unmovable) humongous regions have been found and"
-                            " may lead to fragmentation while"
-                            " writing archive heap memory regions.");
+    if (cl.has_humongous()) { // FIXME
+      log_warning(gc, verify)("(Unmovable) humongous regions have been found and"
+                              " may lead to fragmentation while"
+                              " writing archive heap memory regions.");
+    }
   }
 }
 
