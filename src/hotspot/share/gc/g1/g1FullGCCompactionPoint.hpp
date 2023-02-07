@@ -28,6 +28,7 @@
 #include "memory/allocation.hpp"
 #include "oops/oopsHierarchy.hpp"
 #include "utilities/growableArray.hpp"
+#include "utilities/pair.hpp"
 
 class G1FullCollector;
 class HeapRegion;
@@ -43,6 +44,7 @@ class G1FullGCCompactionPoint : public CHeapObj<mtGC> {
   void initialize_values();
   void switch_region();
   HeapRegion* next_region();
+  Pair<uint, uint> find_contiguous_before(HeapRegion* hr, uint num_regions);
 
 public:
   G1FullGCCompactionPoint(G1FullCollector* collector);
@@ -53,10 +55,15 @@ public:
   void initialize(HeapRegion* hr);
   void update();
   void forward(oop object, size_t size);
+  void forward_humongous(HeapRegion* hr);
   void add(HeapRegion* hr);
 
   HeapRegion* remove_last();
+  void truncate_from_current(G1FullGCCompactionPoint* serial_cp);
+  bool copy_after_current(G1FullGCCompactionPoint* cp);
   HeapRegion* current_region();
+
+  void sort_regions();
 
   GrowableArray<HeapRegion*>* regions();
 };

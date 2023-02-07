@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020, 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2020, 2023, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -59,6 +59,11 @@ bool G1FullCollector::is_free(uint region_idx) const {
 void G1FullCollector::update_from_compacting_to_skip_compacting(uint region_idx) {
   _region_attr_table.verify_is_compacting(region_idx);
   _region_attr_table.set_skip_compacting(region_idx);
+}
+
+void G1FullCollector::update_from_skip_compacting_to_compacting(uint region_idx) {
+  _region_attr_table.verify_is_skip_compacting(region_idx);
+  _region_attr_table.set_compacting(region_idx);
 }
 
 void G1FullCollector::set_compaction_top(HeapRegion* r, HeapWord* value) {

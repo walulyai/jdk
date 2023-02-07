@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017, 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2017, 2023, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -81,9 +81,12 @@ class G1FullCollector : StackObj {
   ObjArrayTaskQueueSet      _array_queue_set;
   PreservedMarksSet         _preserved_marks_set;
   G1FullGCCompactionPoint   _serial_compaction_point;
+  G1FullGCCompactionPoint   _humongous_compaction_point;
   G1IsAliveClosure          _is_alive;
   ReferenceProcessorIsAliveMutator _is_alive_mutator;
   G1RegionMarkStats*        _live_stats;
+
+  GrowableArray<HeapRegion*>* _humongous_start_regions;
 
   static uint calc_active_workers();
 
@@ -114,12 +117,15 @@ public:
   ObjArrayTaskQueueSet*    array_queue_set() { return &_array_queue_set; }
   PreservedMarksSet*       preserved_mark_set() { return &_preserved_marks_set; }
   G1FullGCCompactionPoint* serial_compaction_point() { return &_serial_compaction_point; }
+  G1FullGCCompactionPoint* humongous_compaction_point() { return &_humongous_compaction_point; }
   G1CMBitMap*              mark_bitmap();
   ReferenceProcessor*      reference_processor();
   size_t live_words(uint region_index) const {
     assert(region_index < _heap->max_regions(), "sanity");
     return _live_stats[region_index]._live_words;
   }
+
+  GrowableArray<HeapRegion*>* humongous_start_regions() { return _humongous_start_regions; }
 
   void before_marking_update_attribute_table(HeapRegion* hr);
 
@@ -133,6 +139,7 @@ public:
   inline void set_free(uint region_idx);
   inline bool is_free(uint region_idx) const;
   inline void update_from_compacting_to_skip_compacting(uint region_idx);
+  inline void update_from_skip_compacting_to_compacting(uint region_idx);
 
   inline void set_compaction_top(HeapRegion* r, HeapWord* value);
   inline HeapWord* compaction_top(HeapRegion* r) const;
@@ -144,6 +151,8 @@ private:
   void phase2a_determine_worklists();
   bool phase2b_forward_oops();
   void phase2c_prepare_serial_compaction();
+  void phase2d_prepare_humongous_compaction();
+  void add_regions_humongous_compaction();
 
   void phase3_adjust_pointers();
   void phase4_do_compaction();

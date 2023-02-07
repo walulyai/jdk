@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2022, 2023, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -87,6 +87,8 @@ inline bool G1DetermineCompactionQueueClosure::do_heap_region(HeapRegion* hr) {
       bool is_empty = !_collector->mark_bitmap()->is_marked(obj);
       if (is_empty) {
         free_pinned_region<true>(hr);
+      } else if (_collector->scope()->do_maximal_compaction() && hr->is_starts_humongous()){
+        _collector->humongous_start_regions()->append(hr);
       }
     } else if (hr->is_open_archive()) {
       bool is_empty = _collector->live_words(hr->hrm_index()) == 0;
@@ -110,12 +112,17 @@ inline bool G1DetermineCompactionQueueClosure::do_heap_region(HeapRegion* hr) {
 }
 
 inline size_t G1SerialRePrepareClosure::apply(oop obj) {
-  // We only re-prepare objects forwarded within the current region, so
-  // skip objects that are already forwarded to another region.
-  if (obj->is_forwarded() && !_current->is_in(obj->forwardee())) {
-    return obj->size();
-  }
+  G1CollectedHeap* g1h = G1CollectedHeap::heap();
 
+  if (obj->is_forwarded()) {
+    HeapRegion* target_hr = g1h->heap_region_containing(obj->forwardee());
+    // We skip objects compiled into the first region or
+    // into regions not part of the serial compaction point.
+    // FIXME: use more efficient search
+    if (_cp->regions()->find(target_hr) <= 0) {
+      return obj->size();
+    }
+  }
   // Get size and forward.
   size_t size = obj->size();
   _cp->forward(obj, size);

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2001, 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2001, 2023, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -183,6 +183,15 @@ inline size_t HeapRegion::block_size(const HeapWord* p, HeapWord* const pb) cons
 inline void HeapRegion::reset_compacted_after_full_gc(HeapWord* new_top) {
   assert(!is_pinned(), "must be");
 
+  set_top(new_top);
+  // After a compaction the mark bitmap in a non-pinned regions is invalid.
+  // But all objects are live, we get this by setting TAMS to bottom.
+  init_top_at_mark_start();
+
+  reset_after_full_gc_common();
+}
+
+inline void HeapRegion::reset_compacted_humongous_after_full_gc(HeapWord* new_top) {
   set_top(new_top);
   // After a compaction the mark bitmap in a non-pinned regions is invalid.
   // But all objects are live, we get this by setting TAMS to bottom.
