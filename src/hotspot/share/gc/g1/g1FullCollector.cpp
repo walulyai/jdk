@@ -336,7 +336,9 @@ void G1FullCollector::phase2_prepare_compaction() {
   if (scope()->do_maximal_compaction() || !has_free_compaction_targets) {
     phase2c_prepare_serial_compaction();
 
-    if (scope()->do_maximal_compaction() && has_humongous() && serial_compaction_point()->has_regions()) {
+    if (scope()->do_maximal_compaction() &&
+        has_humongous() &&
+        serial_compaction_point()->has_regions()) {
       phase2d_prepare_humongous_compaction();
     }
   }
