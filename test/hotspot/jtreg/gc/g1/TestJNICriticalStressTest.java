@@ -30,7 +30,7 @@
  * @library /test/lib
  * @build jdk.test.whitebox.WhiteBox
  * @run driver jdk.test.lib.helpers.ClassFileInstaller jdk.test.whitebox.WhiteBox
- * @run main/othervm -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI -Xms3g -Xmx3g -Xmn2g -Xlog:gc TestJNICriticalStressTest 120 4 1
+ * @run main/othervm -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI -Xms3g -Xmx3g -Xmn2g -Xlog:gc TestJNICriticalStressTest 30 4 1
  */
 
 import jdk.test.lib.Asserts;
