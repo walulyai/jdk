@@ -2104,7 +2104,6 @@ bool G1CollectedHeap::try_collect_fullgc(GCCause::Cause cause,
     VMThread::execute(&op);
 
     // Request is trivially finished.
-    // FIXME: maybe return on GCCause::_java_lang_system_gc too?
     if (op.gc_succeeded() || cause == GCCause::_g1_periodic_collection) {
       return op.gc_succeeded();
     }

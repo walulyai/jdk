@@ -36,7 +36,6 @@
 import jdk.test.lib.Asserts;
 import jdk.test.whitebox.WhiteBox;
 
-
 import java.lang.management.GarbageCollectorMXBean;
 import java.lang.management.ManagementFactory;
 import java.util.List;
@@ -66,7 +65,6 @@ public class TestJNICriticalStressTest {
     static private void println(String str) { System.out.println(str); }
     static private void println()           { System.out.println();    }
     static private void exit(int code)      { System.exit(code);       }
-
 
     static Map<Integer,String> populateMap(int size) {
         Map<Integer,String> map = new HashMap<Integer,String>();
