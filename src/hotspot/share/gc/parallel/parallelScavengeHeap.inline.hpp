@@ -35,8 +35,8 @@ inline bool ParallelScavengeHeap::should_alloc_in_eden(const size_t size) const 
   return size < eden_size / 2;
 }
 
-inline void ParallelScavengeHeap::invoke_scavenge() {
-  PSScavenge::invoke();
+inline bool ParallelScavengeHeap::invoke_scavenge() {
+  return PSScavenge::invoke();
 }
 
 inline bool ParallelScavengeHeap::is_in_young(const void* p) const {

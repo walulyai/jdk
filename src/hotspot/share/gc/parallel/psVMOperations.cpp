@@ -49,7 +49,7 @@ void VM_ParallelGCFailedAllocation::doit() {
   }
 }
 
-static bool is_cause_full(GCCause::Cause cause) {
+bool VM_ParallelGCSystemGC::is_cause_full(GCCause::Cause cause) {
   return (cause != GCCause::_gc_locker) && (cause != GCCause::_wb_young_gc)
          DEBUG_ONLY(&& (cause != GCCause::_scavenge_alot));
 }
@@ -70,8 +70,8 @@ void VM_ParallelGCSystemGC::doit() {
   GCCauseSetter gccs(heap, _gc_cause);
   if (!_full) {
     // If (and only if) the scavenge fails, this will invoke a full gc.
-    heap->invoke_scavenge();
+    _full_gc_succeeded = heap->invoke_scavenge();
   } else {
-    heap->do_full_collection(false);
+    _full_gc_succeeded = PSParallelCompact::invoke(false);
   }
 }

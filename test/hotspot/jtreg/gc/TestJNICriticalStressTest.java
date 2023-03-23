@@ -25,12 +25,12 @@
  * @test G1 Full GC execution when JNICritical is active
  * @summary Check that Full GC calls are not ignored if concurrent with an active GCLocker.
  * @bug 8057586
- * @requires vm.gc.G1
  * @modules java.base/jdk.internal.misc
  * @library /test/lib
  * @build jdk.test.whitebox.WhiteBox
  * @run driver jdk.test.lib.helpers.ClassFileInstaller jdk.test.whitebox.WhiteBox
- * @run main/othervm -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI -Xms3g -Xmx3g -Xmn2g -Xlog:gc TestJNICriticalStressTest 30 4 1
+ * @run main/othervm -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI -Xms3g -Xmx3g -Xmn2g -Xlog:gc TestJNICriticalStressTest 30 4 1 G1
+ * @run main/othervm -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI -XX:+UseParallelGC -Xms3g -Xmx3g -Xmn2g -Xlog:gc TestJNICriticalStressTest 30 4 1 Parallel
  */
 
 import jdk.test.lib.Asserts;
@@ -137,7 +137,7 @@ public class TestJNICriticalStressTest {
     static public Map<Integer,String> largeMap;
 
     public static void main(String... args) throws Exception {
-        if (args.length < 3) {
+        if (args.length < 4) {
             println("usage: JNICriticalStressTest3 <duration sec> <alloc threads> <jni critical threads>");
             exit(-1);
         }
@@ -146,22 +146,35 @@ public class TestJNICriticalStressTest {
         int allocThreadNum = Integer.parseInt(args[1]);
         int jniCriticalThreadNum = Integer.parseInt(args[2]);
 
+        StringBuilder OldGCName = new StringBuilder();
+        switch (args[3]) {
+            case "G1":
+                OldGCName.append("G1 Old Generation");
+                break;
+            case "Parallel":
+                OldGCName.append("PS MarkSweep");
+                break;
+            case "Serial":
+                OldGCName.append("MarkSweepCompact");
+                break;
+            default:
+                throw new RuntimeException("Unsupported GC selected");
+        }
 
         List<GarbageCollectorMXBean> collectors = ManagementFactory.getGarbageCollectorMXBeans();
 
         GarbageCollectorMXBean collector = null;
 
-        String collectorName = "G1 Old Generation";
-
         for (int i = 0; i < collectors.size(); i++) {
-            if (collectors.get(i).getName().contains(collectorName)) {
+            println(collectors.get(i).getName());
+            if (collectors.get(i).getName().contains(OldGCName.toString())) {
                 collector = collectors.get(i);
                 break;
             }
         }
 
         if (collector == null) {
-            throw new RuntimeException(collectorName + " not found, test with -XX:+UseG1GC");
+            throw new RuntimeException(OldGCName.toString() + " not found");
         }
 
         println("Running for " + durationSec + " secs");
