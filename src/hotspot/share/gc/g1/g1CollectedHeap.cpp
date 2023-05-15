@@ -51,6 +51,7 @@
 #include "gc/g1/g1HeapTransition.hpp"
 #include "gc/g1/g1HeapVerifier.hpp"
 #include "gc/g1/g1InitLogger.hpp"
+#include "gc/g1/g1List.inline.hpp"
 #include "gc/g1/g1MemoryPool.hpp"
 #include "gc/g1/g1MonotonicArenaFreeMemoryTask.hpp"
 #include "gc/g1/g1OopClosures.inline.hpp"
@@ -74,6 +75,7 @@
 #include "gc/g1/heapRegion.inline.hpp"
 #include "gc/g1/heapRegionRemSet.inline.hpp"
 #include "gc/g1/heapRegionSet.inline.hpp"
+#include "gc/shared/collectedHeap.inline.hpp"
 #include "gc/shared/concurrentGCBreakpoints.hpp"
 #include "gc/shared/gcBehaviours.hpp"
 #include "gc/shared/gcHeapSummary.hpp"
@@ -400,6 +402,55 @@ G1CollectedHeap::mem_allocate(size_t word_size,
   return attempt_allocation(word_size, word_size, &dummy);
 }
 
+bool G1CollectedHeap::attempt_allocation_after_gc(size_t word_size,
+                                                  uint gc_count_before,
+                                                  bool should_try_gc,
+                                                  HeapWord** result,
+                                                  GCCause::Cause gc_cause) {
+  //
+  StalledAllocReq request(word_size, _allocator->current_node_index());
+  {
+    G1Locker<PlatformMutex> locker(&_list_lock);
+    _stalled_allocations.insert_last(&request);
+  }
+  bool succeeded = false;
+
+  if (should_try_gc) {
+    do_collection_pause(word_size, gc_count_before, &succeeded, gc_cause);
+  } else {
+    log_trace(gc, alloc)("%s: Stall until clear", Thread::current()->name());
+    // The GCLocker is either active or the GCLocker initiated
+    // GC has not yet been performed. Stall until it is completed.
+    GCLocker::stall_until_clear();
+  }
+
+  {
+    G1Locker<PlatformMutex> locker(&_list_lock);
+    if (request._state == StalledAllocReq::AllocationState::Pending) {
+      _stalled_allocations.remove(&request);
+      return false;
+    } else {
+      _satisfied_allocations.remove(&request);
+    }
+  }
+
+  // check status of request.
+  if (request._state == StalledAllocReq::AllocationState::Success) {
+    *result = request._result;
+    return true;
+  } else if (request._state == StalledAllocReq::AllocationState::Failed) {
+    // We successfully scheduled a collection which failed to allocate. No
+    // point in trying to allocate further. We'll just return NULL.
+    log_debug(gc, alloc)("%s: Failed to allocate "
+                         SIZE_FORMAT " words", Thread::current()->name(), word_size);
+    *result = nullptr;
+    return true;
+  } else {
+    assert(request._state == StalledAllocReq::AllocationState::Pending, "Sanity");
+    return false;
+  }
+}
+
 HeapWord* G1CollectedHeap::attempt_allocation_slow(size_t word_size) {
   ResourceMark rm; // For retrieving the thread names in log messages.
 
@@ -417,7 +468,7 @@ HeapWord* G1CollectedHeap::attempt_allocation_slow(size_t word_size) {
   // fails to perform the allocation. b) is the only case when we'll
   // return null.
   HeapWord* result = nullptr;
-  for (uint try_count = 1, gclocker_retry_count = 0; /* we'll return */; try_count += 1) {
+  while (true) {
     bool should_try_gc;
     uint gc_count_before;
 
@@ -451,59 +502,8 @@ HeapWord* G1CollectedHeap::attempt_allocation_slow(size_t word_size) {
       gc_count_before = total_collections();
     }
 
-    if (should_try_gc) {
-      bool succeeded;
-      result = do_collection_pause(word_size, gc_count_before, &succeeded, GCCause::_g1_inc_collection_pause);
-      if (result != nullptr) {
-        assert(succeeded, "only way to get back a non-null result");
-        log_trace(gc, alloc)("%s: Successfully scheduled collection returning " PTR_FORMAT,
-                             Thread::current()->name(), p2i(result));
-        return result;
-      }
-
-      if (succeeded) {
-        // We successfully scheduled a collection which failed to allocate. No
-        // point in trying to allocate further. We'll just return null.
-        log_trace(gc, alloc)("%s: Successfully scheduled collection failing to allocate "
-                             SIZE_FORMAT " words", Thread::current()->name(), word_size);
-        return nullptr;
-      }
-      log_trace(gc, alloc)("%s: Unsuccessfully scheduled collection allocating " SIZE_FORMAT " words",
-                           Thread::current()->name(), word_size);
-    } else {
-      // Failed to schedule a collection.
-      if (gclocker_retry_count > GCLockerRetryAllocationCount) {
-        log_warning(gc, alloc)("%s: Retried waiting for GCLocker too often allocating "
-                               SIZE_FORMAT " words", Thread::current()->name(), word_size);
-        return nullptr;
-      }
-      log_trace(gc, alloc)("%s: Stall until clear", Thread::current()->name());
-      // The GCLocker is either active or the GCLocker initiated
-      // GC has not yet been performed. Stall until it is and
-      // then retry the allocation.
-      GCLocker::stall_until_clear();
-      gclocker_retry_count += 1;
-    }
-
-    // We can reach here if we were unsuccessful in scheduling a
-    // collection (because another thread beat us to it) or if we were
-    // stalled due to the GC locker. In either can we should retry the
-    // allocation attempt in case another thread successfully
-    // performed a collection and reclaimed enough space. We do the
-    // first attempt (without holding the Heap_lock) here and the
-    // follow-on attempt will be at the start of the next loop
-    // iteration (after taking the Heap_lock).
-    size_t dummy = 0;
-    result = _allocator->attempt_allocation(word_size, word_size, &dummy);
-    if (result != nullptr) {
+    if (attempt_allocation_after_gc(word_size, gc_count_before, should_try_gc, &result, GCCause::_g1_inc_collection_pause)) {
       return result;
-    }
-
-    // Give a warning if we seem to be looping forever.
-    if ((QueuedAllocationWarningCount > 0) &&
-        (try_count % QueuedAllocationWarningCount == 0)) {
-      log_warning(gc, alloc)("%s:  Retried allocation %u times for " SIZE_FORMAT " words",
-                             Thread::current()->name(), try_count, word_size);
     }
   }
 
@@ -686,8 +686,8 @@ HeapWord* G1CollectedHeap::attempt_allocation_humongous(size_t word_size) {
   // fails to perform the allocation. b) is the only case when we'll
   // return null.
   HeapWord* result = nullptr;
-  for (uint try_count = 1, gclocker_retry_count = 0; /* we'll return */; try_count += 1) {
-    bool should_try_gc;
+  while (true) {
+    bool should_try_gc = false;
     uint gc_count_before;
 
 
@@ -713,57 +713,14 @@ HeapWord* G1CollectedHeap::attempt_allocation_humongous(size_t word_size) {
       gc_count_before = total_collections();
     }
 
-    if (should_try_gc) {
-      bool succeeded;
-      result = do_collection_pause(word_size, gc_count_before, &succeeded, GCCause::_g1_humongous_allocation);
+    if (attempt_allocation_after_gc(word_size, gc_count_before, should_try_gc, &result, GCCause::_g1_humongous_allocation)) {
       if (result != nullptr) {
-        assert(succeeded, "only way to get back a non-null result");
-        log_trace(gc, alloc)("%s: Successfully scheduled collection returning " PTR_FORMAT,
-                             Thread::current()->name(), p2i(result));
-        size_t size_in_regions = humongous_obj_size_in_regions(word_size);
-        policy()->old_gen_alloc_tracker()->
-          record_collection_pause_humongous_allocation(size_in_regions * HeapRegion::GrainBytes);
-        return result;
+        // FIXME: comment
+        HeapRegion* r = heap_region_containing(result);
+        oop humongous = cast_to_oop(r->bottom());
+        r->rem_set()->set_state_complete();
       }
-
-      if (succeeded) {
-        // We successfully scheduled a collection which failed to allocate. No
-        // point in trying to allocate further. We'll just return null.
-        log_trace(gc, alloc)("%s: Successfully scheduled collection failing to allocate "
-                             SIZE_FORMAT " words", Thread::current()->name(), word_size);
-        return nullptr;
-      }
-      log_trace(gc, alloc)("%s: Unsuccessfully scheduled collection allocating " SIZE_FORMAT "",
-                           Thread::current()->name(), word_size);
-    } else {
-      // Failed to schedule a collection.
-      if (gclocker_retry_count > GCLockerRetryAllocationCount) {
-        log_warning(gc, alloc)("%s: Retried waiting for GCLocker too often allocating "
-                               SIZE_FORMAT " words", Thread::current()->name(), word_size);
-        return nullptr;
-      }
-      log_trace(gc, alloc)("%s: Stall until clear", Thread::current()->name());
-      // The GCLocker is either active or the GCLocker initiated
-      // GC has not yet been performed. Stall until it is and
-      // then retry the allocation.
-      GCLocker::stall_until_clear();
-      gclocker_retry_count += 1;
-    }
-
-
-    // We can reach here if we were unsuccessful in scheduling a
-    // collection (because another thread beat us to it) or if we were
-    // stalled due to the GC locker. In either can we should retry the
-    // allocation attempt in case another thread successfully
-    // performed a collection and reclaimed enough space.
-    // Humongous object allocation always needs a lock, so we wait for the retry
-    // in the next iteration of the loop, unlike for the regular iteration case.
-    // Give a warning if we seem to be looping forever.
-
-    if ((QueuedAllocationWarningCount > 0) &&
-        (try_count % QueuedAllocationWarningCount == 0)) {
-      log_warning(gc, alloc)("%s: Retried allocation %u times for " SIZE_FORMAT " words",
-                             Thread::current()->name(), try_count, word_size);
+      return result;
     }
   }
 
@@ -772,13 +729,14 @@ HeapWord* G1CollectedHeap::attempt_allocation_humongous(size_t word_size) {
 }
 
 HeapWord* G1CollectedHeap::attempt_allocation_at_safepoint(size_t word_size,
+                                                           uint node_index,
                                                            bool expect_null_mutator_alloc_region) {
   assert_at_safepoint_on_vm_thread();
-  assert(!_allocator->has_mutator_alloc_region() || !expect_null_mutator_alloc_region,
+  assert(!_allocator->has_mutator_alloc_region(node_index) || !expect_null_mutator_alloc_region,
          "the current alloc region was unexpectedly found to be non-null");
 
   if (!is_humongous(word_size)) {
-    return _allocator->attempt_allocation_locked(word_size);
+    return _allocator->attempt_allocation_locked(word_size, node_index);
   } else {
     HeapWord* result = humongous_obj_allocate(word_size);
     if (result != nullptr && policy()->need_to_start_conc_mark("STW humongous allocation")) {
@@ -788,6 +746,13 @@ HeapWord* G1CollectedHeap::attempt_allocation_at_safepoint(size_t word_size,
   }
 
   ShouldNotReachHere();
+}
+
+HeapWord* G1CollectedHeap::attempt_allocation_at_safepoint(size_t word_size,
+                                                           bool expect_null_mutator_alloc_region) {
+  assert_at_safepoint_on_vm_thread();
+  uint node_index = _allocator->current_node_index();
+  return attempt_allocation_at_safepoint(word_size, expect_null_mutator_alloc_region, node_index);
 }
 
 class PostCompactionPrinterClosure: public HeapRegionClosure {
@@ -972,14 +937,12 @@ void G1CollectedHeap::resize_heap_if_necessary() {
 }
 
 HeapWord* G1CollectedHeap::satisfy_failed_allocation_helper(size_t word_size,
-                                                            bool do_gc,
-                                                            bool maximal_compaction,
-                                                            bool expect_null_mutator_alloc_region,
-                                                            bool* gc_succeeded) {
-  *gc_succeeded = true;
+                                                            uint node_index,
+                                                            bool expect_null_mutator_alloc_region) {
   // Let's attempt the allocation first.
   HeapWord* result =
     attempt_allocation_at_safepoint(word_size,
+                                    node_index,
                                     expect_null_mutator_alloc_region);
   if (result != nullptr) {
     return result;
@@ -989,82 +952,173 @@ HeapWord* G1CollectedHeap::satisfy_failed_allocation_helper(size_t word_size,
   // incremental pauses.  Therefore, at least for now, we'll favor
   // expansion over collection.  (This might change in the future if we can
   // do something smarter than full collection to satisfy a failed alloc.)
-  result = expand_and_allocate(word_size);
-  if (result != nullptr) {
-    return result;
-  }
+  if (expand(word_size)) {
+    return attempt_allocation_at_safepoint(word_size,
+                                           node_index,
+                                           expect_null_mutator_alloc_region);
 
-  if (do_gc) {
-    GCCauseSetter compaction(this, GCCause::_g1_compaction_pause);
-    // Expansion didn't work, we'll try to do a Full GC.
-    // If maximal_compaction is set we clear all soft references and don't
-    // allow any dead wood to be left on the heap.
-    if (maximal_compaction) {
-      log_info(gc, ergo)("Attempting maximal full compaction clearing soft references");
-    } else {
-      log_info(gc, ergo)("Attempting full compaction");
-    }
-    *gc_succeeded = do_full_collection(maximal_compaction /* clear_all_soft_refs */ ,
-                                       maximal_compaction /* do_maximal_compaction */);
   }
-
   return nullptr;
 }
 
-HeapWord* G1CollectedHeap::satisfy_failed_allocation(size_t word_size,
-                                                     bool* succeeded) {
+bool G1CollectedHeap::satisfy_failed_allocations(bool* gc_succeeded) {
   assert_at_safepoint_on_vm_thread();
 
-  // Attempts to allocate followed by Full GC.
-  HeapWord* result =
-    satisfy_failed_allocation_helper(word_size,
-                                     true,  /* do_gc */
-                                     false, /* maximum_collection */
-                                     false, /* expect_null_mutator_alloc_region */
-                                     succeeded);
+  bool success = satisfy_failed_allocations(false /* expect_null_mutator_alloc_region*/);
 
-  if (result != nullptr || !*succeeded) {
-    return result;
+  if (success) {
+   return success;
+  }
+  log_debug(gc, alloc)("First allocation attempt failed. Now move to full gc %d", *gc_succeeded);
+
+  // FIXME: Dump the satisfied allocations
+  // Then try again with the death march
+  // FIXME: iterate the satisfied and add them back the the stalled.
+  reset_satisfied();
+
+  // Attempts to allocate without doing GC failed. Let us first do a regular
+  // full gc, then try again.
+  *gc_succeeded = re_do_full_collection(false);
+
+  log_debug(gc, alloc)("Full GC Completed");
+  // Fixme: if the gc attempt fails. just return
+  if (!*gc_succeeded) {
+    return false;
   }
 
-  // Attempts to allocate followed by Full GC that will collect all soft references.
-  result = satisfy_failed_allocation_helper(word_size,
-                                            true, /* do_gc */
-                                            true, /* maximum_collection */
-                                            true, /* expect_null_mutator_alloc_region */
-                                            succeeded);
+  log_debug(gc, alloc)("Second GC attempt %d", *gc_succeeded);
 
-  if (result != nullptr || !*succeeded) {
-    return result;
+  success = satisfy_failed_allocations(true /* expect_null_mutator_alloc_region*/);
+
+  if (success) {
+   return success;
   }
 
-  // Attempts to allocate, no GC
-  result = satisfy_failed_allocation_helper(word_size,
-                                            false, /* do_gc */
-                                            false, /* maximum_collection */
-                                            true,  /* expect_null_mutator_alloc_region */
-                                            succeeded);
+  // FIXME: iterate the satisfied and add them back the the stalled.
 
-  if (result != nullptr) {
-    return result;
+  reset_satisfied();
+
+  // First attempt at GC was successful, however we failed to satisfy all the requests.
+  // We need to perform a full compaction GC, and then retry the allocation.
+  *gc_succeeded = re_do_full_collection(true);
+
+  if (!*gc_succeeded) {
+    return false;
+  }
+
+  log_debug(gc, alloc)("Third GC attempt-maximum %d", *gc_succeeded);
+
+  success = satisfy_failed_allocations(true /* expect_null_mutator_alloc_region*/);
+
+  if (success) {
+   return success;
+  }
+
+  // FIXME: We cannot allocate memory for the requests. We can as well die
+  // Iterate the remaining stalled allocations and Fail them.
+  for (StalledAllocReq* alloc_req = _stalled_allocations.first(); alloc_req != NULL; alloc_req = _stalled_allocations.first()) {
+    // Out of memory, fail allocation request
+    _stalled_allocations.remove(alloc_req);
+    _satisfied_allocations.insert_last(alloc_req);
+    alloc_req->_state = StalledAllocReq::AllocationState::Failed;
+    log_debug(gc, alloc)("Failed to allocated: " PTR_FORMAT, p2i(alloc_req));
   }
 
   assert(!soft_ref_policy()->should_clear_all_soft_refs(),
          "Flag should have been handled and cleared prior to this point");
-
-  // What else?  We might try synchronous finalization later.  If the total
-  // space available is large enough for the allocation, then a more
-  // complete compaction phase than we've tried so far might be
-  // appropriate.
-  return nullptr;
+  return false;
 }
 
-// Attempting to expand the heap sufficiently
-// to support an allocation of the given "word_size".  If
-// successful, perform the allocation and return the address of the
-// allocated block, or else null.
+void G1CollectedHeap::zap_memory(HeapWord* start, size_t size) {
+  HeapRegion* hr = heap_region_containing(start);
+  HeapWord* end = start + size;
+  hr->fill_range_with_dead_objects(start, end);
+}
 
-HeapWord* G1CollectedHeap::expand_and_allocate(size_t word_size) {
+bool G1CollectedHeap::re_do_full_collection(bool maximal_compaction) {
+  GCCauseSetter compaction(this, GCCause::_g1_compaction_pause);
+  if (maximal_compaction) {
+    log_info(gc, ergo)("Attempting maximal full compaction clearing soft references");
+  } else {
+    log_info(gc, ergo)("Attempting full compaction");
+  }
+  return do_full_collection(maximal_compaction /* clear_all_soft_refs */ ,
+                            maximal_compaction /* do_maximal_compaction */);
+}
+
+void G1CollectedHeap::reset_satisfied() {
+  log_debug(gc, alloc)("Reset called");
+  assert_at_safepoint_on_vm_thread();
+  for (StalledAllocReq* alloc_req = _satisfied_allocations.first(); alloc_req != nullptr; alloc_req = _satisfied_allocations.first()) {
+    HeapWord* addr = alloc_req->_result;
+    // FIXME: let us leave the failed allocations in the satisfied list
+    if (alloc_req->_state == StalledAllocReq::AllocationState::Failed) {
+      alloc_req->_state = StalledAllocReq::AllocationState::Pending;
+      alloc_req->_result = nullptr;
+      _satisfied_allocations.remove(alloc_req);
+      _stalled_allocations.insert_first(alloc_req);
+      continue;
+    }
+    alloc_req->_state = StalledAllocReq::AllocationState::Pending;
+    alloc_req->_result = nullptr;
+    _satisfied_allocations.remove(alloc_req);
+    _stalled_allocations.insert_first(alloc_req);
+  }
+}
+
+bool G1CollectedHeap::satisfy_failed_allocations(bool expect_null_mutator_alloc_region) {
+  assert_at_safepoint_on_vm_thread();
+  assert(_stalled_allocations.first() != nullptr, "Sanity check!");
+  while(true) {
+    StalledAllocReq* alloc_req = _stalled_allocations.first();
+    if (alloc_req == nullptr) {
+      // We are done with all the requests.
+      return true;
+    }
+
+    HeapWord* result =
+      satisfy_failed_allocation_helper(alloc_req->size(),
+                                       alloc_req->_node_index,
+                                       expect_null_mutator_alloc_region /* expect_null_mutator_alloc_region */
+                                       );
+
+    if (result == nullptr) {
+      // Failed to allocate, give up.
+      return false;
+    }
+
+    // FIXME: need to fix the numa node indexes
+    expect_null_mutator_alloc_region = false;
+
+    alloc_req->_result = result;
+    alloc_req->_state = StalledAllocReq::AllocationState::Success;
+
+    if (is_humongous(alloc_req->size())) {
+      HeapRegion* r = heap_region_containing(result);
+      r->rem_set()->set_state_untracked();
+
+      size_t words = alloc_req->size();
+      const size_t payload_size = words - CollectedHeap::filler_array_hdr_size();
+      const size_t len = payload_size * HeapWordSize / sizeof(jint);
+      assert((int)len >= 0, "size too large " SIZE_FORMAT " becomes %d", words, (int)len);
+
+      ObjArrayAllocator allocator(Universe::fillerArrayKlassObj(), words, (int)len, /* do_zero */ false);
+      allocator.initialize(result);
+
+      size_t size_in_regions = humongous_obj_size_in_regions(alloc_req->size());
+      policy()->old_gen_alloc_tracker()->
+          record_collection_pause_humongous_allocation(size_in_regions * HeapRegion::GrainBytes);
+    } else {
+      CollectedHeap::fill_with_objects(result, alloc_req->size());
+    }
+
+    // Allocation succeeded, dequeue and satisfy allocation request.
+    _stalled_allocations.remove(alloc_req);
+    _satisfied_allocations.insert_last(alloc_req);
+  }
+}
+
+bool G1CollectedHeap::expand(size_t word_size) {
   assert_at_safepoint_on_vm_thread();
 
   _verifier->verify_region_sets_optional();
@@ -1073,10 +1127,23 @@ HeapWord* G1CollectedHeap::expand_and_allocate(size_t word_size) {
   log_debug(gc, ergo, heap)("Attempt heap expansion (allocation request failed). Allocation request: " SIZE_FORMAT "B",
                             word_size * HeapWordSize);
 
-
   if (expand(expand_bytes, _workers)) {
     _hrm.verify_optional();
     _verifier->verify_region_sets_optional();
+    return true;
+  }
+  return false;
+}
+
+
+// Attempting to expand the heap sufficiently
+// to support an allocation of the given "word_size".  If
+// successful, perform the allocation and return the address of the
+// allocated block, or else null.
+HeapWord* G1CollectedHeap::expand_and_allocate(size_t word_size) {
+  assert_at_safepoint_on_vm_thread();
+
+  if (expand(word_size)) {
     return attempt_allocation_at_safepoint(word_size,
                                            false /* expect_null_mutator_alloc_region */);
   }
@@ -1220,11 +1287,14 @@ public:
 
 G1CollectedHeap::G1CollectedHeap() :
   CollectedHeap(),
-  _service_thread(nullptr),
-  _periodic_gc_task(nullptr),
-  _free_arena_memory_task(nullptr),
-  _workers(nullptr),
-  _card_table(nullptr),
+  _list_lock(),
+  _stalled_allocations(),
+  _satisfied_allocations(),
+  _service_thread(NULL),
+  _periodic_gc_task(NULL),
+  _free_arena_memory_task(NULL),
+  _workers(NULL),
+  _card_table(NULL),
   _collection_pause_end(Ticks::now()),
   _soft_ref_policy(),
   _old_set("Old Region Set", new OldRegionSetChecker()),
@@ -2493,6 +2563,11 @@ bool G1CollectedHeap::do_collection_pause_at_safepoint() {
 
   if (GCLocker::check_active_before_gc()) {
     return false;
+  }
+
+  // FIXME: Rest allocated but not yet used.
+  {
+    reset_satisfied();
   }
 
   do_collection_pause_at_safepoint_helper();

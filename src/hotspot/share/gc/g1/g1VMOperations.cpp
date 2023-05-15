@@ -37,6 +37,9 @@
 #include "memory/universe.hpp"
 #include "runtime/interfaceSupport.inline.hpp"
 
+// FIXME
+#include "gc/g1/g1List.inline.hpp"
+
 bool VM_G1CollectFull::skip_operation() const {
   // There is a race between the periodic collection task's checks for
   // wanting a collection and processing its request.  A collection in that
@@ -51,6 +54,12 @@ bool VM_G1CollectFull::skip_operation() const {
 void VM_G1CollectFull::doit() {
   G1CollectedHeap* g1h = G1CollectedHeap::heap();
   GCCauseSetter x(g1h, _gc_cause);
+
+  // FIXME: Rest allocated but not yet used.
+  {
+    log_debug(gc, alloc)("Reset because %s", GCCause::to_string(_gc_cause));
+    g1h->reset_satisfied();
+  }
   _gc_succeeded = g1h->do_full_collection(false /* clear_all_soft_refs */,
                                           false /* do_maximal_compaction */);
 }
@@ -84,6 +93,11 @@ void VM_G1TryInitiateConcMark::doit() {
 
   // Record for handling by caller.
   _terminating = g1h->concurrent_mark_is_terminating();
+
+  // FIXME: Rest allocated but not yet used.
+  {
+    g1h->reset_satisfied();
+  }
 
   if (_terminating && GCCause::is_user_requested_gc(_gc_cause)) {
     // When terminating, the request to initiate a concurrent cycle will be
@@ -125,33 +139,48 @@ VM_G1CollectForAllocation::VM_G1CollectForAllocation(size_t         word_size,
 void VM_G1CollectForAllocation::doit() {
   G1CollectedHeap* g1h = G1CollectedHeap::heap();
 
-  if (_word_size > 0) {
-    // An allocation has been requested. So, try to do that first.
-    _result = g1h->attempt_allocation_at_safepoint(_word_size,
-                                                   false /* expect_null_cur_alloc_region */);
-    if (_result != nullptr) {
-      // If we can successfully allocate before we actually do the
-      // pause then we will consider this pause successful.
-      _gc_succeeded = true;
-      return;
+  // FIXME: Rest allocated but not yet used.
+  {
+    log_debug(gc, alloc)("Reset because %s", GCCause::to_string(_gc_cause));
+    g1h->reset_satisfied();
+  }
+
+  bool gc_succeeded = false;
+  bool has_pending_allocations = !g1h->_stalled_allocations.is_empty();
+  log_debug(gc, alloc)("Has Pending Allocations %d", has_pending_allocations);
+  if (has_pending_allocations) {
+    bool success = g1h->satisfy_failed_allocations(false /* expect_null_mutator_alloc_region*/);
+
+    if (success) {
+    return;
     }
+
+    // FIXME: Dump the satisfied allocations
+    // Then try again with the death march
+    // FIXME: iterate the satisfied and add them back the the stalled.
+    g1h->reset_satisfied();
   }
 
   GCCauseSetter x(g1h, _gc_cause);
   // Try a partial collection of some kind.
   _gc_succeeded = g1h->do_collection_pause_at_safepoint();
 
-  if (_gc_succeeded) {
-    if (_word_size > 0) {
-      // An allocation had been requested. Do it, eventually trying a stronger
-      // kind of GC.
-      _result = g1h->satisfy_failed_allocation(_word_size, &_gc_succeeded);
-    } else if (g1h->should_upgrade_to_full_gc()) {
-      // There has been a request to perform a GC to free some space. We have no
-      // information on how much memory has been asked for. In case there are
-      // absolutely no regions left to allocate into, do a full compaction.
-      _gc_succeeded = g1h->upgrade_to_full_collection();
-    }
+  if (!_gc_succeeded) {
+    log_debug(gc, alloc)("Young GC Failed");
+    return;
+  }
+
+  if (has_pending_allocations) {
+    log_debug(gc, alloc)("Young GC was successful. Try to allocate | %s", GCCause::to_string(_gc_cause));
+    // An allocation had been requested. Do it, eventually trying a stronger
+    // kind of GC.
+    g1h->satisfy_failed_allocations(&_gc_succeeded);
+    return;
+  } else if (g1h->should_upgrade_to_full_gc()) {
+    // There has been a request to perform a GC to free some space. We have no
+    // information on how much memory has been asked for. In case there are
+    // absolutely no regions left to allocate into, do a full compaction.
+    _gc_succeeded = g1h->upgrade_to_full_collection();
   }
 }
 

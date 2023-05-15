@@ -59,6 +59,11 @@
 #include "runtime/mutexLocker.hpp"
 #include "runtime/threadSMR.hpp"
 #include "utilities/bitMap.hpp"
+#include "utilities/lockFreeStack.hpp"
+
+// FIXME:
+#include "runtime/mutex.hpp"
+#include "gc/g1/g1List.hpp"
 
 // A "G1CollectedHeap" is an implementation of a java heap for HotSpot.
 // It uses the "Garbage First" heap organization and algorithm, which
@@ -167,6 +172,35 @@ class G1CollectedHeap : public CollectedHeap {
 
   // Testing classes.
   friend class G1CheckRegionAttrTableClosure;
+
+  class StalledAllocReq : public StackObj {
+    const size_t _size;
+  public:
+    enum class AllocationState {
+      Success,
+      Failed,
+      Pending,
+      Retry,
+    };
+    AllocationState _state;
+    HeapWord* _result;
+    const uint _node_index;
+    G1ListNode<StalledAllocReq>    _node;
+    StalledAllocReq(size_t size, uint numa_node) :
+      _size(size),
+      _state(AllocationState::Pending),
+      _result(nullptr),
+      _node_index(numa_node),
+      _node()
+    { }
+
+    size_t size() { return _size; }
+  };
+
+  PlatformMutex _list_lock;
+  G1List<StalledAllocReq>  _stalled_allocations;
+  G1List<StalledAllocReq>  _satisfied_allocations;
+
 
 private:
   G1ServiceThread* _service_thread;
@@ -459,11 +493,21 @@ private:
   // potentially schedule a GC pause.
   HeapWord* attempt_allocation_humongous(size_t word_size);
 
+bool attempt_allocation_after_gc(size_t word_size,
+                                 uint gc_count_before,
+                                 bool should_try_gc,
+                                 HeapWord** result,
+                                 GCCause::Cause gc_cause);
+
   // Allocation attempt that should be called during safepoints (e.g.,
   // at the end of a successful GC). expect_null_mutator_alloc_region
   // specifies whether the mutator alloc region is expected to be null
   // or not.
   HeapWord* attempt_allocation_at_safepoint(size_t word_size,
+                                            bool expect_null_mutator_alloc_region);
+
+  HeapWord* attempt_allocation_at_safepoint(size_t word_size,
+                                            uint node_index,
                                             bool expect_null_mutator_alloc_region);
 
   // These methods are the "callbacks" from the G1AllocRegion class.
@@ -497,8 +541,11 @@ private:
   // Callback from VM_G1CollectForAllocation operation.
   // This function does everything necessary/possible to satisfy a
   // failed allocation request (including collection, expansion, etc.)
-  HeapWord* satisfy_failed_allocation(size_t word_size,
-                                      bool* succeeded);
+  bool satisfy_failed_allocations(bool* gc_succeeded);
+  bool satisfy_failed_allocations(bool expect_null_mutator_alloc_region);
+  void zap_memory(HeapWord* start, size_t size);
+  void reset_satisfied();
+  bool re_do_full_collection(bool maximal_compaction);
   // Internal helpers used during full GC to split it up to
   // increase readability.
   bool abort_concurrent_cycle();
@@ -511,16 +558,15 @@ private:
 
   // Helper method for satisfy_failed_allocation()
   HeapWord* satisfy_failed_allocation_helper(size_t word_size,
-                                             bool do_gc,
-                                             bool maximal_compaction,
-                                             bool expect_null_mutator_alloc_region,
-                                             bool* gc_succeeded);
+                                             uint node_index,
+                                             bool expect_null_mutator_alloc_region);
 
   // Attempting to expand the heap sufficiently
   // to support an allocation of the given "word_size".  If
   // successful, perform the allocation and return the address of the
   // allocated block, or else null.
   HeapWord* expand_and_allocate(size_t word_size);
+  bool expand(size_t word_size);
 
   void verify_numa_regions(const char* desc);
 
@@ -574,7 +620,7 @@ public:
   // Returns true if the heap was expanded by the requested amount;
   // false otherwise.
   // (Rounds up to a HeapRegion boundary.)
-  bool expand(size_t expand_bytes, WorkerThreads* pretouch_workers = nullptr, double* expand_time_ms = nullptr);
+  bool expand(size_t expand_bytes, WorkerThreads* pretouch_workers, double* expand_time_ms = nullptr);
   bool expand_single_region(uint node_index);
 
   // Returns the PLAB statistics for a given destination.
