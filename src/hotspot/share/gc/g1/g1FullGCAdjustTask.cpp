@@ -91,8 +91,8 @@ void G1FullGCAdjustTask::work(uint worker_id) {
   ResourceMark rm;
 
   // Adjust preserved marks first since they are not balanced.
-  G1FullGCMarker* marker = collector()->marker(worker_id);
-  marker->preserved_stack()->adjust_during_full_gc();
+  PreservedMarks* preserved_stack = collector()->preserved_mark_set()->get(worker_id);
+  preserved_stack->adjust_during_full_gc();
 
   {
     // Adjust the weak roots.

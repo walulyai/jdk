@@ -25,6 +25,7 @@
 #ifndef SHARE_GC_G1_G1FULLGCCOMPACTIONPOINT_HPP
 #define SHARE_GC_G1_G1FULLGCCOMPACTIONPOINT_HPP
 
+#include "gc/shared/preservedMarks.hpp"
 #include "memory/allocation.hpp"
 #include "oops/oopsHierarchy.hpp"
 #include "utilities/growableArray.hpp"
@@ -37,6 +38,7 @@ class G1FullGCCompactionPoint : public CHeapObj<mtGC> {
   G1FullCollector* _collector;
   HeapRegion* _current_region;
   HeapWord*   _compaction_top;
+  PreservedMarks* _preserved_stack;
   GrowableArray<HeapRegion*>* _compaction_regions;
   GrowableArrayIterator<HeapRegion*> _compaction_region_iterator;
 
@@ -45,6 +47,7 @@ class G1FullGCCompactionPoint : public CHeapObj<mtGC> {
   void switch_region();
   HeapRegion* next_region();
   uint find_contiguous_before(HeapRegion* hr, uint num_regions);
+  PreservedMarks* preserved_stack() { return _preserved_stack; }
 
 public:
   G1FullGCCompactionPoint(G1FullCollector* collector);
@@ -63,6 +66,8 @@ public:
   HeapRegion* current_region();
 
   GrowableArray<HeapRegion*>* regions();
+
+  void set_preserved_stack(PreservedMarks* preserved_stack) { _preserved_stack = preserved_stack; }
 };
 
 #endif // SHARE_GC_G1_G1FULLGCCOMPACTIONPOINT_HPP
