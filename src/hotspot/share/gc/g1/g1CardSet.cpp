@@ -347,8 +347,8 @@ public:
     _table_scanner.set(&_table, BucketClaimSize);
   }
 
-  void grow() {
-    size_t new_limit = _table.get_size_log2(Thread::current()) + 1;
+  void grow(size_t log_table_size) {
+    size_t new_limit = log_table_size + 1;
     _table.grow(Thread::current(), new_limit);
   }
 
@@ -783,6 +783,7 @@ G1AddCardResult G1CardSet::add_card(uint card_region, uint card_in_region, bool 
 
   bool should_grow_table = false;
   G1CardSetHashTableValue* table_entry = get_or_add_container(card_region, &should_grow_table);
+  size_t log_table_size = _table->log_table_size();
   while (true) {
     container = acquire_container(&table_entry->_container);
     add_result = add_to_container(&table_entry->_container, container, card_region, card_in_region, increment_total);
@@ -808,7 +809,7 @@ G1AddCardResult G1CardSet::add_card(uint card_region, uint card_in_region, bool 
     Atomic::inc(&_num_occupied, memory_order_relaxed);
   }
   if (should_grow_table) {
-    _table->grow();
+    _table->grow(log_table_size);
   }
   if (to_transfer != nullptr) {
     transfer_cards(table_entry, to_transfer, card_region);
