@@ -34,6 +34,7 @@
 #include "gc/shared/spaceDecorator.hpp"
 #include "gc/shared/verifyOption.hpp"
 #include "runtime/mutex.hpp"
+#include "utilities/bitMap.hpp"
 #include "utilities/macros.hpp"
 
 class G1CardSetConfiguration;
@@ -44,6 +45,67 @@ class HeapRegionRemSet;
 class HeapRegion;
 class HeapRegionSetBase;
 class nmethod;
+
+struct LiveMap {
+  static const size_t nsegments = 64;
+  CHeapBitMap       _bm;
+  BitMap::bm_word_t _segment_live_bits;
+  BitMap::bm_word_t _segment_claim_bits;
+  size_t            _segment_shift;
+
+  LiveMap(size_t size) :
+    _bm(size, mtGC, false /* clear */),
+    _segment_live_bits(0),
+    _segment_claim_bits(0),
+    _segment_shift(exact_log2(segment_size())) {}
+
+  inline BitMap::idx_t segment_size() const {
+    return _bm.size() / nsegments;
+  }
+
+  inline BitMap::idx_t segment_start(BitMap::idx_t segment) const {
+    return segment_size() * segment;
+  }
+
+  inline BitMap::idx_t index_to_segment(BitMap::idx_t index) const {
+    return index >> _segment_shift;
+  }
+
+  inline BitMap::idx_t segment_end(BitMap::idx_t segment) const {
+  return segment_start(segment) + segment_size();
+  }
+
+  inline const BitMapView segment_live_bits() const {
+    return BitMapView(const_cast<BitMap::bm_word_t*>(&_segment_live_bits), nsegments);
+  }
+
+  inline const BitMapView segment_claim_bits() const {
+    return BitMapView(const_cast<BitMap::bm_word_t*>(&_segment_claim_bits), nsegments);
+  }
+
+  inline bool claim_segment(BitMap::idx_t segment) {
+    return segment_claim_bits().par_set_bit(segment, memory_order_acq_rel);
+  }
+
+  inline BitMap::idx_t first_live_segment() const {
+    return segment_live_bits().find_first_set_bit(0, nsegments);
+  }
+
+  inline BitMap::idx_t next_live_segment(BitMap::idx_t segment) const {
+    return segment_live_bits().find_first_set_bit(segment + 1, nsegments);
+  }
+
+  inline BitMap::idx_t index_to_segment(BitMap::idx_t index) const {
+    return index >> _segment_shift;
+  }
+
+  inline bool get(size_t index) const {
+    BitMap::idx_t segment = index_to_segment(index);
+    return is_segment_live(segment) &&                  // Segment is marked
+          _bm.par_at(index, memory_order_relaxed); // Object is marked
+  }
+
+};
 
 #define HR_FORMAT "%u:(%s)[" PTR_FORMAT "," PTR_FORMAT "," PTR_FORMAT "]"
 #define HR_FORMAT_PARAMS(_hr_) \
