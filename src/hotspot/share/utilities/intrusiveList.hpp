@@ -750,7 +750,6 @@ private:
     Ops::unlink(start.cur_entry(), last.cur_entry());
     Ops::link_range_before(pos.cur_entry(), &last_value);
     Ops::link_range_after(prev_itr.cur_entry(), &from_value);
-    printf("distance %zu / %zu\n", distance(iterator_to(from_value), pos), from_list.size());
   }
 
   // Helper for can_splice_from, delaying instantiation that includes
@@ -1012,7 +1011,7 @@ public:
   /** Implicit conversion from non-const to const element type. */
   template<typename From, ENABLE_IF(is_convertible_iterator<From>())>
   IteratorImpl(const From& other)
-    : _cur_entry(other._cur_entry)
+    : _cur_entry(other.cur_entry())
   {}
 
   template<typename From, ENABLE_IF(is_convertible_iterator<From>())>
@@ -1020,7 +1019,7 @@ public:
     return *this = IteratorImpl(other);
   }
 
-  ListEntryPtr cur_entry() { return _cur_entry; }
+  ListEntryPtr cur_entry() const { return _cur_entry; }
 
   /**
    * Return a reference to the iterator's value.
@@ -1111,7 +1110,7 @@ public:
    * complexity: constant.
    */
   bool operator==(const IteratorImpl& other) const {
-    return _cur_entry == other._cur_entry;
+    return _cur_entry == other.cur_entry();
   }
 
   /**
