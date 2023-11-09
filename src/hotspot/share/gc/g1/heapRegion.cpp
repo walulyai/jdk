@@ -48,6 +48,74 @@
 #include "runtime/globals_extension.hpp"
 #include "utilities/powerOfTwo.hpp"
 
+void LiveMap::reset() {
+  // Reset marking information
+  _live_bytes = 0;
+  _live_objects = 0;
+  _bitmap.clear_range(0, _bitmap.size());
+
+  // Clear segment claimed/live bits
+  segment_live_bits().clear();
+  segment_claim_bits().clear();
+}
+
+LiveMap::LiveMap(size_t size) :
+    _bitmap(bitmap_size(size, nsegments), mtGC, false /* clear */),
+    _live_objects(0),
+    _live_bytes(0),
+    _segment_live_bits(0),
+    _segment_claim_bits(0),
+    _segment_shift(exact_log2(segment_size())) {
+      reset();
+    }
+
+void LiveMap::reset_segment(BitMap::idx_t segment) {
+  bool contention = false;
+
+  if (!claim_segment(segment)) {
+    // Already claimed, wait for live bit to be set
+    while (!is_segment_live(segment)) {
+      // Mark reset contention
+      /* if (!contention) {
+        // Count contention once
+        XStatInc(XCounterMarkSegmentResetContention);
+        contention = true;
+
+        log_trace(gc)("Mark segment reset contention, thread: " PTR_FORMAT " (%s), map: " PTR_FORMAT ", segment: " SIZE_FORMAT,
+                      XThread::id(), XThread::name(), p2i(this), segment);
+      } */
+    }
+
+    // Segment is live
+    return;
+  }
+
+  // Segment claimed, clear it
+  const BitMap::idx_t start_index = segment_start(segment);
+  const BitMap::idx_t end_index   = segment_end(segment);
+  if (segment_size() / BitsPerWord >= 32) {
+    _bitmap.clear_large_range(start_index, end_index);
+  } else {
+    _bitmap.clear_range(start_index, end_index);
+  }
+
+  // Set live bit
+  const bool success = set_segment_live(segment);
+  assert(success, "Should never fail");
+}
+
+void LiveMap::resize(uint32_t size) {
+  const size_t new_bitmap_size = bitmap_size(size, nsegments);
+  if (_bitmap.size() != new_bitmap_size) {
+    _bitmap.reinitialize(new_bitmap_size, false /* clear */);
+    _segment_shift = exact_log2(segment_size());
+  }
+}
+
+void HeapRegion::clear_livemap() {
+  return _livemap.reset();
+}
+
 uint   HeapRegion::LogOfHRGrainBytes = 0;
 uint   HeapRegion::LogCardsPerRegion = 0;
 size_t HeapRegion::GrainBytes        = 0;
@@ -217,6 +285,7 @@ HeapRegion::HeapRegion(uint hrm_index,
   _top(nullptr),
   _bot_part(bot, this),
   _pre_dummy_top(nullptr),
+  _livemap(mr.word_size() >> LogMinObjAlignment),
   _rem_set(nullptr),
   _hrm_index(hrm_index),
   _type(),

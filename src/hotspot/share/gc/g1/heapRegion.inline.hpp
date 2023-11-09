@@ -40,7 +40,123 @@
 #include "runtime/prefetch.inline.hpp"
 #include "runtime/safepoint.hpp"
 #include "utilities/align.hpp"
+#include "utilities/bitMap.inline.hpp"
 #include "utilities/globalDefinitions.hpp"
+
+inline bool LiveMap::claim_segment(BitMap::idx_t segment) {
+  return segment_claim_bits().par_set_bit(segment, memory_order_acq_rel);
+}
+
+inline BitMap::idx_t LiveMap::first_live_segment() const {
+  return segment_live_bits().find_first_set_bit(0, nsegments);
+}
+
+inline BitMap::idx_t LiveMap::next_live_segment(BitMap::idx_t segment) const {
+  return segment_live_bits().find_first_set_bit(segment + 1, nsegments);
+}
+
+inline bool LiveMap::get(size_t index) const {
+  BitMap::idx_t segment = index_to_segment(index);
+  return is_segment_live(segment) &&                  // Segment is marked
+        _bitmap.par_at(index, memory_order_relaxed); // Object is marked
+}
+
+inline bool LiveMap::set(size_t index) {
+  /* TODO: if (!is_marked()) {
+    // First object to be marked during this
+    // cycle, reset marking information.
+    reset(index);
+  } */
+  const BitMap::idx_t segment = index_to_segment(index);
+  if (!is_segment_live(segment)) {
+    // First object to be marked in this segment during
+    // this cycle, reset segment bitmap.
+    reset_segment(segment);
+  }
+
+  return _bitmap.par_set_bit(index);
+}
+
+
+inline bool LiveMap::is_segment_live(BitMap::idx_t segment) const {
+  return segment_live_bits().par_at(segment);
+}
+
+inline bool LiveMap::set_segment_live(BitMap::idx_t segment) {
+  return segment_live_bits().par_set_bit(segment, memory_order_release);
+}
+
+inline void LiveMap::inc_live(uint32_t objects, size_t bytes) {
+  Atomic::add(&_live_objects, objects);
+  Atomic::add(&_live_bytes, bytes);
+}
+
+inline BitMap::idx_t LiveMap::find_first_set_bit(BitMap::idx_t beg, BitMap::idx_t end) const {
+  BitMap::idx_t assert_index = _bitmap.find_first_set_bit(beg, end);
+  BitMap::idx_t segment = index_to_segment(beg);
+  if (is_segment_live(segment)) {
+    BitMap::idx_t end_index = segment_end(segment);
+
+    // TODO: for christsake clean this up
+    end_index = (end_index < end) ? end_index : end;
+    assert(end_index <= _bitmap.size(), "is_segment_live");
+    BitMap::idx_t index = _bitmap.find_first_set_bit(beg, end_index);
+    if (index < end_index) {
+      assert(assert_index == index, "must be %zu != %zu / %zu (%zu)", assert_index, index, end, _bitmap.find_first_set_bit(beg, end));
+      return index;
+    }
+  }
+
+  segment = next_live_segment(segment);
+  if (segment > index_to_segment(end)) {
+    return end;
+  }
+  const BitMap::idx_t start_index = segment_start(segment);
+  BitMap::idx_t end_index   = segment_end(segment);
+  end_index = (end_index < end) ? end_index : end;
+  assert(start_index <= _bitmap.size(), "start_index");
+  assert(end_index <= _bitmap.size(), "end_index %zu > size %zu range [%zu - %zu] / [%zu - %zu] ", end_index, _bitmap.size(), start_index, end_index, beg, end);
+  BitMap::idx_t index = _bitmap.find_first_set_bit(start_index, end_index);
+
+  assert(assert_index == index, "must be %zu != %zu", assert_index, index);
+  return (index < end) ? index : end;
+}
+
+inline HeapWord* HeapRegion::get_next_marked_addr(const HeapWord* const addr,
+                                                  HeapWord* const limit) const {
+  assert(limit != nullptr, "limit must not be null");
+  // Round addr up to a possible object boundary to be safe.
+  size_t const addr_offset = addr_to_offset(align_up(addr, HeapWordSize << LogMinObjAlignment));
+  size_t const limit_offset = addr_to_offset(limit);
+
+  assert(addr_offset <= _livemap._bitmap.size(), "addr_offset");
+  assert(limit_offset <= _livemap._bitmap.size(), "limit_offset");
+  assert(addr_offset <= limit_offset, "what the heck");
+
+  size_t const nextOffset = _livemap.find_first_set_bit(addr_offset, limit_offset);
+
+  return offset_to_addr(nextOffset);
+}
+
+inline bool HeapRegion::is_object_marked(HeapWord* addr) const {
+  size_t index = addr_to_offset(addr);
+  return _livemap.get(index);
+}
+
+inline bool HeapRegion::is_object_marked(oop obj) const {
+  return is_object_marked(cast_from_oop<HeapWord*>(obj));
+}
+
+inline bool HeapRegion::mark_object(oop obj){
+  return mark_object(cast_from_oop<HeapWord*>(obj));
+}
+
+inline bool HeapRegion::mark_object(HeapWord* addr) {
+  size_t index = addr_to_offset(addr);
+  return _livemap.set(index);
+}
+
+
 
 inline HeapWord* HeapRegion::allocate_impl(size_t min_word_size,
                                            size_t desired_word_size,
@@ -118,6 +234,8 @@ inline bool HeapRegion::is_in_parsable_area(const void* const addr, const void* 
 }
 
 inline bool HeapRegion::is_marked_in_bitmap(oop obj) const {
+  // TODO: 
+  is_object_marked(cast_from_oop<HeapWord*>(obj));
   return G1CollectedHeap::heap()->concurrent_mark()->mark_bitmap()->is_marked(obj);
 }
 
@@ -141,6 +259,8 @@ inline bool HeapRegion::block_is_obj(const HeapWord* const p, HeapWord* const pb
 }
 
 inline HeapWord* HeapRegion::next_live_in_unparsable(G1CMBitMap* const bitmap, const HeapWord* p, HeapWord* const limit) const {
+  // TODO: 
+  get_next_marked_addr(p, limit);
   return bitmap->get_next_marked_addr(p, limit);
 }
 
@@ -207,10 +327,17 @@ inline void HeapRegion::apply_to_marked_objects(G1CMBitMap* bitmap, ApplyToMarke
     // some extra work done by get_next_marked_addr for
     // the case where next_addr is marked.
     if (bitmap->is_marked(next_addr)) {
+      // TODO: 
+      assert(is_object_marked(next_addr), "Must be!");
       oop current = cast_to_oop(next_addr);
       next_addr += closure->apply(current);
     } else {
+      // TODO:
+      HeapWord* start = next_addr;
+      HeapWord* next_addr_new =  get_next_marked_addr(start, limit);
       next_addr = bitmap->get_next_marked_addr(next_addr, limit);
+      assert(next_addr_new == next_addr, "Must be! " PTR_FORMAT " != " PTR_FORMAT " Limit: " PTR_FORMAT,
+             p2i(next_addr_new), p2i(next_addr), p2i(start));
     }
   }
 
@@ -381,10 +508,14 @@ inline HeapWord* HeapRegion::oops_on_memregion_iterate_in_unparsable(MemRegion m
 
   while (true) {
     // Using bitmap to locate marked objs in the unparsable area
+    // TODO
+    get_next_marked_addr(cur, end);
     cur = bitmap->get_next_marked_addr(cur, end);
     if (cur == end) {
       return end;
     }
+    // TODO:
+    is_object_marked(cur);
     assert(bitmap->is_marked(cur), "inv");
 
     oop obj = cast_to_oop(cur);

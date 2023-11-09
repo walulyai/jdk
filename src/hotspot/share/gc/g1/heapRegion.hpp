@@ -47,64 +47,82 @@ class HeapRegionSetBase;
 class nmethod;
 
 struct LiveMap {
-  static const size_t nsegments = 64;
-  CHeapBitMap       _bm;
+  // TODO: fix the constant initialization
+  static const size_t nsegments = 64; // sizeof(BitMap::bm_word_t);
+  CHeapBitMap       _bitmap;
+
+  volatile uint32_t _live_objects;
+  volatile size_t   _live_bytes;
   BitMap::bm_word_t _segment_live_bits;
   BitMap::bm_word_t _segment_claim_bits;
   size_t            _segment_shift;
 
-  LiveMap(size_t size) :
-    _bm(size, mtGC, false /* clear */),
-    _segment_live_bits(0),
-    _segment_claim_bits(0),
-    _segment_shift(exact_log2(segment_size())) {}
+  LiveMap(size_t size);
+
+  size_t bitmap_size(uint32_t size, size_t nsegments) {
+    // We need at least one bit per segment
+    return MAX2<size_t>(size, nsegments);
+  }
 
   inline BitMap::idx_t segment_size() const {
-    return _bm.size() / nsegments;
+    return _bitmap.size() / nsegments;
   }
 
   inline BitMap::idx_t segment_start(BitMap::idx_t segment) const {
     return segment_size() * segment;
   }
 
-  inline BitMap::idx_t index_to_segment(BitMap::idx_t index) const {
-    return index >> _segment_shift;
-  }
-
   inline BitMap::idx_t segment_end(BitMap::idx_t segment) const {
   return segment_start(segment) + segment_size();
+  }
+
+  inline BitMapView segment_live_bits() {
+    return BitMapView(const_cast<BitMap::bm_word_t*>(&_segment_live_bits), nsegments);
   }
 
   inline const BitMapView segment_live_bits() const {
     return BitMapView(const_cast<BitMap::bm_word_t*>(&_segment_live_bits), nsegments);
   }
 
+  inline BitMapView segment_claim_bits() {
+    return BitMapView(const_cast<BitMap::bm_word_t*>(&_segment_claim_bits), nsegments);
+  }
+
   inline const BitMapView segment_claim_bits() const {
     return BitMapView(const_cast<BitMap::bm_word_t*>(&_segment_claim_bits), nsegments);
   }
 
-  inline bool claim_segment(BitMap::idx_t segment) {
-    return segment_claim_bits().par_set_bit(segment, memory_order_acq_rel);
-  }
+  inline bool claim_segment(BitMap::idx_t segment);
 
-  inline BitMap::idx_t first_live_segment() const {
-    return segment_live_bits().find_first_set_bit(0, nsegments);
-  }
+  inline BitMap::idx_t first_live_segment() const;
 
-  inline BitMap::idx_t next_live_segment(BitMap::idx_t segment) const {
-    return segment_live_bits().find_first_set_bit(segment + 1, nsegments);
-  }
+  inline BitMap::idx_t next_live_segment(BitMap::idx_t segment) const;
+
+  inline BitMap::idx_t find_first_set_bit(BitMap::idx_t beg, BitMap::idx_t end) const;
 
   inline BitMap::idx_t index_to_segment(BitMap::idx_t index) const {
     return index >> _segment_shift;
   }
 
-  inline bool get(size_t index) const {
-    BitMap::idx_t segment = index_to_segment(index);
-    return is_segment_live(segment) &&                  // Segment is marked
-          _bm.par_at(index, memory_order_relaxed); // Object is marked
+  inline bool get(size_t index) const;
+  inline bool set(size_t index);
+
+  inline bool is_segment_live(BitMap::idx_t segment) const;
+  bool set_segment_live(BitMap::idx_t segment);
+
+  inline uint32_t live_objects() const {
+    return _live_objects;
   }
 
+  inline size_t live_bytes() const {
+    return _live_bytes;
+  }
+
+  inline void inc_live(uint32_t objects, size_t bytes);
+
+  void resize(uint32_t size);
+  void reset();
+  void reset_segment(BitMap::idx_t segment);
 };
 
 #define HR_FORMAT "%u:(%s)[" PTR_FORMAT "," PTR_FORMAT "," PTR_FORMAT "]"
@@ -146,6 +164,8 @@ class HeapRegion : public CHeapObj<mtGC> {
   // into the region was and this is what this keeps track.
   HeapWord* _pre_dummy_top;
 
+  LiveMap           _livemap;
+
 public:
   HeapWord* bottom() const         { return _bottom; }
   HeapWord* end() const            { return _end;    }
@@ -182,6 +202,16 @@ public:
   bool is_empty() const { return used() == 0; }
 
 private:
+
+  // Convert from address to bit offset.
+  size_t addr_to_offset(const HeapWord* addr) const {
+      return pointer_delta(addr, bottom()) >> LogMinObjAlignment;
+  }
+
+  // Convert from bit offset to address.
+  HeapWord* offset_to_addr(size_t offset) const {
+    return bottom() + (offset << LogMinObjAlignment);
+  }
 
   void reset_after_full_gc_common();
 
@@ -258,6 +288,17 @@ public:
   // Update the BOT for the entire region - assumes that all objects are parsable
   // and contiguous for this region.
   void update_bot();
+
+  inline bool is_object_marked(HeapWord* addr) const;
+  inline bool is_object_marked(oop obj) const;
+
+  inline bool mark_object(oop obj); 
+  inline bool mark_object(HeapWord* addr);
+
+  void clear_livemap();
+
+  inline HeapWord* get_next_marked_addr(const HeapWord* const addr,
+                       HeapWord* const limit) const;
 
 private:
   // The remembered set for this region.

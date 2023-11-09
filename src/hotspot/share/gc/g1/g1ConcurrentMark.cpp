@@ -472,6 +472,7 @@ void G1ConcurrentMark::reset() {
   // Reset all tasks, since different phases will use different number of active
   // threads. So, it's easiest to have all of them ready.
   for (uint i = 0; i < _max_num_tasks; ++i) {
+    // TODO: don't need to pass the bitmap anymore. Now we only have a single bitmap
     _tasks[i]->reset(mark_bitmap());
   }
 
@@ -498,6 +499,7 @@ void G1ConcurrentMark::humongous_object_eagerly_reclaimed(HeapRegion* r) {
   assert(r->is_starts_humongous(), "Got humongous continues region here");
 
   // Need to clear mark bit of the humongous object. Doing this unconditionally is fine.
+  r->clear_livemap();
   mark_bitmap()->clear(r->bottom());
 
   if (!_g1h->collector_state()->mark_or_rebuild_in_progress()) {
@@ -631,7 +633,8 @@ private:
 
       HeapWord* cur = r->bottom();
       HeapWord* const end = region_clear_limit(r);
-
+      // TODO:
+      r->clear_livemap();
       size_t const chunk_size_in_words = G1ClearBitMapTask::chunk_size() / HeapWordSize;
 
       while (cur < end) {
@@ -1855,6 +1858,8 @@ void G1ConcurrentMark::flush_all_task_caches() {
 
 void G1ConcurrentMark::clear_bitmap_for_region(HeapRegion* hr) {
   assert_at_safepoint();
+  // TODO: 
+  hr->clear_livemap();
   _mark_bitmap.clear_range(MemRegion(hr->bottom(), hr->end()));
 }
 
@@ -2077,6 +2082,7 @@ void G1ConcurrentMark::threads_do(ThreadClosure* tc) const {
 
 void G1ConcurrentMark::print_on_error(outputStream* st) const {
   st->print_cr("Marking Bits: (CMBitMap*) " PTR_FORMAT, p2i(mark_bitmap()));
+  // TODO: print on error
   _mark_bitmap.print_on_error(st, " Bits: ");
 }
 
@@ -2640,6 +2646,11 @@ void G1CMTask::do_marking_step(double time_target_ms,
         giveup_current_region();
         abort_marking_if_regular_check_fail();
       } else if (_curr_region->is_humongous() && mr.start() == _curr_region->bottom()) {
+        // TODO:
+        assert(_curr_region->is_object_marked(mr.start()) == _mark_bitmap->is_marked(mr.start()), " %u != %u",
+               _curr_region->is_object_marked(mr.start()),
+               _mark_bitmap->is_marked(mr.start())
+               );
         if (_mark_bitmap->is_marked(mr.start())) {
           // The object is marked - apply the closure
           bitmap_closure.do_addr(mr.start());

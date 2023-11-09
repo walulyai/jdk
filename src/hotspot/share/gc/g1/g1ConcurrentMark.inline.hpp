@@ -75,8 +75,10 @@ inline bool G1ConcurrentMark::mark_in_bitmap(uint const worker_id, oop const obj
   // Some callers may have stale objects to mark above TAMS after humongous reclaim.
   // Can't assert that this is a valid object at this point, since it might be in the process of being copied by another thread.
   assert(!hr->is_continues_humongous(), "Should not try to mark object " PTR_FORMAT " in Humongous continues region %u above TAMS " PTR_FORMAT, p2i(obj), hr->hrm_index(), p2i(hr->top_at_mark_start()));
-
+  // TODO:
+  hr->mark_object(obj);
   bool success = _mark_bitmap.par_mark(obj);
+  assert(hr->is_object_marked(obj), "must be!");
   if (success) {
     add_to_liveness(worker_id, obj, obj->size());
   }
@@ -113,6 +115,8 @@ inline void G1CMTask::push(G1TaskQueueEntry task_entry) {
   assert(task_entry.is_array_slice() || _g1h->is_in_reserved(task_entry.obj()), "invariant");
   assert(task_entry.is_array_slice() || !_g1h->is_on_master_free_list(
               _g1h->heap_region_containing(task_entry.obj())), "invariant");
+  //TODO: 
+  assert(task_entry.is_array_slice() || _g1h->heap_region_containing(task_entry.obj())->is_object_marked(task_entry.obj()), "invariant");
   assert(task_entry.is_array_slice() || _mark_bitmap->is_marked(cast_from_oop<HeapWord*>(task_entry.obj())), "invariant");
 
   if (!_task_queue->push(task_entry)) {
@@ -161,6 +165,11 @@ inline bool G1CMTask::is_below_finger(oop obj, HeapWord* global_finger) const {
 template<bool scan>
 inline void G1CMTask::process_grey_task_entry(G1TaskQueueEntry task_entry) {
   assert(scan || (task_entry.is_oop() && task_entry.obj()->is_typeArray()), "Skipping scan of grey non-typeArray");
+
+  // TODO:
+  assert(task_entry.is_array_slice() || _g1h->heap_region_containing(task_entry.obj())->is_object_marked(task_entry.obj()),
+         "Any stolen object should be a slice or marked");
+
   assert(task_entry.is_array_slice() || _mark_bitmap->is_marked(cast_from_oop<HeapWord*>(task_entry.obj())),
          "Any stolen object should be a slice or marked");
 
@@ -271,11 +280,19 @@ inline bool G1CMTask::deal_with_reference(T* p) {
 }
 
 inline void G1ConcurrentMark::raw_mark_in_bitmap(oop obj) {
+  // TODO:
+  HeapRegion* r = _g1h->heap_region_containing(obj);
+  r->mark_object(obj);
   _mark_bitmap.par_mark(obj);
+  assert(r->is_object_marked(obj) == _mark_bitmap.is_marked(obj), "invariant");
 }
 
 bool G1ConcurrentMark::is_marked_in_bitmap(oop p) const {
   assert(p != nullptr && oopDesc::is_oop(p), "expected an oop");
+  // TODO
+  HeapRegion* r = _g1h->heap_region_containing(p);
+  r->is_object_marked(cast_from_oop<HeapWord*>(p));
+  assert(r->is_object_marked(p) == _mark_bitmap.is_marked(cast_from_oop<HeapWord*>(p)), "invariant");
   return _mark_bitmap.is_marked(cast_from_oop<HeapWord*>(p));
 }
 

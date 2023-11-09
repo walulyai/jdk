@@ -181,6 +181,9 @@ inline G1ScannerTasksQueue* G1CollectedHeap::task_queue(uint i) const {
 }
 
 inline bool G1CollectedHeap::is_marked(oop obj) const {
+  HeapRegion* r = heap_region_containing(obj);
+  // TODO
+  assert(_cm->mark_bitmap()->is_marked(obj) == r->is_object_marked(cast_from_oop<HeapWord*>(obj)), "invariant");
   return _cm->mark_bitmap()->is_marked(obj);
 }
 
@@ -253,6 +256,10 @@ inline bool G1CollectedHeap::is_obj_dead(const oop obj, const HeapRegion* hr) co
   } else {
     // From Remark until a region has been concurrently scrubbed, parts of the
     // region is not guaranteed to be parsable. Use the bitmap for liveness.
+    // TODO
+    assert(hr->is_object_marked(cast_from_oop<HeapWord*>(obj)) == concurrent_mark()->mark_bitmap()->is_marked(obj), "is marked %u != %u", 
+           hr->is_object_marked(cast_from_oop<HeapWord*>(obj)),
+           concurrent_mark()->mark_bitmap()->is_marked(obj));
     return !concurrent_mark()->mark_bitmap()->is_marked(obj);
   }
 }

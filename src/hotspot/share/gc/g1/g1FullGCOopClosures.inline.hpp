@@ -78,6 +78,9 @@ inline void G1AdjustClosure::do_oop(oop* p)       { do_oop_work(p); }
 inline void G1AdjustClosure::do_oop(narrowOop* p) { do_oop_work(p); }
 
 inline bool G1IsAliveClosure::do_object_b(oop p) {
+  //TODO:
+  HeapRegion* r = G1CollectedHeap::heap()->heap_region_containing(p);
+  r->is_object_marked(cast_from_oop<HeapWord *>(p));
   return _bitmap->is_marked(p);
 }
 

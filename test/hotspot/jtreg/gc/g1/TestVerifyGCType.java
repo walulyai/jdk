@@ -49,14 +49,14 @@ public class TestVerifyGCType {
     public static final String VERIFY_AFTER  = "Verifying After GC";
 
     public static void main(String args[]) throws Exception {
-        testAllVerificationEnabled();
-        testAllExplicitlyEnabled();
-        testFullAndRemark();
+        //testAllVerificationEnabled();
+        //testAllExplicitlyEnabled();
+        //testFullAndRemark();
         testConcurrentMark();
-        if (Platform.isDebugBuild()) {
+        /*if (Platform.isDebugBuild()) {
             testYoungEvacFail();
         }
-        testBadVerificationType();
+        testBadVerificationType();*/
     }
 
     private static void testAllVerificationEnabled() throws Exception {

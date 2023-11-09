@@ -46,6 +46,9 @@
 
 inline bool G1FullGCMarker::mark_object(oop obj) {
   // Try to mark.
+  // TODO:
+  HeapRegion* r = G1CollectedHeap::heap()->heap_region_containing(obj);
+  assert(_bitmap->par_mark(obj) == r->mark_object(obj), "Invariant for new bitmap");
   if (!_bitmap->par_mark(obj)) {
     // Lost mark race.
     return false;
@@ -80,6 +83,9 @@ template <class T> inline void G1FullGCMarker::mark_and_push(T* p) {
     if (mark_object(obj)) {
       _oop_stack.push(obj);
     }
+    // TODO:
+    // HeapRegion* r = G1CollectedHeap::heap()->heap_region_containing(obj);
+    // assert(r->is_object_marked(obj), "Must be marked in new bitmap implementation");
     assert(_bitmap->is_marked(obj), "Must be marked");
   }
 }
@@ -119,6 +125,8 @@ void G1FullGCMarker::follow_array_chunk(objArrayOop array, int index) {
 }
 
 inline void G1FullGCMarker::follow_object(oop obj) {
+  // HeapRegion* r = G1CollectedHeap::heap()->heap_region_containing(obj);
+  // assert(r->is_object_marked(obj), "Must be marked in new bitmap implementation");
   assert(_bitmap->is_marked(obj), "should be marked");
   if (obj->is_objArray()) {
     // Handle object arrays explicitly to allow them to
@@ -133,11 +141,15 @@ inline void G1FullGCMarker::publish_and_drain_oop_tasks() {
   oop obj;
   while (_oop_stack.pop_overflow(obj)) {
     if (!_oop_stack.try_push_to_taskqueue(obj)) {
+      // HeapRegion* r = G1CollectedHeap::heap()->heap_region_containing(obj);
+      // assert(r->is_object_marked(obj), "Must be marked in new bitmap implementation");
       assert(_bitmap->is_marked(obj), "must be marked");
       follow_object(obj);
     }
   }
   while (_oop_stack.pop_local(obj)) {
+    // HeapRegion* r = G1CollectedHeap::heap()->heap_region_containing(obj);
+    // assert(r->is_object_marked(obj), "Must be marked in new bitmap implementation");
     assert(_bitmap->is_marked(obj), "must be marked");
     follow_object(obj);
   }

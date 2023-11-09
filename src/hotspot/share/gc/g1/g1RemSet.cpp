@@ -1107,6 +1107,8 @@ class G1MergeHeapRootsTask : public WorkerTask {
     G1CollectedHeap* _g1h;
 
     void assert_bitmap_clear(HeapRegion* hr, const G1CMBitMap* bitmap) {
+      // TODO:
+      hr->get_next_marked_addr(hr->bottom(), hr->end());
       assert(bitmap->get_next_marked_addr(hr->bottom(), hr->end()) == hr->end(),
              "Bitmap should have no mark for region %u (%s)", hr->hrm_index(), hr->get_short_type_str());
     }

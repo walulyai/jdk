@@ -128,7 +128,10 @@ void G1RemoveSelfForwardsTask::process_chunk(uint worker_id,
   }
 
   HeapWord* chunk_end = MIN2(chunk_start + _chunk_size, hr_top);
+  // HeapWord* first_marked_addr_new =  hr->get_next_marked_addr(chunk_start, hr_top);
   HeapWord* first_marked_addr = bitmap->get_next_marked_addr(chunk_start, hr_top);
+
+  // assert(first_marked_addr == first_marked_addr_new, "Invariant for new bitmap");
 
   size_t garbage_words = 0;
 
@@ -153,6 +156,7 @@ void G1RemoveSelfForwardsTask::process_chunk(uint worker_id,
          "object " PTR_FORMAT " must be within chunk [" PTR_FORMAT ", " PTR_FORMAT "[",
          p2i(obj_addr), p2i(chunk_start), p2i(chunk_end));
   do {
+    // assert(hr->is_object_marked(obj_addr), "Invariant for new bitmap");
     assert(bitmap->is_marked(obj_addr), "inv");
     prefetch_obj(obj_addr);
 
@@ -174,7 +178,10 @@ void G1RemoveSelfForwardsTask::process_chunk(uint worker_id,
     assert(obj_end_addr <= hr_top, "inv");
     // Use hr_top as the limit so that we zap dead ranges up to the next
     // marked obj or hr_top.
+    // HeapWord* next_marked_obj_addr_new = hr->get_next_marked_addr(obj_end_addr, hr_top);
     HeapWord* next_marked_obj_addr = bitmap->get_next_marked_addr(obj_end_addr, hr_top);
+
+    //assert(next_marked_obj_addr == next_marked_obj_addr_new, "Invariant for new bitmap");
     garbage_words += zap_dead_objects(hr, obj_end_addr, next_marked_obj_addr);
     obj_addr = next_marked_obj_addr;
   } while (obj_addr < chunk_end);

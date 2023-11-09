@@ -167,9 +167,13 @@ class G1RebuildRSAndScrubTask : public WorkerTask {
 
     // Scrub a range of dead objects starting at scrub_start. Will never scrub past limit.
     HeapWord* scrub_to_next_live(HeapRegion* hr, HeapWord* scrub_start, HeapWord* limit) {
+      // TODO: hr->is_object_marked(scrub_start);
+      assert(hr->is_object_marked(scrub_start) == _bitmap->is_marked(scrub_start), "invariant");
       assert(!_bitmap->is_marked(scrub_start), "Should not scrub live object");
 
+      HeapWord* scrub_end2 = hr->get_next_marked_addr(scrub_start, limit);
       HeapWord* scrub_end = _bitmap->get_next_marked_addr(scrub_start, limit);
+      assert(scrub_end2 == scrub_end, "Invariant for new bitmap");
       hr->fill_range_with_dead_objects(scrub_start, scrub_end);
 
       // Return the next object to handle.
@@ -181,6 +185,7 @@ class G1RebuildRSAndScrubTask : public WorkerTask {
     bool scan_and_scrub_to_pb(HeapRegion* hr, HeapWord* start, HeapWord* const limit) {
 
       while (start < limit) {
+        assert(hr->is_object_marked(start) == _bitmap->is_marked(start), "Invariant for new bitmap") ;
         if (_bitmap->is_marked(start)) {
           //  Live object, need to scan to rebuild remembered sets for this object.
           start += scan_object(hr, start);
@@ -268,6 +273,7 @@ class G1RebuildRSAndScrubTask : public WorkerTask {
       // - marked
       // - or seen as fully parsable, i.e. allocated after the marking started
       oop humongous = cast_to_oop(hr->humongous_start_region()->bottom());
+      assert(_bitmap->is_marked(humongous) == hr->is_object_marked(humongous), "Invariant for new bitmap");
       assert(_bitmap->is_marked(humongous) || pb == hr->bottom(),
              "Humongous object not live");
 
