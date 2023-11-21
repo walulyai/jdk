@@ -30,7 +30,6 @@
 #include "classfile/vmClasses.hpp"
 #include "gc/g1/g1BlockOffsetTable.inline.hpp"
 #include "gc/g1/g1CollectedHeap.inline.hpp"
-#include "gc/g1/g1ConcurrentMarkBitMap.inline.hpp"
 #include "gc/g1/g1MonotonicArena.inline.hpp"
 #include "gc/g1/g1Policy.hpp"
 #include "gc/g1/g1Predictions.hpp"
@@ -40,7 +39,109 @@
 #include "runtime/prefetch.inline.hpp"
 #include "runtime/safepoint.hpp"
 #include "utilities/align.hpp"
+#include "runtime/atomic.hpp"
+#include "utilities/bitMap.inline.hpp"
 #include "utilities/globalDefinitions.hpp"
+
+inline bool HeapRegionLiveMap::get(size_t index) const {
+  return is_marked() &&
+         _bitmap.par_at(index, memory_order_relaxed);
+}
+
+inline bool HeapRegionLiveMap::set(size_t index) {
+  if (!is_marked()) {
+    // First object to be marked during this
+    // cycle, reset marking information.
+    initialize();
+  }
+
+  return _bitmap.par_set_bit(index);
+}
+
+inline BitMap::idx_t HeapRegionLiveMap::find_first_set_bit(BitMap::idx_t beg, BitMap::idx_t end) const {
+  if (!is_marked() || beg == end) {
+    return end;
+  }
+
+  assert(beg < end && end <= _size, "out of bounds");
+
+  return _bitmap.find_first_set_bit(beg, end);
+}
+
+inline void HeapRegionLiveMap::clear(size_t index) {
+  _bitmap.clear_bit(index);
+}
+
+inline HeapWord* HeapRegion::get_next_marked_addr(const HeapWord* const addr,
+                                                  HeapWord* const limit) const {
+  if (!_livemap.is_marked()) {
+    return limit;
+  }
+  assert(limit != nullptr, "limit must not be null");
+  assert(limit <= end(), "Out of bounds");
+  if (addr == limit) {
+    return limit;
+  }
+  // Round addr up to a possible object boundary to be safe.
+  size_t const addr_offset = addr_to_offset(align_up(addr, HeapWordSize << LogMinObjAlignment));
+  size_t const limit_offset = addr_to_offset(limit);
+
+  assert(addr_offset <= limit_offset, "what the heck");
+
+  size_t const nextOffset = _livemap.find_first_set_bit(addr_offset, limit_offset);
+
+  return offset_to_addr(nextOffset);
+}
+
+inline bool HeapRegion::is_object_marked(HeapWord* addr) const {
+  assert(addr <= end(), "Out of bounds");
+  size_t index = addr_to_offset(addr);
+  return _livemap.get(index);
+}
+
+inline bool HeapRegion::is_object_marked(oop obj) const {
+  return is_object_marked(cast_from_oop<HeapWord*>(obj));
+}
+
+inline bool HeapRegion::mark_object(oop obj){
+  return mark_object(cast_from_oop<HeapWord*>(obj));
+}
+
+inline bool HeapRegion::mark_object(HeapWord* addr) {
+  assert(addr < end(), "Should not mark outside region bounds");
+  size_t index = addr_to_offset(addr);
+  return _livemap.set(index);
+}
+
+inline void HeapRegion::clear_in_livemap(HeapWord* addr) {
+  assert(addr < end(), "Should not mark outside region bounds");
+  size_t index = addr_to_offset(addr);
+  return _livemap.clear(index);
+}
+
+inline bool HeapRegion::iterate_livemap(G1CMBitMapClosure* cl, MemRegion mr) {
+  assert(!mr.is_empty(), "Does not support empty memregion to iterate over");
+  assert(bottom() <= mr.start() && end() >= mr.end(),
+         "Given MemRegion from " PTR_FORMAT " to " PTR_FORMAT " not contained in current region",
+         p2i(mr.start()), p2i(mr.end()));
+
+  BitMap::idx_t const end_offset = addr_to_offset(mr.end());
+
+  BitMap::idx_t offset = _livemap.find_first_set_bit(addr_to_offset(mr.start()), end_offset);
+
+  while (offset < end_offset) {
+    HeapWord* const addr = offset_to_addr(offset);
+     assert(_livemap.get(offset), "why did we find it if its not marked");
+    assert(is_object_marked(addr), "why did we find it if its not marked");
+    if (!cl->do_addr(addr)) {
+      return false;
+    }
+
+    size_t const obj_size = cast_to_oop(addr)->size();
+    offset = _livemap.find_first_set_bit(offset + (obj_size >> LogMinObjAlignment), end_offset);
+  }
+  return true;
+}
 
 inline HeapWord* HeapRegion::allocate_impl(size_t min_word_size,
                                            size_t desired_word_size,
@@ -117,10 +218,6 @@ inline bool HeapRegion::is_in_parsable_area(const void* const addr, const void* 
   return addr >= pb;
 }
 
-inline bool HeapRegion::is_marked_in_bitmap(oop obj) const {
-  return G1CollectedHeap::heap()->concurrent_mark()->mark_bitmap()->is_marked(obj);
-}
-
 inline bool HeapRegion::block_is_obj(const HeapWord* const p, HeapWord* const pb) const {
   assert(p >= bottom() && p < top(), "precondition");
   assert(!is_continues_humongous(), "p must point to block-start");
@@ -137,16 +234,11 @@ inline bool HeapRegion::block_is_obj(const HeapWord* const p, HeapWord* const pb
   // class unloading is disabled to avoid special code.
   // From Remark until the region has been completely scrubbed obj_is_parsable will return false
   // and we have to use the bitmap to know if a block is a valid object.
-  return is_marked_in_bitmap(cast_to_oop(p));
-}
-
-inline HeapWord* HeapRegion::next_live_in_unparsable(G1CMBitMap* const bitmap, const HeapWord* p, HeapWord* const limit) const {
-  return bitmap->get_next_marked_addr(p, limit);
+  return is_object_marked(cast_to_oop(p)) ;
 }
 
 inline HeapWord* HeapRegion::next_live_in_unparsable(const HeapWord* p, HeapWord* const limit) const {
-  G1CMBitMap* bitmap = G1CollectedHeap::heap()->concurrent_mark()->mark_bitmap();
-  return next_live_in_unparsable(bitmap, p, limit);
+  return get_next_marked_addr(p, limit);
 }
 
 inline bool HeapRegion::is_collection_set_candidate() const {
@@ -197,7 +289,7 @@ inline void HeapRegion::reset_after_full_gc_common() {
 }
 
 template<typename ApplyToMarkedClosure>
-inline void HeapRegion::apply_to_marked_objects(G1CMBitMap* bitmap, ApplyToMarkedClosure* closure) {
+inline void HeapRegion::apply_to_marked_objects(ApplyToMarkedClosure* closure) {
   HeapWord* limit = top();
   HeapWord* next_addr = bottom();
 
@@ -206,11 +298,11 @@ inline void HeapRegion::apply_to_marked_objects(G1CMBitMap* bitmap, ApplyToMarke
     // This explicit is_marked check is a way to avoid
     // some extra work done by get_next_marked_addr for
     // the case where next_addr is marked.
-    if (bitmap->is_marked(next_addr)) {
+    if (is_object_marked(next_addr)) {
       oop current = cast_to_oop(next_addr);
       next_addr += closure->apply(current);
     } else {
-      next_addr = bitmap->get_next_marked_addr(next_addr, limit);
+      next_addr = get_next_marked_addr(next_addr, limit);
     }
   }
 
@@ -375,17 +467,15 @@ inline HeapWord* HeapRegion::oops_on_memregion_iterate_in_unparsable(MemRegion m
   HeapWord* const start = mr.start();
   HeapWord* const end = mr.end();
 
-  G1CMBitMap* bitmap = G1CollectedHeap::heap()->concurrent_mark()->mark_bitmap();
-
   HeapWord* cur = block_start;
 
   while (true) {
     // Using bitmap to locate marked objs in the unparsable area
-    cur = bitmap->get_next_marked_addr(cur, end);
+    cur = get_next_marked_addr(cur, end);
     if (cur == end) {
       return end;
     }
-    assert(bitmap->is_marked(cur), "inv");
+    assert(is_object_marked(cur), "inv");
 
     oop obj = cast_to_oop(cur);
     assert(oopDesc::is_oop(obj, true), "Not an oop at " PTR_FORMAT, p2i(cur));

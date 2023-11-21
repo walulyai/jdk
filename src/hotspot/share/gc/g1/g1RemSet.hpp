@@ -42,7 +42,6 @@ class CardTableBarrierSet;
 class CodeBlobClosure;
 class G1AbstractSubTask;
 class G1CollectedHeap;
-class G1CMBitMap;
 class G1RemSetScanState;
 class G1ParScanThreadState;
 class G1ParScanThreadStateSet;

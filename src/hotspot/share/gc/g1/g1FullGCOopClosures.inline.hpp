@@ -29,7 +29,6 @@
 
 #include "gc/g1/g1Allocator.inline.hpp"
 #include "gc/g1/g1FullCollector.inline.hpp"
-#include "gc/g1/g1ConcurrentMarkBitMap.inline.hpp"
 #include "gc/g1/g1FullGCMarker.inline.hpp"
 #include "gc/g1/heapRegionRemSet.inline.hpp"
 #include "memory/iterator.inline.hpp"
@@ -78,7 +77,8 @@ inline void G1AdjustClosure::do_oop(oop* p)       { do_oop_work(p); }
 inline void G1AdjustClosure::do_oop(narrowOop* p) { do_oop_work(p); }
 
 inline bool G1IsAliveClosure::do_object_b(oop p) {
-  return _bitmap->is_marked(p);
+  HeapRegion* hr = G1CollectedHeap::heap()->heap_region_containing(p);
+  return hr->is_object_marked(p);
 }
 
 template<typename T>

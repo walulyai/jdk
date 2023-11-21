@@ -59,10 +59,9 @@ void G1FullGCResetMetadataTask::G1ResetMetadataClosure::scrub_skip_compacting_re
 
   HeapWord* limit = hr->top();
   HeapWord* current_obj = hr->bottom();
-  G1CMBitMap* bitmap = _collector->mark_bitmap();
 
   while (current_obj < limit) {
-    if (bitmap->is_marked(current_obj)) {
+    if (hr->is_object_marked(current_obj)) {
       oop current = cast_to_oop(current_obj);
       size_t size = current->size();
       if (update_bot_for_live) {
@@ -74,7 +73,7 @@ void G1FullGCResetMetadataTask::G1ResetMetadataClosure::scrub_skip_compacting_re
     // Found dead object, which is potentially unloaded, scrub to next
     // marked object.
     HeapWord* scrub_start = current_obj;
-    HeapWord* scrub_end = bitmap->get_next_marked_addr(scrub_start, limit);
+    HeapWord* scrub_end = hr->get_next_marked_addr(scrub_start, limit);
     assert(scrub_start != scrub_end, "must advance");
     hr->fill_range_with_dead_objects(scrub_start, scrub_end);
 
@@ -88,8 +87,9 @@ void G1FullGCResetMetadataTask::G1ResetMetadataClosure::reset_skip_compacting(He
   assert(_collector->is_skip_compacting(region_index), "Only call on is_skip_compacting regions");
 
   if (hr->is_humongous()) {
-    oop obj = cast_to_oop(hr->humongous_start_region()->bottom());
-    assert(_collector->mark_bitmap()->is_marked(obj), "must be live");
+    HeapRegion* start_hr = hr->humongous_start_region();
+    oop obj = cast_to_oop(start_hr->bottom());
+    assert(start_hr->is_object_marked(obj), "must be live");
   } else {
     assert(_collector->live_words(region_index) > _collector->scope()->region_compaction_threshold(),
            "should be quite full");

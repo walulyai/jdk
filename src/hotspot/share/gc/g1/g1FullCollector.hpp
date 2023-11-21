@@ -40,7 +40,6 @@
 #include "oops/oopsHierarchy.hpp"
 
 class WorkerTask;
-class G1CMBitMap;
 class G1FullGCMarker;
 class G1FullGCScope;
 class G1FullGCCompactionPoint;
@@ -118,7 +117,6 @@ public:
   PreservedMarksSet*       preserved_mark_set() { return &_preserved_marks_set; }
   G1FullGCCompactionPoint* serial_compaction_point() { return &_serial_compaction_point; }
   G1FullGCCompactionPoint* humongous_compaction_point() { return &_humongous_compaction_point; }
-  G1CMBitMap*              mark_bitmap();
   ReferenceProcessor*      reference_processor();
   size_t live_words(uint region_index) const {
     assert(region_index < _heap->max_regions(), "sanity");

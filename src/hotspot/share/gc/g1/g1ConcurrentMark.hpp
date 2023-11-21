@@ -25,7 +25,6 @@
 #ifndef SHARE_GC_G1_G1CONCURRENTMARK_HPP
 #define SHARE_GC_G1_G1CONCURRENTMARK_HPP
 
-#include "gc/g1/g1ConcurrentMarkBitMap.hpp"
 #include "gc/g1/g1ConcurrentMarkObjArrayProcessor.hpp"
 #include "gc/g1/g1HeapVerifier.hpp"
 #include "gc/g1/g1RegionMarkStatsCache.hpp"
@@ -107,6 +106,16 @@ class G1CMSubjectToDiscoveryClosure : public BoolObjectClosure {
 public:
   G1CMSubjectToDiscoveryClosure(G1CollectedHeap* g1h) : _g1h(g1h) { }
   bool do_object_b(oop obj);
+};
+
+// Closure for iteration over bitmaps
+class G1CMBitMapClosure {
+  G1ConcurrentMark* const _cm;
+  G1CMTask* const _task;
+public:
+  G1CMBitMapClosure(G1CMTask *task, G1ConcurrentMark* cm) : _cm(cm), _task(task) { }
+
+  bool do_addr(HeapWord* const addr);
 };
 
 // Represents the overflow mark stack used by concurrent marking.
@@ -296,9 +305,6 @@ class G1ConcurrentMark : public CHeapObj<mtGC> {
   G1ConcurrentMarkThread* _cm_thread;     // The thread doing the work
   G1CollectedHeap*        _g1h;           // The heap
 
-  // Concurrent marking support structures
-  G1CMBitMap              _mark_bitmap;
-
   // Heap bounds
   MemRegion const         _heap;
 
@@ -449,7 +455,7 @@ class G1ConcurrentMark : public CHeapObj<mtGC> {
   void enter_first_sync_barrier(uint worker_id);
   void enter_second_sync_barrier(uint worker_id);
 
-  // Clear the next marking bitmap in parallel using the given WorkerThreads. If may_yield is
+  // Clear the marking bitmap in parallel using the given WorkerThreads. If may_yield is
   // true, periodically insert checks to see if this method should exit prematurely.
   void clear_bitmap(WorkerThreads* workers, bool may_yield);
 
@@ -457,7 +463,7 @@ class G1ConcurrentMark : public CHeapObj<mtGC> {
   G1RegionMarkStats* _region_mark_stats;
   // Top pointer for each region at the start of the rebuild remembered set process
   // for regions which remembered sets need to be rebuilt. A null for a given region
-  // means that this region does not be scanned during the rebuilding remembered
+  // means that this region does not need to be scanned during the rebuilding remembered
   // set phase at all.
   HeapWord* volatile* _top_at_rebuild_starts;
   // True when Remark pause selected regions for rebuilding.
@@ -474,7 +480,7 @@ public:
   // Set live bytes for concurrent marking.
   void set_live_bytes(uint region, size_t live_bytes) { _region_mark_stats[region]._live_words = live_bytes / HeapWordSize; }
 
-  // Sets the internal top_at_region_start for the given region to current top of the region.
+  // Sets the internal top_at_rebuild_start for the given region to current top of the region.
   inline void update_top_at_rebuild_start(HeapRegion* r);
   // TARS for the given region during remembered set rebuilding.
   inline HeapWord* top_at_rebuild_start(uint region) const;
@@ -525,13 +531,10 @@ public:
   // Attempts to steal an object from the task queues of other tasks
   bool try_stealing(uint worker_id, G1TaskQueueEntry& task_entry);
 
-  G1ConcurrentMark(G1CollectedHeap* g1h,
-                   G1RegionToSpaceMapper* bitmap_storage);
+  G1ConcurrentMark(G1CollectedHeap* g1h);
   ~G1ConcurrentMark();
 
   G1ConcurrentMarkThread* cm_thread() { return _cm_thread; }
-
-  G1CMBitMap* mark_bitmap() const { return (G1CMBitMap*)&_mark_bitmap; }
 
   // Calculates the number of concurrent GC threads to be used in the marking phase.
   uint calc_active_marking_workers();
@@ -547,7 +550,7 @@ public:
   // to be called concurrently to the mutator. It will yield to safepoint requests.
   void cleanup_for_next_mark();
 
-  // Clear the next marking bitmap during safepoint.
+  // Clear the marking bitmap during safepoint.
   void clear_bitmap(WorkerThreads* workers);
 
   // These two methods do the work that needs to be done at the start and end of the
@@ -642,7 +645,6 @@ private:
   uint                        _worker_id;
   G1CollectedHeap*            _g1h;
   G1ConcurrentMark*           _cm;
-  G1CMBitMap*                 _mark_bitmap;
   // the task queue of this task
   G1CMTaskQueue*              _task_queue;
 
@@ -746,7 +748,7 @@ public:
   // scanned.
   inline size_t scan_objArray(objArrayOop obj, MemRegion mr);
   // Resets the task; should be called right at the beginning of a marking phase.
-  void reset(G1CMBitMap* mark_bitmap);
+  void reset();
   // Clears all the fields that correspond to a claimed region.
   void clear_region_fields();
 

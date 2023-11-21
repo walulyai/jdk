@@ -32,7 +32,6 @@
 #include "gc/shared/referenceProcessor.hpp"
 
 class G1CollectedHeap;
-class G1CMBitMap;
 class G1FullCollector;
 
 class G1FullGCCompactTask : public G1FullGCTask {
@@ -58,10 +57,10 @@ public:
   void humongous_compaction();
 
   class G1CompactRegionClosure : public StackObj {
-    G1CMBitMap* _bitmap;
+    HeapRegion* _hr;
     void clear_in_bitmap(oop object);
   public:
-    G1CompactRegionClosure(G1CMBitMap* bitmap) : _bitmap(bitmap) { }
+    G1CompactRegionClosure(HeapRegion* hr) : _hr(hr) { }
     size_t apply(oop object);
   };
 };

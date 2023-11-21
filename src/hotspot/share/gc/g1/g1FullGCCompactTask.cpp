@@ -24,7 +24,6 @@
 
 #include "precompiled.hpp"
 #include "gc/g1/g1CollectedHeap.hpp"
-#include "gc/g1/g1ConcurrentMarkBitMap.inline.hpp"
 #include "gc/g1/g1FullCollector.inline.hpp"
 #include "gc/g1/g1FullGCCompactionPoint.hpp"
 #include "gc/g1/g1FullGCCompactTask.hpp"
@@ -35,8 +34,8 @@
 #include "utilities/ticks.hpp"
 
 void G1FullGCCompactTask::G1CompactRegionClosure::clear_in_bitmap(oop obj) {
-  assert(_bitmap->is_marked(obj), "Should only compact marked objects");
-  _bitmap->clear(obj);
+  assert(_hr->is_object_marked(obj), "Should only compact marked objects");
+  _hr->clear_in_livemap(cast_from_oop<HeapWord*>(obj));
 }
 
 size_t G1FullGCCompactTask::G1CompactRegionClosure::apply(oop obj) {
@@ -77,8 +76,8 @@ void G1FullGCCompactTask::compact_region(HeapRegion* hr) {
     // showed that it was better overall to clear bit by bit, compared
     // to clearing the whole region at the end. This difference was
     // clearly seen for regions with few marks.
-    G1CompactRegionClosure compact(collector()->mark_bitmap());
-    hr->apply_to_marked_objects(collector()->mark_bitmap(), &compact);
+    G1CompactRegionClosure compact(hr);
+    hr->apply_to_marked_objects(&compact);
   }
 
   hr->reset_compacted_after_full_gc(_collector->compaction_top(hr));
@@ -122,8 +121,8 @@ void G1FullGCCompactTask::compact_humongous_obj(HeapRegion* src_hr) {
   uint num_regions = (uint)G1CollectedHeap::humongous_obj_size_in_regions(word_size);
   HeapWord* destination = cast_from_oop<HeapWord*>(obj->forwardee());
 
-  assert(collector()->mark_bitmap()->is_marked(obj), "Should only compact marked objects");
-  collector()->mark_bitmap()->clear(obj);
+  assert(src_hr->is_object_marked(obj), "Should only compact marked objects");
+  src_hr->clear_in_livemap(cast_from_oop<HeapWord*>(obj));
 
   copy_object_to_new_location(obj);
 

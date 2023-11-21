@@ -24,7 +24,6 @@
 #include "precompiled.hpp"
 #include "gc/g1/g1BlockOffsetTable.hpp"
 #include "gc/g1/g1CollectedHeap.hpp"
-#include "gc/g1/g1ConcurrentMarkBitMap.inline.hpp"
 #include "gc/g1/heapRegion.inline.hpp"
 #include "gc/shared/referenceProcessor.hpp"
 #include "runtime/interfaceSupport.inline.hpp"
@@ -34,14 +33,14 @@
 
 class VerifyAndCountMarkClosure : public StackObj {
   int _count;
-  G1CMBitMap* _bm;
+  HeapRegion* _region;
 
   void ensure_marked(HeapWord* addr) {
-    ASSERT_TRUE(_bm->is_marked(addr));
+    ASSERT_TRUE(_region->is_object_marked(addr));
   }
 
 public:
-  VerifyAndCountMarkClosure(G1CMBitMap* bm) : _count(0), _bm(bm) { }
+  VerifyAndCountMarkClosure(HeapRegion* region) : _count(0), _region(region) { }
 
   virtual size_t apply(oop object) {
     _count++;
@@ -74,15 +73,13 @@ void VM_HeapRegionApplyToMarkedObjectsTest::doit() {
   // Using region 0 for testing.
   HeapRegion* region = heap->heap_region_containing(heap->bottom_addr_for_region(0));
 
-  // Mark some "oops" in the bitmap.
-  G1CMBitMap* bitmap = heap->concurrent_mark()->mark_bitmap();
-  bitmap->par_mark(region->bottom());
-  bitmap->par_mark(region->bottom() + MARK_OFFSET_1);
-  bitmap->par_mark(region->bottom() + MARK_OFFSET_2);
-  bitmap->par_mark(region->bottom() + MARK_OFFSET_3);
-  bitmap->par_mark(region->end());
+  // Mark some "oops" in the region bitmap.
+  region->mark_object(region->bottom());
+  region->mark_object(region->bottom() + MARK_OFFSET_1);
+  region->mark_object(region->bottom() + MARK_OFFSET_2);
+  region->mark_object(region->bottom() + MARK_OFFSET_3);
 
-  VerifyAndCountMarkClosure cl(bitmap);
+  VerifyAndCountMarkClosure cl(region);
 
   HeapWord* old_top = region->top();
 
@@ -90,33 +87,27 @@ void VM_HeapRegionApplyToMarkedObjectsTest::doit() {
   // applied to any object because apply_to_marked_objects
   // will stop at HeapRegion::scan_limit which is equal to top.
   region->set_top(region->bottom());
-  region->apply_to_marked_objects(bitmap, &cl);
+  region->apply_to_marked_objects(&cl);
   EXPECT_EQ(0, cl.count());
   cl.reset();
 
   // Set top to offset_1 and expect only to find 1 entry (bottom)
   region->set_top(region->bottom() + MARK_OFFSET_1);
-  region->apply_to_marked_objects(bitmap, &cl);
+  region->apply_to_marked_objects(&cl);
   EXPECT_EQ(1, cl.count());
   cl.reset();
 
   // Set top to (offset_2 + 1) and expect only to find 3
   // entries (bottom, offset_1 and offset_2)
   region->set_top(region->bottom() + MARK_OFFSET_2 + MinObjAlignment);
-  region->apply_to_marked_objects(bitmap, &cl);
+  region->apply_to_marked_objects(&cl);
   EXPECT_EQ(3, cl.count());
   cl.reset();
 
   // Still expect same 3 entries when top is (offset_3 - 1)
   region->set_top(region->bottom() + MARK_OFFSET_3 - MinObjAlignment);
-  region->apply_to_marked_objects(bitmap, &cl);
+  region->apply_to_marked_objects(&cl);
   EXPECT_EQ(3, cl.count());
-  cl.reset();
-
-  // Setting top to end should render 4 entries.
-  region->set_top(region->end());
-  region->apply_to_marked_objects(bitmap, &cl);
-  EXPECT_EQ(4, cl.count());
   cl.reset();
 
   region->set_top(old_top);

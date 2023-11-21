@@ -191,7 +191,6 @@ class G1PostEvacuateCollectionSetCleanupTask1::RestoreRetainedRegionsTask : publ
   void process_chunk(uint worker_id, uint chunk_idx) {
     PhaseTimesStat stat(_g1h->phase_times(), worker_id);
 
-    G1CMBitMap* bitmap = _cm->mark_bitmap();
     const uint region_idx = _evac_failure_regions->get_region_idx(chunk_idx / _num_chunks_per_region);
     HeapRegion* hr = _g1h->region_at(region_idx);
 
@@ -205,7 +204,7 @@ class G1PostEvacuateCollectionSetCleanupTask1::RestoreRetainedRegionsTask : publ
     }
 
     HeapWord* chunk_end = MIN2(chunk_start + _chunk_size, hr_top);
-    HeapWord* first_marked_addr = bitmap->get_next_marked_addr(chunk_start, hr_top);
+    HeapWord* first_marked_addr = hr->get_next_marked_addr(chunk_start, hr_top);
 
     size_t garbage_words = 0;
 
@@ -230,7 +229,7 @@ class G1PostEvacuateCollectionSetCleanupTask1::RestoreRetainedRegionsTask : publ
            "object " PTR_FORMAT " must be within chunk [" PTR_FORMAT ", " PTR_FORMAT "[",
            p2i(obj_addr), p2i(chunk_start), p2i(chunk_end));
     do {
-      assert(bitmap->is_marked(obj_addr), "inv");
+      assert(hr->is_object_marked(obj_addr), "inv");
       prefetch_obj(obj_addr);
 
       oop obj = cast_to_oop(obj_addr);
@@ -251,7 +250,7 @@ class G1PostEvacuateCollectionSetCleanupTask1::RestoreRetainedRegionsTask : publ
       assert(obj_end_addr <= hr_top, "inv");
       // Use hr_top as the limit so that we zap dead ranges up to the next
       // marked obj or hr_top.
-      HeapWord* next_marked_obj_addr = bitmap->get_next_marked_addr(obj_end_addr, hr_top);
+      HeapWord* next_marked_obj_addr = hr->get_next_marked_addr(obj_end_addr, hr_top);
       garbage_words += zap_dead_objects(hr, obj_end_addr, next_marked_obj_addr);
       obj_addr = next_marked_obj_addr;
     } while (obj_addr < chunk_end);
@@ -549,8 +548,8 @@ class G1PostEvacuateCollectionSetCleanupTask2::ProcessEvacuationFailedRegionsTas
         // This evacuation failed region is going to be marked through. Update mark data.
         r->set_top_at_mark_start(r->top());
         cm->set_live_bytes(r->hrm_index(), r->live_bytes());
-        assert(cm->mark_bitmap()->get_next_marked_addr(r->bottom(), r->top_at_mark_start()) != r->top_at_mark_start(),
-               "Marks must be on bitmap for region %u", r->hrm_index());
+        assert(r->get_next_marked_addr(r->bottom(), r->top_at_mark_start()) != r->top_at_mark_start(),
+               "Marks must be on the region bitmap %u", r->hrm_index());
       }
       return false;
     }

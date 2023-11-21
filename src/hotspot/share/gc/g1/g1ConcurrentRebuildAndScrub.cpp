@@ -27,7 +27,6 @@
 #include "gc/g1/g1ConcurrentRebuildAndScrub.hpp"
 
 #include "gc/g1/g1ConcurrentMark.inline.hpp"
-#include "gc/g1/g1ConcurrentMarkBitMap.inline.hpp"
 #include "gc/g1/g1_globals.hpp"
 #include "gc/g1/heapRegion.inline.hpp"
 #include "gc/g1/heapRegionManager.inline.hpp"
@@ -69,7 +68,6 @@ class G1RebuildRSAndScrubTask : public WorkerTask {
 
   class G1RebuildRSAndScrubRegionClosure : public HeapRegionClosure {
     G1ConcurrentMark* _cm;
-    const G1CMBitMap* _bitmap;
 
     G1RebuildRemSetClosure _rebuild_closure;
 
@@ -167,9 +165,9 @@ class G1RebuildRSAndScrubTask : public WorkerTask {
 
     // Scrub a range of dead objects starting at scrub_start. Will never scrub past limit.
     HeapWord* scrub_to_next_live(HeapRegion* hr, HeapWord* scrub_start, HeapWord* limit) {
-      assert(!_bitmap->is_marked(scrub_start), "Should not scrub live object");
+      assert(!hr->is_object_marked(scrub_start), "Should not scrub live object");
 
-      HeapWord* scrub_end = _bitmap->get_next_marked_addr(scrub_start, limit);
+      HeapWord* scrub_end = hr->get_next_marked_addr(scrub_start, limit);
       hr->fill_range_with_dead_objects(scrub_start, scrub_end);
 
       // Return the next object to handle.
@@ -181,8 +179,8 @@ class G1RebuildRSAndScrubTask : public WorkerTask {
     bool scan_and_scrub_to_pb(HeapRegion* hr, HeapWord* start, HeapWord* const limit) {
 
       while (start < limit) {
-        if (_bitmap->is_marked(start)) {
-          //  Live object, need to scan to rebuild remembered sets for this object.
+        if (hr->is_object_marked(start)) {
+          // Live object, need to scan to rebuild remembered sets for this object.
           start += scan_object(hr, start);
         } else {
           // Found dead object (which klass has potentially been unloaded). Scrub to next
@@ -267,15 +265,17 @@ class G1RebuildRSAndScrubTask : public WorkerTask {
       // means it must either be:
       // - marked
       // - or seen as fully parsable, i.e. allocated after the marking started
-      oop humongous = cast_to_oop(hr->humongous_start_region()->bottom());
-      assert(_bitmap->is_marked(humongous) || pb == hr->bottom(),
+      HeapRegion* start_hr = hr->humongous_start_region();
+      oop humongous = cast_to_oop(start_hr->bottom());
+
+      assert(start_hr->is_object_marked(humongous) || pb == hr->bottom(),
              "Humongous object not live");
 
       log_trace(gc, marking)("Rebuild for humongous region: " HR_FORMAT " pb: " PTR_FORMAT " TARS: " PTR_FORMAT,
                               HR_FORMAT_PARAMS(hr), p2i(pb), p2i(_cm->top_at_rebuild_start(hr->hrm_index())));
 
       // Scan the humongous object in chunks from bottom to top to rebuild remembered sets.
-      HeapWord* humongous_end = hr->humongous_start_region()->bottom() + humongous->size();
+      HeapWord* humongous_end = start_hr->bottom() + humongous->size();
       MemRegion mr(hr->bottom(), MIN2(hr->top(), humongous_end));
 
       bool mark_aborted = scan_large_object(hr, humongous, mr);
@@ -289,7 +289,6 @@ class G1RebuildRSAndScrubTask : public WorkerTask {
   public:
     G1RebuildRSAndScrubRegionClosure(G1ConcurrentMark* cm, bool should_rebuild_remset, uint worker_id) :
       _cm(cm),
-      _bitmap(_cm->mark_bitmap()),
       _rebuild_closure(G1CollectedHeap::heap(), worker_id),
       _should_rebuild_remset(should_rebuild_remset),
       _processed_words(0) { }

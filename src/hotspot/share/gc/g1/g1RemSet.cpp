@@ -1100,15 +1100,15 @@ class G1MergeHeapRootsTask : public WorkerTask {
     }
   };
 
-  // Closure to make sure that the marking bitmap is clear for any old region in
+  // Closure to make sure that the marking bitmaps are clear for any old region in
   // the collection set.
-  // This is needed to be able to use the bitmap for evacuation failure handling.
+  // This is needed to be able to use the bitmaps for evacuation failure handling.
   class G1ClearBitmapClosure : public HeapRegionClosure {
     G1CollectedHeap* _g1h;
 
-    void assert_bitmap_clear(HeapRegion* hr, const G1CMBitMap* bitmap) {
-      assert(bitmap->get_next_marked_addr(hr->bottom(), hr->end()) == hr->end(),
-             "Bitmap should have no mark for region %u (%s)", hr->hrm_index(), hr->get_short_type_str());
+    void assert_bitmap_clear(HeapRegion* hr) {
+      assert(hr->get_next_marked_addr(hr->bottom(), hr->end()) == hr->end(),
+             "HeapRegion bitmap should have no mark %u (%s)", hr->hrm_index(), hr->get_short_type_str());
     }
 
     bool should_clear_region(HeapRegion* hr) const {
@@ -1137,10 +1137,10 @@ class G1MergeHeapRootsTask : public WorkerTask {
       // Evacuation failure uses the bitmap to record evacuation failed objects,
       // so the bitmap for the regions in the collection set must be cleared if not already.
       if (should_clear_region(hr)) {
-        _g1h->clear_bitmap_for_region(hr);
+        hr->clear_livemap();
         hr->reset_top_at_mark_start();
       } else {
-        assert_bitmap_clear(hr, _g1h->concurrent_mark()->mark_bitmap());
+        assert_bitmap_clear(hr);
       }
       _g1h->concurrent_mark()->clear_statistics(hr);
       return false;

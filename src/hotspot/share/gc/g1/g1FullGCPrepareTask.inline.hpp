@@ -80,8 +80,9 @@ inline bool G1DetermineCompactionQueueClosure::do_heap_region(HeapRegion* hr) {
   } else {
     assert(hr->containing_set() == nullptr, "already cleared by PrepareRegionsClosure");
     if (hr->is_humongous()) {
-      oop obj = cast_to_oop(hr->humongous_start_region()->bottom());
-      bool is_empty = !_collector->mark_bitmap()->is_marked(obj);
+      HeapRegion* start_hr = hr->humongous_start_region();
+      oop obj = cast_to_oop(start_hr->bottom());
+      bool is_empty = !start_hr->is_object_marked(obj);
       if (is_empty) {
         free_empty_humongous_region(hr);
       } else {

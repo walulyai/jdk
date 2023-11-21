@@ -1405,7 +1405,7 @@ jint G1CollectedHeap::initialize() {
                        page_size);
   heap_storage->set_mapping_changed_listener(&_listener);
 
-  // Create storage for the BOT, card table and the bitmap.
+  // Create storage for the BOT and card table.
   G1RegionToSpaceMapper* bot_storage =
     create_aux_memory_mapper("Block Offset Table",
                              G1BlockOffsetTable::compute_size(heap_rs.size() / HeapWordSize),
@@ -1416,11 +1416,7 @@ jint G1CollectedHeap::initialize() {
                              G1CardTable::compute_size(heap_rs.size() / HeapWordSize),
                              G1CardTable::heap_map_factor());
 
-  size_t bitmap_size = G1CMBitMap::compute_size(heap_rs.size());
-  G1RegionToSpaceMapper* bitmap_storage =
-    create_aux_memory_mapper("Mark Bitmap", bitmap_size, G1CMBitMap::heap_map_factor());
-
-  _hrm.initialize(heap_storage, bitmap_storage, bot_storage, cardtable_storage);
+  _hrm.initialize(heap_storage, bot_storage, cardtable_storage);
   _card_table->initialize(cardtable_storage);
 
   // 6843694 - ensure that the maximum region index can fit
@@ -1463,7 +1459,7 @@ jint G1CollectedHeap::initialize() {
 
   // Create the G1ConcurrentMark data structure and thread.
   // (Must do this late, so that "max_[reserved_]regions" is defined.)
-  _cm = new G1ConcurrentMark(this, bitmap_storage);
+  _cm = new G1ConcurrentMark(this);
   _cm_thread = _cm->cm_thread();
 
   // Now expand into the initial heap size.

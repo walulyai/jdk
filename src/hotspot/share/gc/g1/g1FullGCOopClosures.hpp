@@ -30,18 +30,15 @@
 
 class G1CollectedHeap;
 class G1FullCollector;
-class G1CMBitMap;
 class G1FullGCMarker;
 
 // Below are closures used by the G1 Full GC.
 class G1IsAliveClosure : public BoolObjectClosure {
   G1FullCollector* _collector;
-  G1CMBitMap* _bitmap;
 
 public:
-  G1IsAliveClosure(G1FullCollector* collector);
-  G1IsAliveClosure(G1FullCollector* collector, G1CMBitMap* bitmap) :
-    _collector(collector), _bitmap(bitmap) { }
+  G1IsAliveClosure(G1FullCollector* collector) :
+    _collector(collector) { }
 
   virtual bool do_object_b(oop p);
 };

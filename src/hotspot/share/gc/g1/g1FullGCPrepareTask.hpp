@@ -30,7 +30,6 @@
 #include "memory/allocation.hpp"
 
 class G1CollectedHeap;
-class G1CMBitMap;
 class G1FullCollector;
 class G1FullGCCompactionPoint;
 class HeapRegion;
@@ -77,7 +76,6 @@ private:
   class G1CalculatePointersClosure : public HeapRegionClosure {
     G1CollectedHeap* _g1h;
     G1FullCollector* _collector;
-    G1CMBitMap* _bitmap;
     G1FullGCCompactionPoint* _cp;
 
     void prepare_for_compaction(HeapRegion* hr);

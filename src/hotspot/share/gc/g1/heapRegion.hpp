@@ -34,16 +34,50 @@
 #include "gc/shared/spaceDecorator.hpp"
 #include "gc/shared/verifyOption.hpp"
 #include "runtime/mutex.hpp"
+#include "utilities/bitMap.hpp"
 #include "utilities/macros.hpp"
 
 class G1CardSetConfiguration;
 class G1CollectedHeap;
-class G1CMBitMap;
+class G1CMBitMapClosure;
 class G1Predictions;
 class HeapRegionRemSet;
 class HeapRegion;
 class HeapRegionSetBase;
 class nmethod;
+
+class HeapRegionLiveMap {
+  using idx_t = BitMap::idx_t;
+  CHeapBitMap       _bitmap;
+  const size_t      _size;
+  volatile bool     _is_marked;
+  volatile bool     _is_initialized;
+
+  void do_clear(idx_t beg, idx_t end, bool large);
+
+  void resize(size_t size);
+public:
+  HeapRegionLiveMap(size_t size);
+
+  ~HeapRegionLiveMap() = default;
+
+  inline bool get(idx_t index) const;
+  inline bool set(idx_t index);
+
+  bool is_marked() const {
+    return Atomic::load_acquire(&_is_marked);
+  }
+
+  void print_livemap(outputStream* st) const;
+
+  void clear();
+  inline void clear(idx_t index);
+  inline void clear(idx_t beg, idx_t end, bool large);
+  void reset();
+  void initialize();
+
+  BitMap::idx_t find_first_set_bit(BitMap::idx_t beg, BitMap::idx_t end) const;
+};
 
 #define HR_FORMAT "%u:(%s)[" PTR_FORMAT "," PTR_FORMAT "," PTR_FORMAT "]"
 #define HR_FORMAT_PARAMS(_hr_) \
@@ -84,6 +118,8 @@ class HeapRegion : public CHeapObj<mtGC> {
   // into the region was and this is what this keeps track.
   HeapWord* _pre_dummy_top;
 
+  HeapRegionLiveMap _livemap;
+
 public:
   HeapWord* bottom() const         { return _bottom; }
   HeapWord* end() const            { return _end;    }
@@ -120,6 +156,16 @@ public:
   bool is_empty() const { return used() == 0; }
 
 private:
+
+  // Convert from address to bit offset.
+  size_t addr_to_offset(const HeapWord* addr) const {
+    return pointer_delta(addr, bottom()) >> LogMinObjAlignment;
+  }
+
+  // Convert from bit offset to address.
+  HeapWord* offset_to_addr(size_t offset) const {
+    return bottom() + (offset << LogMinObjAlignment);
+  }
 
   void reset_after_full_gc_common();
 
@@ -188,15 +234,37 @@ public:
   size_t block_size(const HeapWord* p) const;
   size_t block_size(const HeapWord* p, HeapWord* pb) const;
 
-  // Scans through the region using the bitmap to determine what
+  // Scans through the region using the region bitmap to determine what
   // objects to call size_t ApplyToMarkedClosure::apply(oop) for.
   template<typename ApplyToMarkedClosure>
-  inline void apply_to_marked_objects(G1CMBitMap* bitmap, ApplyToMarkedClosure* closure);
+  inline void apply_to_marked_objects(ApplyToMarkedClosure* closure);
 
   // Update the BOT for the entire region - assumes that all objects are parsable
   // and contiguous for this region.
   void update_bot();
 
+  inline bool is_object_marked(HeapWord* addr) const;
+  inline bool is_object_marked(oop obj) const;
+
+  bool is_marked() { return _livemap.is_marked(); }
+
+  inline bool mark_object(oop obj);
+  inline bool mark_object(HeapWord* addr);
+
+  void clear_livemap();
+
+  void clear_livemap(MemRegion mr, bool large);
+
+  void clear_in_livemap(HeapWord* addr);
+
+  void reset_livemap() {
+    _livemap.reset();
+  }
+
+  inline HeapWord* get_next_marked_addr(const HeapWord* const addr,
+                                        HeapWord* const limit) const;
+
+  inline bool iterate_livemap(G1CMBitMapClosure* cl, MemRegion mr);
 private:
   // The remembered set for this region.
   HeapRegionRemSet* _rem_set;
@@ -268,9 +336,6 @@ private:
   inline HeapWord* do_oops_on_memregion_in_humongous(MemRegion mr,
                                                      Closure* cl);
 
-  inline bool is_marked_in_bitmap(oop obj) const;
-
-  inline HeapWord* next_live_in_unparsable(G1CMBitMap* bitmap, const HeapWord* p, HeapWord* limit) const;
   inline HeapWord* next_live_in_unparsable(const HeapWord* p, HeapWord* limit) const;
 
 public:
@@ -561,6 +626,7 @@ public:
 
   void print() const;
   void print_on(outputStream* st) const;
+  void print_livemap(outputStream* st) const;
 
   bool verify(VerifyOption vo) const;
 };

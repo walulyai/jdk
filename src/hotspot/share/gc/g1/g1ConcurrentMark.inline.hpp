@@ -28,7 +28,6 @@
 #include "gc/g1/g1ConcurrentMark.hpp"
 
 #include "gc/g1/g1CollectedHeap.inline.hpp"
-#include "gc/g1/g1ConcurrentMarkBitMap.inline.hpp"
 #include "gc/g1/g1ConcurrentMarkObjArrayProcessor.inline.hpp"
 #include "gc/g1/g1OopClosures.inline.hpp"
 #include "gc/g1/g1Policy.hpp"
@@ -55,7 +54,7 @@ inline bool G1CMIsAliveClosure::do_object_b(oop obj) {
   }
 
   // All objects that are marked are live.
-  return _g1h->is_marked(obj);
+  return hr->is_object_marked(obj);
 }
 
 inline bool G1CMSubjectToDiscoveryClosure::do_object_b(oop obj) {
@@ -76,7 +75,7 @@ inline bool G1ConcurrentMark::mark_in_bitmap(uint const worker_id, oop const obj
   // Can't assert that this is a valid object at this point, since it might be in the process of being copied by another thread.
   assert(!hr->is_continues_humongous(), "Should not try to mark object " PTR_FORMAT " in Humongous continues region %u above TAMS " PTR_FORMAT, p2i(obj), hr->hrm_index(), p2i(hr->top_at_mark_start()));
 
-  bool success = _mark_bitmap.par_mark(obj);
+  bool success = hr->mark_object(obj);
   if (success) {
     add_to_liveness(worker_id, obj, obj->size());
   }
@@ -113,7 +112,7 @@ inline void G1CMTask::push(G1TaskQueueEntry task_entry) {
   assert(task_entry.is_array_slice() || _g1h->is_in_reserved(task_entry.obj()), "invariant");
   assert(task_entry.is_array_slice() || !_g1h->is_on_master_free_list(
               _g1h->heap_region_containing(task_entry.obj())), "invariant");
-  assert(task_entry.is_array_slice() || _mark_bitmap->is_marked(cast_from_oop<HeapWord*>(task_entry.obj())), "invariant");
+  assert(task_entry.is_array_slice() || _g1h->heap_region_containing(task_entry.obj())->is_object_marked(task_entry.obj()), "invariant");
 
   if (!_task_queue->push(task_entry)) {
     // The local task queue looks full. We need to push some entries
@@ -161,7 +160,7 @@ inline bool G1CMTask::is_below_finger(oop obj, HeapWord* global_finger) const {
 template<bool scan>
 inline void G1CMTask::process_grey_task_entry(G1TaskQueueEntry task_entry) {
   assert(scan || (task_entry.is_oop() && task_entry.obj()->is_typeArray()), "Skipping scan of grey non-typeArray");
-  assert(task_entry.is_array_slice() || _mark_bitmap->is_marked(cast_from_oop<HeapWord*>(task_entry.obj())),
+  assert(task_entry.is_array_slice() || _g1h->heap_region_containing(task_entry.obj())->is_object_marked(task_entry.obj()),
          "Any stolen object should be a slice or marked");
 
   if (scan) {
@@ -223,7 +222,7 @@ inline bool G1CMTask::make_reference_grey(oop obj) {
   }
 
   // No OrderAccess:store_load() is needed. It is implicit in the
-  // CAS done in G1CMBitMap::parMark() call in the routine above.
+  // CAS done in _cm->mark_in_bitmap call in the routine above.
   HeapWord* global_finger = _cm->finger();
 
   // We only need to push a newly grey object on the mark
@@ -271,12 +270,14 @@ inline bool G1CMTask::deal_with_reference(T* p) {
 }
 
 inline void G1ConcurrentMark::raw_mark_in_bitmap(oop obj) {
-  _mark_bitmap.par_mark(obj);
+  HeapRegion* r = _g1h->heap_region_containing(obj);
+  r->mark_object(obj);
 }
 
 bool G1ConcurrentMark::is_marked_in_bitmap(oop p) const {
   assert(p != nullptr && oopDesc::is_oop(p), "expected an oop");
-  return _mark_bitmap.is_marked(cast_from_oop<HeapWord*>(p));
+  HeapRegion* r = _g1h->heap_region_containing(p);
+  return r->is_object_marked(p);
 }
 
 inline bool G1ConcurrentMark::do_yield_check() {

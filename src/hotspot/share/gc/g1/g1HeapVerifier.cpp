@@ -469,7 +469,7 @@ public:
       size_t marked_bytes = cm->live_bytes(r->hrm_index());
 
       MarkedBytesClosure cl;
-      r->apply_to_marked_objects(cm->mark_bitmap(), &cl);
+      r->apply_to_marked_objects(&cl);
 
       guarantee(cl.marked_bytes() == marked_bytes,
                 "region %u (%s) live bytes actual %zu and cache %zu differ",
@@ -481,7 +481,7 @@ public:
       guarantee(cm->live_bytes(r->hrm_index()) == 0,
                 "region %u (%s) has %zu live bytes recorded",
                 r->hrm_index(), r->get_short_type_str(), cm->live_bytes(r->hrm_index()));
-      guarantee(cm->mark_bitmap()->get_next_marked_addr(r->bottom(), r->end()) == r->end(),
+      guarantee(r->get_next_marked_addr(r->bottom(), r->end()) == r->end(),
                 "region %u (%s) has mark",
                 r->hrm_index(), r->get_short_type_str());
       guarantee(cm->is_root_region(r),
@@ -542,11 +542,10 @@ void G1HeapVerifier::verify_bitmap_clear(bool from_tams) {
     G1VerifyBitmapClear(bool from_tams) : _from_tams(from_tams) { }
 
     virtual bool do_heap_region(HeapRegion* r) {
-      G1CMBitMap* bitmap = G1CollectedHeap::heap()->concurrent_mark()->mark_bitmap();
 
       HeapWord* start = _from_tams ? r->top_at_mark_start() : r->bottom();
 
-      HeapWord* mark = bitmap->get_next_marked_addr(start, r->end());
+      HeapWord* mark = r->get_next_marked_addr(start, r->end());
       guarantee(mark == r->end(), "Found mark at " PTR_FORMAT " in region %u from start " PTR_FORMAT, p2i(mark), r->hrm_index(), p2i(start));
       return false;
     }

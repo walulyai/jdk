@@ -67,10 +67,6 @@ static void update_derived_pointers() {
 #endif
 }
 
-G1CMBitMap* G1FullCollector::mark_bitmap() {
-  return _heap->concurrent_mark()->mark_bitmap();
-}
-
 ReferenceProcessor* G1FullCollector::reference_processor() {
   return _heap->ref_processor_stw();
 }
@@ -124,7 +120,7 @@ G1FullCollector::G1FullCollector(G1CollectedHeap* heap,
     _preserved_marks_set(true),
     _serial_compaction_point(this),
     _humongous_compaction_point(this),
-    _is_alive(this, heap->concurrent_mark()->mark_bitmap()),
+    _is_alive(this),
     _is_alive_mutator(heap->ref_processor_stw(), &_is_alive),
     _humongous_compaction_regions(8),
     _always_subject_to_discovery(),
@@ -429,7 +425,7 @@ void G1FullCollector::phase2c_prepare_serial_compaction() {
       HeapRegion* current = _heap->region_at(i);
       set_compaction_top(current, current->bottom());
       serial_cp->add(current);
-      current->apply_to_marked_objects(mark_bitmap(), &re_prepare);
+      current->apply_to_marked_objects(&re_prepare);
     }
   }
   serial_cp->update();

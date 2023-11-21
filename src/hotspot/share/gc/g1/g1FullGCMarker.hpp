@@ -45,7 +45,6 @@ typedef OverflowTaskQueue<ObjArrayTask, mtGC>        ObjArrayTaskQueue;
 typedef GenericTaskQueueSet<OopQueue, mtGC>          OopQueueSet;
 typedef GenericTaskQueueSet<ObjArrayTaskQueue, mtGC> ObjArrayTaskQueueSet;
 
-class G1CMBitMap;
 class G1FullCollector;
 class TaskTerminator;
 
@@ -53,8 +52,6 @@ class G1FullGCMarker : public CHeapObj<mtGC> {
   G1FullCollector*   _collector;
 
   uint               _worker_id;
-  // Backing mark bitmap
-  G1CMBitMap*        _bitmap;
 
   // Mark stack
   OopQueue           _oop_stack;

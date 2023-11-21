@@ -26,7 +26,6 @@
 #include "classfile/classLoaderData.hpp"
 #include "classfile/classLoaderDataGraph.hpp"
 #include "gc/g1/g1CollectedHeap.hpp"
-#include "gc/g1/g1ConcurrentMarkBitMap.inline.hpp"
 #include "gc/g1/g1FullCollector.inline.hpp"
 #include "gc/g1/g1FullGCAdjustTask.hpp"
 #include "gc/g1/g1FullGCCompactionPoint.hpp"
@@ -53,12 +52,10 @@ public:
 
 class G1AdjustRegionClosure : public HeapRegionClosure {
   G1FullCollector* _collector;
-  G1CMBitMap* _bitmap;
   uint _worker_id;
  public:
   G1AdjustRegionClosure(G1FullCollector* collector, uint worker_id) :
     _collector(collector),
-    _bitmap(collector->mark_bitmap()),
     _worker_id(worker_id) { }
 
   bool do_heap_region(HeapRegion* r) {
@@ -71,7 +68,7 @@ class G1AdjustRegionClosure : public HeapRegionClosure {
     } else if (!r->is_free()) {
       // Free regions do not contain objects to iterate. So skip them.
       G1AdjustLiveClosure adjust(&cl);
-      r->apply_to_marked_objects(_bitmap, &adjust);
+      r->apply_to_marked_objects(&adjust);
     }
     return false;
   }

@@ -48,6 +48,77 @@
 #include "runtime/globals_extension.hpp"
 #include "utilities/powerOfTwo.hpp"
 
+void HeapRegionLiveMap::reset() {
+  Atomic::release_store(&_is_marked, false);
+  Atomic::release_store(&_is_initialized, false);
+}
+
+void HeapRegionLiveMap::clear() {
+  assert(_bitmap.size() == _size, "uninitialized bitmap");
+  do_clear(0, _bitmap.size(), true /* large*/);
+}
+
+
+void HeapRegionLiveMap::clear(idx_t beg, idx_t end, bool large) {
+  assert(_bitmap.size() == _size, "uninitialized bitmap");
+  do_clear(beg, end, large);
+}
+
+void HeapRegionLiveMap::do_clear(idx_t beg, idx_t end, bool large) {
+  if (large) {
+    _bitmap.clear_large_range(beg, end);
+  } else {
+    _bitmap.clear_range(beg, end);
+  }
+}
+
+void HeapRegionLiveMap::initialize() {
+  if (!Atomic::load_acquire(&_is_initialized)) {
+    if (Atomic::cmpxchg(&_is_initialized, false, true) == false) {
+      resize(_size);
+      Atomic::release_store(&_is_marked, true);
+    }
+  }
+
+  while (!Atomic::load_acquire(&_is_marked)) { }
+}
+
+HeapRegionLiveMap::HeapRegionLiveMap(size_t size) :
+    _bitmap(HeapWordSize, mtGC, false /* clear */),
+    _size(size),
+    _is_marked(false),
+    _is_initialized(false)
+  { }
+
+void HeapRegionLiveMap::resize(size_t new_bitmap_size) {
+  if (_bitmap.size() != new_bitmap_size) {
+    _bitmap.reinitialize(new_bitmap_size, true);
+  }
+}
+
+void HeapRegionLiveMap::print_livemap(outputStream* st) const {
+  _bitmap.print_on_error(st, " Bits: ");
+}
+
+void HeapRegion::clear_livemap() {
+  if (!is_marked()) {
+    // Bitmap was not initialized
+    return;
+  }
+  _livemap.clear();
+  _livemap.reset();
+}
+
+void HeapRegion::clear_livemap(MemRegion mr, bool large) {
+  if (!is_marked()) {
+    // Bitmap was not initialized
+    return;
+  }
+  size_t beg = addr_to_offset(mr.start());
+  size_t end = addr_to_offset(mr.end());
+  _livemap.clear(beg, end, large);
+}
+
 uint   HeapRegion::LogOfHRGrainBytes = 0;
 uint   HeapRegion::LogCardsPerRegion = 0;
 size_t HeapRegion::GrainBytes        = 0;
@@ -217,6 +288,7 @@ HeapRegion::HeapRegion(uint hrm_index,
   _top(nullptr),
   _bot_part(bot, this),
   _pre_dummy_top(nullptr),
+  _livemap(mr.word_size() >> LogMinObjAlignment),
   _rem_set(nullptr),
   _hrm_index(hrm_index),
   _type(),
@@ -424,6 +496,10 @@ void HeapRegion::print_on(outputStream* st) const {
     }
   }
   st->print_cr("");
+}
+void HeapRegion::print_livemap(outputStream* st) const {
+  st->print("| %4u |", this->_hrm_index);
+  _livemap.print_livemap(st);
 }
 
 static bool is_oop_safe(oop obj) {
