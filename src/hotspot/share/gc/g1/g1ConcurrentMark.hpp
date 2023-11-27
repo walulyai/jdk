@@ -137,8 +137,9 @@ private:
   };
 
   class ChunkAllocator {
-    size_t _min_chunk_capacity;
+    size_t _min_capacity;
     size_t _max_capacity;
+    size_t _capacity;
     size_t _num_buckets;
     bool _growable;
     TaskQueueEntryChunk* volatile* _data;
@@ -148,8 +149,8 @@ private:
 
     size_t bucket_size(size_t bucket) {
       return (bucket == 0) ?
-              _min_chunk_capacity :
-              _min_chunk_capacity * ( 1ULL << (bucket -1));
+              _min_capacity :
+              _min_capacity * ( 1ULL << (bucket -1));
     }
 
     // Find highest 1, undefined if empty/0
@@ -158,19 +159,21 @@ private:
     }
 
     size_t get_bucket(size_t array_idx) {
-      if (array_idx < _min_chunk_capacity) {
+      if (array_idx < _min_capacity) {
         return 0;
       }
 
-      return find_highest_bit(array_idx) - find_highest_bit(_min_chunk_capacity) + 1;
+      return find_highest_bit(array_idx) - find_highest_bit(_min_capacity) + 1;
     }
 
     size_t get_bucket_index(size_t array_idx) {
-      if (array_idx < _min_chunk_capacity) {
+      if (array_idx < _min_capacity) {
         return array_idx;
       }
       return array_idx - (1ULL << find_highest_bit(array_idx));
     }
+
+    bool reserve(size_t new_capacity);
 
   public:
     ChunkAllocator();
@@ -188,7 +191,7 @@ private:
       _growable = true;
     }
 
-    size_t min_capacity() const { return _min_chunk_capacity; }
+    size_t capacity() const { return _capacity; }
 
     void expand();
 
@@ -222,7 +225,7 @@ private:
 
  public:
   G1CMMarkStack();
-  ~G1CMMarkStack();
+  ~G1CMMarkStack() = default;
 
   // Alignment and minimum capacity of this mark stack in number of oops.
   static size_t capacity_alignment();
@@ -246,7 +249,7 @@ private:
   // _chunk_list.
   bool is_empty() const { return _chunk_list == nullptr; }
 
-  size_t capacity() const  { return _chunk_allocator.min_capacity(); }
+  size_t capacity() const  { return _chunk_allocator.capacity(); }
 
   void grow_incrementally() {
     _chunk_allocator.grow_incrementally();
