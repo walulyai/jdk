@@ -77,6 +77,7 @@
 #include "utilities/align.hpp"
 #include "utilities/formatBuffer.hpp"
 #include "utilities/growableArray.hpp"
+#include "utilities/powerOfTwo.hpp"
 
 bool G1CMBitMapClosure::do_addr(HeapWord* const addr) {
   assert(addr < _cm->finger(), "invariant");
@@ -111,6 +112,8 @@ bool G1CMMarkStack::initialize(size_t initial_capacity, size_t max_capacity) {
 
   max_capacity = align_up(max_capacity, capacity_alignment()) / TaskEntryChunkSizeInVoidStar;
   size_t initial_chunk_capacity = align_up(initial_capacity, capacity_alignment()) / TaskEntryChunkSizeInVoidStar;
+
+  initial_chunk_capacity = round_up_power_of_2(initial_chunk_capacity);
 
   guarantee(initial_chunk_capacity <= max_capacity,
             "Maximum chunk capacity " SIZE_FORMAT " smaller than initial capacity " SIZE_FORMAT,
@@ -167,6 +170,8 @@ G1CMMarkStack::ChunkAllocator::ChunkAllocator() :
 { }
 
 bool G1CMMarkStack::ChunkAllocator::initialize(size_t initial_capacity, size_t max_capacity) {
+  guarantee(is_power_of_2(initial_capacity), "Invalid initial_capacity");
+
   _min_capacity = initial_capacity;
   _max_capacity = max_capacity;
   _num_buckets  = get_bucket(_max_capacity);
@@ -226,7 +231,6 @@ bool G1CMMarkStack::ChunkAllocator::reserve(size_t new_capacity) {
   size_t i = get_bucket(_capacity);
   for (; i <= highest_bucket; i++) {
     if (Atomic::load_acquire(&_data[i]) != nullptr) {
-      ShouldNotReachHere();
       continue; // Skip over already allocated buckets.
     }
 
