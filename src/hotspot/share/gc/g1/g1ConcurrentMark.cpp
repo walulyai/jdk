@@ -117,8 +117,7 @@ bool G1CMMarkStack::initialize(size_t initial_capacity, size_t max_capacity) {
 
   guarantee(initial_chunk_capacity <= max_capacity,
             "Maximum chunk capacity " SIZE_FORMAT " smaller than initial capacity " SIZE_FORMAT,
-            max_capacity,
-            initial_chunk_capacity);
+            max_capacity, initial_chunk_capacity);
 
   log_debug(gc)("Initialize mark stack with " SIZE_FORMAT " chunks, maximum " SIZE_FORMAT,
                 initial_chunk_capacity, max_capacity);
@@ -194,7 +193,7 @@ bool G1CMMarkStack::ChunkAllocator::initialize(size_t initial_capacity, size_t m
 void G1CMMarkStack::ChunkAllocator::expand() {
   size_t old_capacity = _capacity;
   // Double capacity if possible
-  size_t new_capacity = MIN2(_capacity * 2, _max_capacity);
+  size_t new_capacity = MIN2(old_capacity * 2, _max_capacity);
 
   if (reserve(new_capacity)) {
     log_debug(gc)("Expanded the mark stack capacity from " SIZE_FORMAT " to " SIZE_FORMAT " chunks",
@@ -212,7 +211,6 @@ G1CMMarkStack::ChunkAllocator::~ChunkAllocator() {
 
   for (size_t i = 0; i < _num_buckets; i++) {
     if (_data[i] != nullptr) {
-
       MmapArrayAllocator<TaskQueueEntryChunk>::free(_data[i],  bucket_size(i));
       _data[i] = nullptr;
     }
