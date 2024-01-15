@@ -187,6 +187,10 @@ void G1FullCollector::prepare_collection() {
   if (in_concurrent_cycle) {
     GCTraceTime(Debug, gc) debug("Clear Bitmap");
     _heap->concurrent_mark()->clear_bitmap(_heap->workers());
+  } else {
+    GCTraceTime(Debug, gc) debug("Prepare Bitmap");
+    // FIXME: bulk commit bitmap
+    _heap->concurrent_mark()->mark_bitmap()->prepare_for_marking();
   }
 
   _heap->gc_prologue(true);
@@ -242,6 +246,8 @@ void G1FullCollector::complete_collection() {
 
   // Prepare the bitmap for the next (potentially concurrent) marking.
   _heap->concurrent_mark()->clear_bitmap(_heap->workers());
+  // FIXME: maybe reset if may_yield is set to false.
+  _heap->concurrent_mark()->mark_bitmap()->reset();
 
   _heap->prepare_for_mutator_after_full_collection();
 

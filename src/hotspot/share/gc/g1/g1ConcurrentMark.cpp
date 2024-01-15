@@ -449,7 +449,7 @@ G1ConcurrentMark::G1ConcurrentMark(G1CollectedHeap* g1h,
   // _cm_thread set inside the constructor
   _g1h(g1h),
 
-  _mark_bitmap(),
+  _mark_bitmap(g1h),
 
   _heap(_g1h->reserved()),
 
@@ -728,7 +728,7 @@ private:
         }
       }
       assert(cur >= end, "Must have completed iteration over the bitmap for region %u.", r->hrm_index());
-
+      _bitmap->clear_livemap(r);
       r->reset_top_at_mark_start();
 
       return false;
@@ -760,7 +760,7 @@ public:
 void G1ConcurrentMark::clear_bitmap(WorkerThreads* workers, bool may_yield) {
   assert(may_yield || SafepointSynchronize::is_at_safepoint(), "Non-yielding bitmap clear only allowed at safepoint.");
 
-  size_t const num_bytes_to_clear = (HeapRegion::GrainBytes * _g1h->num_regions()) / G1CMBitMap::heap_map_factor();
+  size_t const num_bytes_to_clear = (HeapRegion::GrainBytes * _g1h->num_regions()) / MarkBitMap::heap_map_factor();
   size_t const num_chunks = align_up(num_bytes_to_clear, G1ClearBitMapTask::chunk_size()) / G1ClearBitMapTask::chunk_size();
 
   uint const num_workers = (uint)MIN2(num_chunks, (size_t)workers->active_workers());
@@ -1917,7 +1917,7 @@ void G1ConcurrentMark::flush_all_task_caches() {
 
 void G1ConcurrentMark::clear_bitmap_for_region(HeapRegion* hr) {
   assert_at_safepoint();
-  _mark_bitmap.clear_range(MemRegion(hr->bottom(), hr->end()));
+  _mark_bitmap.clear_bitmap_for_region(hr);
 }
 
 HeapRegion* G1ConcurrentMark::claim_region(uint worker_id) {

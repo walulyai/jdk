@@ -32,24 +32,116 @@
 #include "utilities/align.hpp"
 #include "utilities/bitMap.inline.hpp"
 
+inline G1HRLivemap* G1CMBitMap::get_livemap(const HeapWord* const addr) const {
+  uint region_idx = _g1h->addr_to_region(addr);
+  assert(addr <= _g1h->region_at(region_idx)->end(), "Out of bounds");
+
+  return &_region_livemaps[region_idx];
+}
+
 inline bool G1CMBitMap::iterate(G1CMBitMapClosure* cl, MemRegion mr) {
+
   assert(!mr.is_empty(), "Does not support empty memregion to iterate over");
   assert(_covered.contains(mr),
          "Given MemRegion from " PTR_FORMAT " to " PTR_FORMAT " not contained in heap area",
          p2i(mr.start()), p2i(mr.end()));
 
-  BitMap::idx_t const end_offset = addr_to_offset(mr.end());
-  BitMap::idx_t offset = _bm.find_first_set_bit(addr_to_offset(mr.start()), end_offset);
+  return get_livemap(mr.start())->iterate(cl, mr);
+}
 
-  while (offset < end_offset) {
-    HeapWord* const addr = offset_to_addr(offset);
+inline HeapWord* G1CMBitMap::get_next_marked_addr(const HeapWord* const addr,
+                                                  HeapWord* const limit) const {
+  return get_livemap(addr)->get_next_marked_addr(addr, limit);
+}
+
+inline void G1CMBitMap::clear(HeapWord* addr) {
+  get_livemap(addr)->clear(addr);
+}
+
+inline void G1CMBitMap::clear(oop obj) {
+  clear(cast_from_oop<HeapWord*>(obj));
+}
+
+bool G1CMBitMap::is_marked(HeapWord* addr) const {
+  return get_livemap(addr)->is_marked(addr);
+}
+
+inline bool G1CMBitMap::is_marked(oop obj) const{
+  return is_marked(cast_from_oop<HeapWord*>(obj));
+}
+
+inline bool G1CMBitMap::par_mark(oop obj){
+  return par_mark(cast_from_oop<HeapWord*>(obj));
+}
+
+inline bool G1CMBitMap::par_mark(HeapWord* addr) {  
+  return get_livemap(addr)->par_mark(addr, this);
+}
+
+inline bool G1HRLivemap::is_marked(HeapWord* addr) const {
+  return is_marked() && (is_humongous() || _bitmap.is_marked(addr));
+}
+
+inline bool G1HRLivemap::par_mark(HeapWord* addr, G1CMBitMap* _cm_bitmap) {
+  bool success = false;
+  if (!is_initialized()) {
+    // First object to be marked during this
+    // cycle, state information.
+    success = initialize(_cm_bitmap);
+  }
+
+  if (!is_marked()) {
+    Atomic::cmpxchg(&_state, BitmapState::Initialized, BitmapState::Marked);
+  }
+  return is_humongous() ? success : _bitmap.par_mark(addr);
+}
+
+inline void G1HRLivemap::clear(HeapWord* addr) {
+  if (!is_marked()) {
+    return;
+  }
+
+  if (is_humongous()) {
+    assert(addr == G1CollectedHeap::heap()->region_at(_region_idx)->bottom(), "Out of bounds");
+    reset();
+  } else {
+    _bitmap.clear(addr);
+  }
+}
+
+inline bool G1HRLivemap::iterate(G1CMBitMapClosure* cl, MemRegion mr) {
+  if (!is_marked()) {
+    return true;
+  }
+
+  HeapWord* addr = get_next_marked_addr(mr.start(), mr.end());
+  while (addr < mr.end()) {
     if (!cl->do_addr(addr)) {
       return false;
     }
     size_t const obj_size = cast_to_oop(addr)->size();
-    offset = _bm.find_first_set_bit(offset + (obj_size >> _shifter), end_offset);
+    addr = _bitmap.get_next_marked_addr((addr + obj_size), mr.end());
   }
   return true;
+}
+
+inline HeapWord* G1HRLivemap::get_next_marked_addr(const HeapWord* const addr,
+                                                   HeapWord* const limit) const {
+  assert(limit != nullptr, "limit must not be null");
+  if (addr == limit) {
+    return limit;
+  }
+
+  if (!is_marked()) {
+    return limit;
+  }
+
+  if (is_humongous()) {
+    G1CollectedHeap* g1h = G1CollectedHeap::heap();
+    return (addr == g1h->region_at(_region_idx)->bottom()) ? g1h->region_at(_region_idx)->bottom() : limit;
+  }
+
+  return _bitmap.get_next_marked_addr(addr, limit);
 }
 
 #endif // SHARE_GC_G1_G1CONCURRENTMARKBITMAP_INLINE_HPP

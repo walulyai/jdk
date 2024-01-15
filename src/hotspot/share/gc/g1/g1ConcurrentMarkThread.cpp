@@ -338,6 +338,10 @@ void G1ConcurrentMarkThread::concurrent_cycle_end(bool mark_cycle_completed) {
   SuspendibleThreadSetJoiner sts_join;
   G1CollectedHeap::heap()->increment_old_marking_cycles_completed(true /* concurrent */,
                                                                   mark_cycle_completed /* heap_examined */);
+  if (mark_cycle_completed) {
+    G1ConcPhaseTimer p(_cm, "Reset Bitmap for Next Mark");
+    _cm->mark_bitmap()->reset();
+  }
 
   _cm->concurrent_cycle_end(mark_cycle_completed);
   ConcurrentGCBreakpoints::notify_active_to_idle();
