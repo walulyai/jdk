@@ -33,23 +33,85 @@
 #include "utilities/bitMap.inline.hpp"
 
 inline bool G1CMBitMap::iterate(G1CMBitMapClosure* cl, MemRegion mr) {
+  uint region_idx = _g1h->addr_to_region(mr.start());
+
+  if (!_region_livemaps[region_idx].is_marked()) {
+    return true;
+  }
+
   assert(!mr.is_empty(), "Does not support empty memregion to iterate over");
   assert(_covered.contains(mr),
          "Given MemRegion from " PTR_FORMAT " to " PTR_FORMAT " not contained in heap area",
          p2i(mr.start()), p2i(mr.end()));
 
-  BitMap::idx_t const end_offset = addr_to_offset(mr.end());
-  BitMap::idx_t offset = _bm.find_first_set_bit(addr_to_offset(mr.start()), end_offset);
-
-  while (offset < end_offset) {
-    HeapWord* const addr = offset_to_addr(offset);
+  HeapWord* addr = get_next_marked_addr(mr.start(), mr.end());
+  while (addr < mr.end()) {
     if (!cl->do_addr(addr)) {
       return false;
     }
     size_t const obj_size = cast_to_oop(addr)->size();
-    offset = _bm.find_first_set_bit(offset + (obj_size >> _shifter), end_offset);
+    addr = _bitmap.get_next_marked_addr((addr + obj_size), mr.end());
   }
   return true;
 }
+inline bool G1CMBitMapHR::set(size_t index) {
+  if (!is_marked()) {
+    // First object to be marked during this
+    // cycle, reset marking information.
+    initialize();
+  }
+  return true;
+}
+
+inline bool G1CMBitMap::is_marked(oop obj) const{
+  return is_marked(cast_from_oop<HeapWord*>(obj));
+}
+
+inline bool G1CMBitMap::is_marked(HeapWord* addr) const {
+  uint region_idx = _g1h->addr_to_region(addr);
+  assert(addr <= _g1h->region_at(region_idx)->end(), "Out of bounds");
+  return _region_livemaps[region_idx].is_marked() && _bitmap.is_marked(addr);
+}
+
+inline HeapWord* G1CMBitMap::get_next_marked_addr(const HeapWord* const addr,
+                                                  HeapWord* const limit) const {
+  assert(limit != nullptr, "limit must not be null");
+  if (addr == limit) {
+    return limit;
+  }
+
+  uint region_idx = _g1h->addr_to_region(addr);
+
+  if (!_region_livemaps[region_idx].is_marked()) {
+    return limit;
+  }
+
+  return _bitmap.get_next_marked_addr(addr, limit);
+}
+
+inline bool G1CMBitMap::par_mark(oop obj){
+  return par_mark(cast_from_oop<HeapWord*>(obj));
+}
+
+inline bool G1CMBitMap::par_mark(HeapWord* addr) {
+  uint region_idx = _g1h->addr_to_region(addr);
+  assert(addr <= _g1h->region_at(region_idx)->end(), "Out of bounds");
+  _region_livemaps[region_idx].set(region_idx);
+  return _bitmap.par_mark(addr);
+}
+
+inline void G1CMBitMap::clear(HeapWord* addr) {
+  uint region_idx = _g1h->addr_to_region(addr);
+  assert(addr <= _g1h->region_at(region_idx)->end(), "Out of bounds");
+  if (_region_livemaps[region_idx].is_marked()) {
+    _bitmap.clear(addr);
+  }
+}
+
+inline void G1CMBitMap::clear(oop obj) {
+  clear(cast_from_oop<HeapWord*>(obj));
+}
+
+
 
 #endif // SHARE_GC_G1_G1CONCURRENTMARKBITMAP_INLINE_HPP

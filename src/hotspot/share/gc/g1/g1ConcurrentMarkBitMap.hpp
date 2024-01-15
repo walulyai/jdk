@@ -33,6 +33,7 @@
 #include "utilities/globalDefinitions.hpp"
 #include "utilities/macros.hpp"
 
+class G1CollectedHeap;
 class G1CMBitMap;
 class G1CMTask;
 class G1ConcurrentMark;
@@ -58,19 +59,63 @@ public:
   virtual void on_commit(uint start_idx, size_t num_regions, bool zero_filled);
 };
 
-// A generic mark bitmap for concurrent marking.  This is essentially a wrapper
-// around the BitMap class that is based on HeapWords, with one bit per (1 << _shifter) HeapWords.
-class G1CMBitMap : public MarkBitMap {
-  G1CMBitMapMappingChangedListener _listener;
+class G1CMBitMapHR {
+  volatile bool     _is_marked;
+  volatile bool     _is_initialized;
 
 public:
-  G1CMBitMap();
+
+  G1CMBitMapHR();
+
+  ~G1CMBitMapHR() = default;
+
+  bool is_marked() const {
+    return Atomic::load_acquire(&_is_marked);
+  }
+
+  inline bool set(size_t index);
+  void reset();
+  void initialize();
+};
+
+// A generic mark bitmap for concurrent marking.  This is essentially a wrapper
+// around the BitMap class that is based on HeapWords, with one bit per (1 << _shifter) HeapWords.
+class G1CMBitMap {
+  G1CMBitMapMappingChangedListener _listener;
+  MarkBitMap _bitmap;
+  G1RegionToSpaceMapper* _bitmap_mapper;
+  G1CMBitMapHR*    _region_livemaps;
+  G1CollectedHeap* _g1h;           // The heap
+  MemRegion _covered;    // The heap area covered by this bitmap.
+  const uint       _max_regions;
+public:
+  G1CMBitMap(G1CollectedHeap* g1h);
+  ~G1CMBitMap();
+
+  static size_t compute_size(size_t heap_size);
 
   // Initializes the underlying BitMap to cover the given area.
   void initialize(MemRegion heap, G1RegionToSpaceMapper* storage);
 
+  inline bool is_marked(oop obj) const;
+  bool is_marked(HeapWord* addr) const;
+
+  inline HeapWord* get_next_marked_addr(const HeapWord* addr,
+                                        HeapWord* limit) const;
+
+  inline bool par_mark(oop obj);
+  inline bool par_mark(HeapWord* addr);
+
+  void clear(HeapWord* addr);
+  void clear(oop obj);
+
+  void clear_range(MemRegion mr);
+  void clear_bitmap_for_region(HeapRegion* hr);
+
   // Apply the closure to the addresses that correspond to marked bits in the bitmap.
   inline bool iterate(G1CMBitMapClosure* cl, MemRegion mr);
+
+  void print_on_error(outputStream* st, const char* prefix) const;
 };
 
 #endif // SHARE_GC_G1_G1CONCURRENTMARKBITMAP_HPP
