@@ -183,7 +183,8 @@ void HeapRegionManager::commit_regions(uint index, size_t num_regions, WorkerThr
   _heap_mapper->commit_regions(index, num_regions, pretouch_workers);
 
   // Also commit auxiliary data
-  _bitmap_mapper->commit_regions(index, num_regions, pretouch_workers);
+  // FIXME: 
+  // _bitmap_mapper->commit_regions(index, num_regions, pretouch_workers);
 
   _bot_mapper->commit_regions(index, num_regions, pretouch_workers);
   _cardtable_mapper->commit_regions(index, num_regions, pretouch_workers);
@@ -207,7 +208,7 @@ void HeapRegionManager::uncommit_regions(uint start, uint num_regions) {
   _heap_mapper->uncommit_regions(start, num_regions);
 
   // Also uncommit auxiliary data
-  _bitmap_mapper->uncommit_regions(start, num_regions);
+  _bitmap_mapper->fire_on_uncommit(start, num_regions);
 
   _bot_mapper->uncommit_regions(start, num_regions);
   _cardtable_mapper->uncommit_regions(start, num_regions);

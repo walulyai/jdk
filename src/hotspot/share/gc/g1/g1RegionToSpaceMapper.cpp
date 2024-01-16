@@ -229,7 +229,7 @@ class G1RegionsSmallerThanCommitSizeMapper : public G1RegionToSpaceMapper {
     uint region_limit = (uint)(start_idx + num_regions);
     assert(num_regions > 0, "Must uncommit at least one region");
     assert(_region_commit_map.find_first_clear_bit(start_idx, region_limit) == region_limit,
-           "Should only be committed regions in the range [%u, %u)", start_idx, region_limit);
+           "Should only be committed regions in the range [%u, %u) expected", start_idx, region_limit);
 
     size_t start_page = region_idx_to_page_idx(start_idx);
     size_t end_page = region_idx_to_page_idx(region_limit - 1);
@@ -255,6 +255,12 @@ class G1RegionsSmallerThanCommitSizeMapper : public G1RegionToSpaceMapper {
 void G1RegionToSpaceMapper::fire_on_commit(uint start_idx, size_t num_regions, bool zero_filled) {
   if (_listener != nullptr) {
     _listener->on_commit(start_idx, num_regions, zero_filled);
+  }
+}
+
+void G1RegionToSpaceMapper::fire_on_uncommit(uint start_idx, size_t num_regions) {
+  if (_listener != nullptr) {
+    _listener->on_uncommit(start_idx, num_regions);
   }
 }
 

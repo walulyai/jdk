@@ -38,6 +38,8 @@ class G1MappingChangedListener {
   // Zero_filled indicates that the memory can be considered as filled with zero bytes
   // when called.
   virtual void on_commit(uint start_idx, size_t num_regions, bool zero_filled) = 0;
+
+  virtual void on_uncommit(uint start_idx, size_t num_regions) { };
 };
 
 // Maps region based commit/uncommit requests to the underlying page sized virtual
@@ -59,6 +61,8 @@ class G1RegionToSpaceMapper : public CHeapObj<mtGC> {
   void fire_on_commit(uint start_idx, size_t num_regions, bool zero_filled);
  public:
   MemRegion reserved() { return _storage.reserved(); }
+
+  void fire_on_uncommit(uint start_idx, size_t num_regions);
 
   size_t reserved_size() { return _storage.reserved_size(); }
   size_t committed_size() { return _storage.committed_size(); }

@@ -57,25 +57,37 @@ public:
   void set_bitmap(G1CMBitMap* bm) { _bm = bm; }
 
   virtual void on_commit(uint start_idx, size_t num_regions, bool zero_filled);
+  virtual void on_uncommit(uint start_idx, size_t num_regions);
 };
 
-class G1CMBitMapHR {
-  volatile bool     _is_marked;
-  volatile bool     _is_initialized;
+struct G1CMBitMapHR {
+  enum class BitmapState : uintptr_t {
+    Uninitialized,
+    Initializing,
+    Initialized,
+    Marked,
+  };
 
-public:
+  volatile BitmapState _state;
+
 
   G1CMBitMapHR();
 
   ~G1CMBitMapHR() = default;
-
+  bool is_initialized() const {
+    return Atomic::load(&_state) == BitmapState::Initialized ||
+           Atomic::load(&_state) == BitmapState::Marked;
+  }
+  bool is_uninitialized() {
+    return Atomic::load(&_state) == BitmapState::Uninitialized;
+  }
   bool is_marked() const {
-    return Atomic::load_acquire(&_is_marked);
+    return Atomic::load(&_state) == BitmapState::Marked;
   }
 
-  inline bool set(size_t index);
+  inline void set(size_t index, G1RegionToSpaceMapper* _bitmap_mapper);
   void reset();
-  void initialize();
+  void initialize(size_t index, G1RegionToSpaceMapper* _bitmap_mapper);
 };
 
 // A generic mark bitmap for concurrent marking.  This is essentially a wrapper
@@ -97,20 +109,23 @@ public:
   // Initializes the underlying BitMap to cover the given area.
   void initialize(MemRegion heap, G1RegionToSpaceMapper* storage);
 
+  void uncommit_regions(uint start_idx, size_t num_regions);
+
   inline bool is_marked(oop obj) const;
   bool is_marked(HeapWord* addr) const;
 
   inline HeapWord* get_next_marked_addr(const HeapWord* addr,
                                         HeapWord* limit) const;
 
-  inline bool par_mark(oop obj);
-  inline bool par_mark(HeapWord* addr);
+  bool par_mark(oop obj);
+  bool par_mark(HeapWord* addr);
 
   void clear(HeapWord* addr);
   void clear(oop obj);
 
   void clear_range(MemRegion mr);
   void clear_bitmap_for_region(HeapRegion* hr);
+  void clear_regions(uint start_idx, size_t num_regions);
 
   // Apply the closure to the addresses that correspond to marked bits in the bitmap.
   inline bool iterate(G1CMBitMapClosure* cl, MemRegion mr);
