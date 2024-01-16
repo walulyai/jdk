@@ -85,9 +85,13 @@ struct G1CMBitMapHR {
     return Atomic::load(&_state) == BitmapState::Marked;
   }
 
-  inline void set(size_t index, G1RegionToSpaceMapper* _bitmap_mapper);
+  void uncommit() {
+    Atomic::store(&_state, BitmapState::Uninitialized);
+  }
+
+  inline void set(uint index, G1RegionToSpaceMapper* _bitmap_mapper);
   void reset();
-  void initialize(size_t index, G1RegionToSpaceMapper* _bitmap_mapper);
+  void initialize(uint index, G1RegionToSpaceMapper* _bitmap_mapper);
 };
 
 // A generic mark bitmap for concurrent marking.  This is essentially a wrapper
