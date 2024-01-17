@@ -215,7 +215,10 @@ private:
   G1NUMA* _numa;
 
   // The sequence of all heap regions in the heap.
+  // TODO: remove the access changes
+  public:
   HeapRegionManager _hrm;
+  private:
 
   // Manages all allocations with regions except humongous object allocations.
   G1Allocator* _allocator;

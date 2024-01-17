@@ -28,11 +28,11 @@
 #include "gc/g1/heapRegion.hpp"
 #include "memory/virtualspace.hpp"
 
-G1CMBitMap::G1CMBitMap() : MarkBitMap(), _listener() {
+G1CMBitMapNew::G1CMBitMapNew() : MarkBitMap(), _listener() {
   _listener.set_bitmap(this);
 }
 
-void G1CMBitMap::initialize(MemRegion heap, G1RegionToSpaceMapper* storage) {
+void G1CMBitMapNew::initialize(MemRegion heap, G1RegionToSpaceMapper* storage) {
   MarkBitMap::initialize(heap, storage->reserved());
   storage->set_mapping_changed_listener(&_listener);
 }
@@ -44,4 +44,102 @@ void G1CMBitMapMappingChangedListener::on_commit(uint start_region, size_t num_r
   // We need to clear the bitmap on commit, removing any existing information.
   MemRegion mr(G1CollectedHeap::heap()->bottom_addr_for_region(start_region), num_regions * HeapRegion::GrainWords);
   _bm->clear_range(mr);
+}
+
+size_t G1CMBitMapHR::BitsPerRegion = 0;
+
+G1CMBitMap::G1CMBitMap(G1CollectedHeap* g1h) :
+  _region_livemaps(nullptr),
+  _g1h(g1h), 
+  _max_regions(_g1h->max_regions()),
+  _covered(_g1h->reserved())
+{
+  _region_livemaps = NEW_C_HEAP_ARRAY(G1CMBitMapHR, _max_regions, mtGC);
+  for (size_t i = 0; i < _max_regions; i++) {
+    ::new (&_region_livemaps[i]) G1CMBitMapHR();
+  }
+  G1CMBitMapHR::BitsPerRegion = HeapRegion::GrainWords >> LogMinObjAlignment;
+}
+
+G1CMBitMap::~G1CMBitMap() {
+  for (size_t i = 0; i < _max_regions; i++) {
+    _region_livemaps[i].~G1CMBitMapHR();
+  }
+  FREE_C_HEAP_ARRAY(G1CMBitMapHR, _region_livemaps);
+}
+
+void G1CMBitMap::clear_bitmap_for_region(HeapRegion* hr) {
+  clear_range(MemRegion(hr->bottom(), hr->end()), true);
+  uint region_idx = hr->hrm_index();
+  G1CMBitMapHR* livemap = &_region_livemaps[region_idx];
+  livemap->reset();
+}
+
+void G1CMBitMap::clear_range(MemRegion mr, bool large) {
+  uint region_idx = _g1h->addr_to_region(mr.start());
+  G1CMBitMapHR* livemap = &_region_livemaps[region_idx];
+  if (!livemap->is_marked()) {
+    // Bitmap was not initialized
+    return;
+  }
+
+  assert(mr.start() <= _g1h->region_at(region_idx)->end(), "Out of bounds");
+
+  HeapWord* bottom = _g1h->bottom_addr_for_region(region_idx);
+
+  size_t beg = addr_to_offset(bottom, mr.start());
+  size_t end = addr_to_offset(bottom, mr.end());
+  livemap->clear(beg, end, large);
+}
+
+void G1CMBitMapHR::reset() {
+  Atomic::release_store(&_is_marked, false);
+  Atomic::release_store(&_is_initialized, false);
+}
+
+void G1CMBitMapHR::clear() {
+  assert(_bitmap.size() == BitsPerRegion, "uninitialized bitmap");
+  do_clear(0, _bitmap.size(), true /* large*/);
+}
+
+void G1CMBitMapHR::clear(idx_t beg, idx_t end, bool large) {
+  assert(_bitmap.size() == BitsPerRegion, "uninitialized bitmap");
+  do_clear(beg, end, large);
+}
+
+void G1CMBitMapHR::do_clear(idx_t beg, idx_t end, bool large) {
+  if (large) {
+    _bitmap.clear_large_range(beg, end);
+  } else {
+    _bitmap.clear_range(beg, end);
+  }
+}
+
+void G1CMBitMapHR::initialize() {
+  if (!Atomic::load_acquire(&_is_initialized)) {
+    if (Atomic::cmpxchg(&_is_initialized, false, true) == false) {
+      assert(BitsPerRegion != 0, "BitsPerRegion not set correctly");
+      resize(BitsPerRegion);
+      Atomic::release_store(&_is_marked, true);
+    }
+  }
+
+  while (!Atomic::load_acquire(&_is_marked)) { }
+}
+
+G1CMBitMapHR::G1CMBitMapHR() :
+    _bitmap(HeapWordSize, mtGC, false /* clear */),
+    _size(BitsPerRegion),
+    _is_marked(false),
+    _is_initialized(false)
+  { }
+
+void G1CMBitMapHR::resize(size_t new_bitmap_size) {
+  if (_bitmap.size() != new_bitmap_size) {
+    _bitmap.reinitialize(new_bitmap_size, true);
+  }
+}
+
+void G1CMBitMapHR::print_livemap(outputStream* st) const {
+  _bitmap.print_on_error(st, " Bits: ");
 }

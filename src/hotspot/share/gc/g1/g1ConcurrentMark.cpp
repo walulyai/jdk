@@ -375,7 +375,7 @@ G1ConcurrentMark::G1ConcurrentMark(G1CollectedHeap* g1h,
   // _cm_thread set inside the constructor
   _g1h(g1h),
 
-  _mark_bitmap(),
+  _mark_bitmap(_g1h),
 
   _heap(_g1h->reserved()),
 
@@ -425,7 +425,7 @@ G1ConcurrentMark::G1ConcurrentMark(G1CollectedHeap* g1h,
 {
   assert(CGC_lock != nullptr, "CGC_lock must be initialized");
 
-  _mark_bitmap.initialize(g1h->reserved(), bitmap_storage);
+  // _mark_bitmap.initialize(g1h->reserved(), bitmap_storage);
 
   // Create & start ConcurrentMark thread.
   _cm_thread = new G1ConcurrentMarkThread(this);
@@ -654,7 +654,7 @@ private:
         }
       }
       assert(cur >= end, "Must have completed iteration over the bitmap for region %u.", r->hrm_index());
-
+      _bitmap->reset_livemap(r);
       r->reset_top_at_mark_start();
 
       return false;
@@ -1855,7 +1855,7 @@ void G1ConcurrentMark::flush_all_task_caches() {
 
 void G1ConcurrentMark::clear_bitmap_for_region(HeapRegion* hr) {
   assert_at_safepoint();
-  _mark_bitmap.clear_range(MemRegion(hr->bottom(), hr->end()));
+  _mark_bitmap.clear_bitmap_for_region(hr);
 }
 
 HeapRegion* G1ConcurrentMark::claim_region(uint worker_id) {
@@ -2077,7 +2077,8 @@ void G1ConcurrentMark::threads_do(ThreadClosure* tc) const {
 
 void G1ConcurrentMark::print_on_error(outputStream* st) const {
   st->print_cr("Marking Bits: (CMBitMap*) " PTR_FORMAT, p2i(mark_bitmap()));
-  _mark_bitmap.print_on_error(st, " Bits: ");
+  // TODO: fix the print below
+  // _mark_bitmap.print_on_error(st, " Bits: ");
 }
 
 static ReferenceProcessor* get_cm_oop_closure_ref_processor(G1CollectedHeap* g1h) {
