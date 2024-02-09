@@ -49,6 +49,9 @@ inline bool G1CMBitMap::iterate(G1CMBitMapClosure* cl, MemRegion mr) {
 
 inline HeapWord* G1CMBitMap::get_next_marked_addr(const HeapWord* const addr,
                                                   HeapWord* const limit) const {
+  if (addr == limit) {
+    return limit;
+  }
   return get_livemap(addr)->get_next_marked_addr(addr, limit);
 }
 
