@@ -34,8 +34,6 @@
 
 inline G1HRLivemap* G1CMBitMap::get_livemap(const HeapWord* const addr) const {
   uint region_idx = _g1h->addr_to_region(addr);
-  assert(addr <= _g1h->region_at(region_idx)->end(), "Out of bounds");
-
   return &_region_livemaps[region_idx];
 }
 
