@@ -307,11 +307,15 @@ ATTRIBUTE_FLATTEN NOINLINE
 void G1ParScanThreadState::trim_queue_to_threshold(uint threshold) {
   ScannerTask task;
   do {
-    while (_task_queue->pop_overflow(task)) {
+    StackIterator<ScannerTask, mtGC> iter(*_task_queue->overflow_stack());
+    while (!iter.is_empty()) {
+      task = *iter.next_addr();
       if (!_task_queue->try_push_to_taskqueue(task)) {
         dispatch_task(task);
       }
     }
+    _task_queue->overflow_stack()->clear();
+
     while (_task_queue->pop_local(task, threshold)) {
       dispatch_task(task);
     }
