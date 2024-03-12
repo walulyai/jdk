@@ -112,7 +112,7 @@ public:
   inline void set_state_updating();
   inline void set_state_complete();
 
-  inline void add_reference(OopOrNarrowOopStar from, uint tid);
+  inline void add_reference(OopOrNarrowOopStar from, HeapRegion* to, uint tid);
 
   // The region is being reclaimed; clear its remset, and any mention of
   // entries for this region in other remsets.

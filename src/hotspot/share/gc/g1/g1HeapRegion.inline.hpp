@@ -559,4 +559,23 @@ inline void HeapRegion::add_pinned_object_count(size_t value) {
   Atomic::add(&_pinned_object_count, value, memory_order_relaxed);
 }
 
+inline void HeapRegion::install_group_remset(HeapRegionRemSet* group_remset) {
+  assert(group_remset != nullptr, "pre-condition");
+  assert(_saved_rem_set == nullptr, "pre-condition");
+  assert(is_young(), "pre-condition");
+
+  _saved_rem_set = _rem_set;
+  _rem_set = group_remset;
+}
+
+inline void HeapRegion::uninstall_group_remset() {
+  if (_saved_rem_set != nullptr) {
+    assert(is_young(), "pre-condition: %u | %s", hrm_index(), get_type_str());
+
+    _rem_set = _saved_rem_set;
+    _rem_set->set_state_complete();
+    _saved_rem_set = nullptr;
+  }
+}
+
 #endif // SHARE_GC_G1_G1HEAPREGION_INLINE_HPP

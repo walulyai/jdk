@@ -910,6 +910,11 @@ public:
     p->record_serial_free_cset_time_ms((Ticks::now() - serial_time).seconds() * 1000.0);
 
     _g1h->clear_collection_set();
+
+    _g1h->prev_eden_remset()->clear();
+    _g1h->prev_surviror_remset()->clear();
+
+    _g1h->free_prev_remsets();
   }
 
   double worker_cost() const override { return G1CollectedHeap::heap()->collection_set()->region_length(); }

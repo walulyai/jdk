@@ -33,6 +33,7 @@
 #include "gc/g1/g1CollectionSetCandidates.inline.hpp"
 #include "gc/g1/g1CollectorState.hpp"
 #include "gc/g1/g1ConcurrentMark.hpp"
+#include "gc/g1/g1GCParPhaseTimesTracker.hpp"
 #include "gc/g1/g1GCPhaseTimes.hpp"
 #include "gc/g1/g1EvacFailureRegions.inline.hpp"
 #include "gc/g1/g1EvacInfo.hpp"
@@ -515,7 +516,10 @@ void G1YoungCollector::pre_evacuate_collection_set(G1EvacInfo* evacuation_info) 
 
   {
     Ticks start = Ticks::now();
+
     rem_set()->prepare_for_scan_heap_roots();
+    _g1h->prepare_group_remsets_for_scan();
+
     phase_times()->record_prepare_heap_roots_time_ms((Ticks::now() - start).seconds() * 1000.0);
   }
 
@@ -700,6 +704,20 @@ public:
   { }
 };
 
+class G1EvacuateGroupCodeRootSets: public WorkerTask {
+  G1ParScanThreadStateSet* _per_thread_states;
+public:
+  G1EvacuateGroupCodeRootSets(const char* name, G1ParScanThreadStateSet* per_thread_states) :
+    WorkerTask(name),
+    _per_thread_states(per_thread_states) 
+  { }
+  
+  void work(uint worker_id) {
+    G1ParScanThreadState* pss = _per_thread_states->state_for_worker(worker_id);
+    G1CollectedHeap::heap()->rem_set()->scan_group_code_root_sets(pss, worker_id,  G1GCPhaseTimes::CodeRoots, G1GCPhaseTimes::ObjCopy);
+  }
+};
+
 void G1YoungCollector::evacuate_initial_collection_set(G1ParScanThreadStateSet* per_thread_states,
                                                       bool has_optional_evacuation_work) {
   G1GCPhaseTimes* p = phase_times();
@@ -711,6 +729,7 @@ void G1YoungCollector::evacuate_initial_collection_set(G1ParScanThreadStateSet* 
   }
 
   Tickspan task_time;
+  Tickspan code_roots_time;
   const uint num_workers = workers()->active_workers();
 
   Ticks start_processing = Ticks::now();
@@ -728,10 +747,13 @@ void G1YoungCollector::evacuate_initial_collection_set(G1ParScanThreadStateSet* 
     // time of this scope, we get the "NMethod List Cleanup" time. This list is
     // constructed during "STW two-phase nmethod root processing", see more in
     // nmethod.hpp
+    G1EvacuateGroupCodeRootSets code_root_sets_task("G1 Evacuate Regions", per_thread_states);
+    code_roots_time = run_task_timed(&code_root_sets_task);
+    
   }
   Tickspan total_processing = Ticks::now() - start_processing;
 
-  p->record_initial_evac_time(task_time.seconds() * 1000.0);
+  p->record_initial_evac_time((task_time.seconds() + code_roots_time.seconds()) * 1000.0);
   p->record_or_add_nmethod_list_cleanup_time((total_processing - task_time).seconds() * 1000.0);
 
   rem_set()->complete_evac_phase(has_optional_evacuation_work);
