@@ -172,6 +172,7 @@ public:
 
   bool do_heap_region(HeapRegion* hr) {
     hr->prepare_for_full_gc();
+    hr->uninstall_group_remset();
     G1CollectedHeap::heap()->prepare_region_for_full_compaction(hr);
     _collector->before_marking_update_attribute_table(hr);
     return false;
@@ -246,6 +247,9 @@ void G1FullCollector::complete_collection() {
   _heap->prepare_for_mutator_after_full_collection();
 
   _heap->resize_all_tlabs();
+
+  _heap->eden_remset()->clear(false, true);
+  _heap->surviror_remset()->clear(false, true);
 
   _heap->policy()->record_full_collection_end();
   _heap->gc_epilogue(true);

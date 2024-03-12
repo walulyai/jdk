@@ -64,7 +64,10 @@ HeapRegionRemSet::HeapRegionRemSet(HeapRegion* hr,
   _state(Untracked) { }
 
 void HeapRegionRemSet::clear_fcc() {
-  G1FromCardCache::clear(_hr->hrm_index());
+  // TODO: manage fcc for group
+  if (_hr != nullptr) {
+    G1FromCardCache::clear(_hr->hrm_index());
+  }
 }
 
 void HeapRegionRemSet::clear(bool only_cardset, bool keep_tracked) {

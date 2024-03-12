@@ -846,6 +846,23 @@ public:
   size_t opt_refs_memory_used() const { return _opt_refs_memory_used; }
 };
 
+void G1RemSet::scan_group_code_root_sets(G1ParScanThreadState* pss,
+                                           uint worker_id,
+                                           G1GCPhaseTimes::GCParPhases coderoots_phase,
+                                           G1GCPhaseTimes::GCParPhases objcopy_phase) {
+    Tickspan group_code_root_scan_time;
+    Tickspan group_code_trim_partially_time;
+    G1EvacPhaseWithTrimTimeTracker timer(pss, group_code_root_scan_time, group_code_trim_partially_time);
+    G1ScanAndCountCodeBlobClosure group_cl(pss->closures()->weak_codeblobs());
+    _g1h->prev_eden_remset()->code_roots_do(&group_cl);
+    _g1h->prev_surviror_remset()->code_roots_do(&group_cl);
+    
+    G1GCPhaseTimes* p = _g1h->phase_times();
+    p->record_or_add_time_secs(coderoots_phase, worker_id, group_code_root_scan_time.seconds());
+    p->record_or_add_thread_work_item(coderoots_phase, worker_id, group_cl.count(), G1GCPhaseTimes::CodeRootsScannedNMethods);
+    p->add_time_secs(objcopy_phase, worker_id, group_code_trim_partially_time.seconds());           
+}
+
 void G1RemSet::scan_collection_set_regions(G1ParScanThreadState* pss,
                                            uint worker_id,
                                            G1GCPhaseTimes::GCParPhases scan_phase,
@@ -1378,6 +1395,10 @@ public:
         G1MergeCardSetClosure merge(_scan_state);
         G1ClearBitmapClosure clear(g1h);
         G1CombinedClosure combined(&merge, &clear);
+
+        g1h->prev_eden_remset()->iterate_for_merge(merge);
+        g1h->prev_surviror_remset()->iterate_for_merge(merge);
+
 
         g1h->collection_set_iterate_increment_from(&combined, nullptr, worker_id);
         G1MergeCardSetStats stats = merge.stats();

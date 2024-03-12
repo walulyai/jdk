@@ -784,12 +784,32 @@ public:
 private:
   // The g1 remembered set of the heap.
   G1RemSet* _rem_set;
+
+  // Group remsets
+  HeapRegionRemSet* _eden_remset;
+  HeapRegionRemSet* _surviror_remset;
+
+  HeapRegionRemSet* _prev_eden_remset;
+  HeapRegionRemSet* _prev_surviror_remset;
+
   // Global card set configuration
   G1CardSetConfiguration _card_set_config;
 
   G1MonotonicArenaFreePool _card_set_freelist_pool;
 
 public:
+  G1CardSetConfiguration* card_set_config() { return &_card_set_config; }
+
+  HeapRegionRemSet* prev_eden_remset() { return _prev_eden_remset; };
+  HeapRegionRemSet* prev_surviror_remset() { return _prev_surviror_remset; };
+
+  HeapRegionRemSet* eden_remset() { return _eden_remset; };
+  HeapRegionRemSet* surviror_remset() { return _surviror_remset; };
+
+  void free_prev_remsets();
+
+  void prepare_group_remsets_for_scan ();
+
   // After a collection pause, reset eden and the collection set.
   void clear_eden();
   void clear_collection_set();

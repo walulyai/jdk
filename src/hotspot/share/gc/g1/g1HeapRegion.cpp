@@ -100,6 +100,7 @@ void HeapRegion::setup_heap_region_size(size_t max_heap_size) {
 
 void HeapRegion::handle_evacuation_failure(bool retain) {
   uninstall_surv_rate_group();
+  uninstall_group_remset();
   clear_young_index_in_cset();
   clear_index_in_opt_cset();
   move_to_old();
@@ -119,6 +120,7 @@ void HeapRegion::hr_clear(bool clear_space) {
   clear_young_index_in_cset();
   clear_index_in_opt_cset();
   uninstall_surv_rate_group();
+  uninstall_group_remset();
   set_free();
   reset_pre_dummy_top();
 
@@ -209,6 +211,7 @@ void HeapRegion::clear_humongous() {
 }
 
 void HeapRegion::prepare_remset_for_scan() {
+  uninstall_group_remset();
   _rem_set->reset_table_scanner();
 }
 
@@ -222,6 +225,7 @@ HeapRegion::HeapRegion(uint hrm_index,
   _bot_part(bot, this),
   _pre_dummy_top(nullptr),
   _rem_set(nullptr),
+  _saved_rem_set(nullptr),
   _hrm_index(hrm_index),
   _type(),
   _humongous_start_region(nullptr),
