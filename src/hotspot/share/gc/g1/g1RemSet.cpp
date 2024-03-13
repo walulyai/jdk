@@ -855,7 +855,7 @@ void G1RemSet::scan_group_code_root_sets(G1ParScanThreadState* pss,
     G1EvacPhaseWithTrimTimeTracker timer(pss, group_code_root_scan_time, group_code_trim_partially_time);
     G1ScanAndCountCodeBlobClosure group_cl(pss->closures()->weak_codeblobs());
     _g1h->prev_eden_remset()->code_roots_do(&group_cl);
-    _g1h->prev_surviror_remset()->code_roots_do(&group_cl);
+    _g1h->prev_survivor_remset()->code_roots_do(&group_cl);
     
     G1GCPhaseTimes* p = _g1h->phase_times();
     p->record_or_add_time_secs(coderoots_phase, worker_id, group_code_root_scan_time.seconds());
@@ -1397,7 +1397,7 @@ public:
         G1CombinedClosure combined(&merge, &clear);
 
         g1h->prev_eden_remset()->iterate_for_merge(merge);
-        g1h->prev_surviror_remset()->iterate_for_merge(merge);
+        g1h->prev_survivor_remset()->iterate_for_merge(merge);
 
 
         g1h->collection_set_iterate_increment_from(&combined, nullptr, worker_id);

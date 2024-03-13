@@ -430,6 +430,10 @@ public:
     return _rem_set;
   }
 
+  bool has_group_rem_set() const {
+    return _saved_rem_set != nullptr;
+  }
+
   inline bool in_collection_set() const;
 
   inline const char* collection_set_candidate_short_type_str() const;

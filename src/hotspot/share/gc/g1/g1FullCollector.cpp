@@ -249,7 +249,7 @@ void G1FullCollector::complete_collection() {
   _heap->resize_all_tlabs();
 
   _heap->eden_remset()->clear(false, true);
-  _heap->surviror_remset()->clear(false, true);
+  _heap->survivor_remset()->clear(false, true);
 
   _heap->policy()->record_full_collection_end();
   _heap->gc_epilogue(true);

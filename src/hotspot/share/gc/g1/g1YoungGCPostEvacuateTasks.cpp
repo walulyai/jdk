@@ -912,7 +912,7 @@ public:
     _g1h->clear_collection_set();
 
     _g1h->prev_eden_remset()->clear();
-    _g1h->prev_surviror_remset()->clear();
+    _g1h->prev_survivor_remset()->clear();
 
     _g1h->free_prev_remsets();
   }

@@ -345,7 +345,8 @@ public:
       // Verify that the nemthod is live
       VerifyCodeRootOopClosure oop_cl(_hr);
       nm->oops_do(&oop_cl);
-      if (!oop_cl.has_oops_in_region()) {
+      // FIXME: there might be better ways to handle this
+      if (!_hr->has_group_rem_set() && !oop_cl.has_oops_in_region()) {
         log_error(gc, verify)("region [" PTR_FORMAT "," PTR_FORMAT "] has nmethod " PTR_FORMAT " in its code roots with no pointers into region",
                               p2i(_hr->bottom()), p2i(_hr->end()), p2i(nm));
         _failures = true;
@@ -361,6 +362,7 @@ public:
 };
 
 bool HeapRegion::verify_code_roots(VerifyOption vo) const {
+  // TODO: fix verification for group remsets.
   if (!G1VerifyHeapRegionCodeRoots) {
     // We're not verifying code roots.
     return false;
