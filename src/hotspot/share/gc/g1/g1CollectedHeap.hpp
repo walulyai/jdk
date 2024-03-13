@@ -787,10 +787,10 @@ private:
 
   // Group remsets
   HeapRegionRemSet* _eden_remset;
-  HeapRegionRemSet* _surviror_remset;
+  HeapRegionRemSet* _survivor_remset;
 
   HeapRegionRemSet* _prev_eden_remset;
-  HeapRegionRemSet* _prev_surviror_remset;
+  HeapRegionRemSet* _prev_survivor_remset;
 
   // Global card set configuration
   G1CardSetConfiguration _card_set_config;
@@ -801,10 +801,10 @@ public:
   G1CardSetConfiguration* card_set_config() { return &_card_set_config; }
 
   HeapRegionRemSet* prev_eden_remset() { return _prev_eden_remset; };
-  HeapRegionRemSet* prev_surviror_remset() { return _prev_surviror_remset; };
+  HeapRegionRemSet* prev_survivor_remset() { return _prev_survivor_remset; };
 
   HeapRegionRemSet* eden_remset() { return _eden_remset; };
-  HeapRegionRemSet* surviror_remset() { return _surviror_remset; };
+  HeapRegionRemSet* survivor_remset() { return _survivor_remset; };
 
   void free_prev_remsets();
 

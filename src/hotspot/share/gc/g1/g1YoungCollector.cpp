@@ -742,18 +742,19 @@ void G1YoungCollector::evacuate_initial_collection_set(G1ParScanThreadStateSet* 
                                       num_workers,
                                       has_optional_evacuation_work);
     task_time = run_task_timed(&g1_par_task);
+
+    // TODO: add comments
+    G1EvacuateGroupCodeRootSets code_root_sets_task("G1 Evacuate Group Code Roots", per_thread_states);
+    task_time += run_task_timed(&code_root_sets_task);
     // Closing the inner scope will execute the destructor for the
     // G1RootProcessor object. By subtracting the WorkerThreads task from the total
     // time of this scope, we get the "NMethod List Cleanup" time. This list is
     // constructed during "STW two-phase nmethod root processing", see more in
     // nmethod.hpp
-    G1EvacuateGroupCodeRootSets code_root_sets_task("G1 Evacuate Regions", per_thread_states);
-    code_roots_time = run_task_timed(&code_root_sets_task);
-    
   }
   Tickspan total_processing = Ticks::now() - start_processing;
 
-  p->record_initial_evac_time((task_time.seconds() + code_roots_time.seconds()) * 1000.0);
+  p->record_initial_evac_time(task_time.seconds() * 1000.0);
   p->record_or_add_nmethod_list_cleanup_time((total_processing - task_time).seconds() * 1000.0);
 
   rem_set()->complete_evac_phase(has_optional_evacuation_work);

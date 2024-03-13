@@ -1165,9 +1165,9 @@ G1CollectedHeap::G1CollectedHeap() :
   _collection_set(this, _policy),
   _rem_set(nullptr),
   _eden_remset(nullptr),
-  _surviror_remset(nullptr),
+  _survivor_remset(nullptr),
   _prev_eden_remset(nullptr),
-  _prev_surviror_remset(nullptr),
+  _prev_survivor_remset(nullptr),
   _card_set_config(),
   _card_set_freelist_pool(G1CardSetConfiguration::num_mem_object_types()),
   _cm(nullptr),
@@ -1359,10 +1359,10 @@ jint G1CollectedHeap::initialize() {
   _rem_set->initialize(max_reserved_regions());
 
   _eden_remset = new HeapRegionRemSet(nullptr, card_set_config());
-  _surviror_remset = new HeapRegionRemSet(nullptr, card_set_config());
+  _survivor_remset = new HeapRegionRemSet(nullptr, card_set_config());
 
   _eden_remset->set_state_complete();
-  _surviror_remset->set_state_complete();
+  _survivor_remset->set_state_complete();
 
   size_t max_cards_per_region = ((size_t)1 << (sizeof(CardIdx_t)*BitsPerByte-1)) - 1;
   guarantee(HeapRegion::CardsPerRegion > 0, "make sure it's initialized");
@@ -2578,7 +2578,7 @@ public:
     // TODO iterate the group remsets
     if (worker_id == 0) {
       G1CollectedHeap::heap()->eden_remset()->bulk_remove_code_roots();
-      G1CollectedHeap::heap()->surviror_remset()->bulk_remove_code_roots();
+      G1CollectedHeap::heap()->survivor_remset()->bulk_remove_code_roots();
     }
     G1CollectedHeap::heap()->heap_region_par_iterate_from_worker_offset(&_cl, &_hrclaimer, worker_id);
   }
@@ -2941,7 +2941,7 @@ HeapRegion* G1CollectedHeap::new_gc_alloc_region(size_t word_size, G1HeapRegionA
       register_new_survivor_region_with_region_attr(new_alloc_region);
 
       // TODO: Install the general remset
-      new_alloc_region->install_group_remset(surviror_remset());
+      new_alloc_region->install_group_remset(survivor_remset());
     } else {
       new_alloc_region->set_old();
     }
@@ -3102,24 +3102,24 @@ void G1CollectedHeap::finish_codecache_marking_cycle() {
 
 void G1CollectedHeap::free_prev_remsets() {
     delete _prev_eden_remset;
-    delete _prev_surviror_remset;
+    delete _prev_survivor_remset;
 
     _prev_eden_remset = nullptr;
-    _prev_surviror_remset = nullptr;
+    _prev_survivor_remset = nullptr;
   }
 
 void G1CollectedHeap::prepare_group_remsets_for_scan () {
     _eden_remset->reset_table_scanner();
-    _surviror_remset->reset_table_scanner();
+    _survivor_remset->reset_table_scanner();
 
     // TODO: assert nulls
     _prev_eden_remset = _eden_remset;
-    _prev_surviror_remset = _surviror_remset;
+    _prev_survivor_remset = _survivor_remset;
 
     _eden_remset = new HeapRegionRemSet(nullptr, card_set_config());
-    _surviror_remset = new HeapRegionRemSet(nullptr, card_set_config());
+    _survivor_remset = new HeapRegionRemSet(nullptr, card_set_config());
 
     _eden_remset->set_state_complete();
-    _surviror_remset->set_state_complete();
+    _survivor_remset->set_state_complete();
   }
 
