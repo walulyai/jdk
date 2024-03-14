@@ -100,7 +100,6 @@ void HeapRegion::setup_heap_region_size(size_t max_heap_size) {
 
 void HeapRegion::handle_evacuation_failure(bool retain) {
   uninstall_surv_rate_group();
-  uninstall_group_remset();
   clear_young_index_in_cset();
   clear_index_in_opt_cset();
   move_to_old();
