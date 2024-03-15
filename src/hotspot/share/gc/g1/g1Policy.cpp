@@ -1124,6 +1124,7 @@ double G1Policy::predict_region_copy_time_ms(HeapRegion* hr, bool for_young_only
 }
 
 double G1Policy::predict_region_merge_scan_time(HeapRegion* hr, bool for_young_only_phase) const {
+  assert(!hr->is_young(), "must not be!");
   size_t card_rs_length = hr->rem_set()->occupied();
   size_t scan_card_num = _analytics->predict_scan_card_num(card_rs_length, for_young_only_phase);
 
