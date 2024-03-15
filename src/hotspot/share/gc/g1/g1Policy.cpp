@@ -1155,6 +1155,7 @@ double G1Policy::predict_region_non_copy_time_ms(HeapRegion* hr,
 }
 
 double G1Policy::predict_region_total_time_ms(HeapRegion* hr, bool for_young_only_phase) const {
+  assert(!hr->is_young(), "why me");
   return
     predict_region_non_copy_time_ms(hr, for_young_only_phase) +
     predict_region_copy_time_ms(hr, for_young_only_phase);
