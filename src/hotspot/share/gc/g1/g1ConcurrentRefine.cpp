@@ -263,6 +263,10 @@ public:
     _cset(cset), _sampled_card_rs_length(0), _sampled_code_root_rs_length(0) {}
 
   bool do_heap_region(HeapRegion* r) override {
+    if (r->is_young()) {
+      // SKIP you regions, they are in a group
+      return false;
+    }
     HeapRegionRemSet* rem_set = r->rem_set();
     _sampled_card_rs_length += rem_set->occupied();
     _sampled_code_root_rs_length += rem_set->code_roots_list_length();
@@ -287,10 +291,21 @@ public:
 // gen size to keep pause time length goal.
 void G1ConcurrentRefine::adjust_young_list_target_length() {
   if (_policy->use_adaptive_young_list_length()) {
-    G1CollectionSet* cset = G1CollectedHeap::heap()->collection_set();
+    G1CollectedHeap* g1h = G1CollectedHeap::heap();
+    G1CollectionSet* cset = g1h->collection_set();
     RemSetSamplingClosure cl{cset};
     cset->iterate(&cl);
-    _policy->revise_young_list_target_length(cl.sampled_card_rs_length(), cl.sampled_code_root_rs_length());
+
+    size_t sampled_card_rs_length = cl.sampled_card_rs_length() +
+                                    g1h->eden_remset()->occupied() +
+                                    g1h->survivor_remset()->occupied();
+
+
+    size_t sampled_code_root_rs_length = cl.sampled_code_root_rs_length() +
+                                         g1h->eden_remset()->code_roots_list_length() +
+                                         g1h->survivor_remset()->code_roots_list_length();
+
+    _policy->revise_young_list_target_length(sampled_card_rs_length, sampled_code_root_rs_length);
   }
 }
 
