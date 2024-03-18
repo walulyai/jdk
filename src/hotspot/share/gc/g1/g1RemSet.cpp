@@ -1092,7 +1092,7 @@ class G1MergeHeapRootsTask : public WorkerTask {
       assert(r->in_collection_set() || r->is_starts_humongous(), "must be");
 
       HeapRegionRemSet* rem_set = r->rem_set();
-      if (!rem_set->is_empty()) {
+      if (!r->is_young() && !rem_set->is_empty()) {
         rem_set->iterate_for_merge(*this);
       }
     }
