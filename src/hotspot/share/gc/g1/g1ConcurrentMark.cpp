@@ -2972,7 +2972,11 @@ G1PrintRegionLivenessInfoClosure::G1PrintRegionLivenessInfoClosure(const char* p
   _total_capacity_bytes(0),
   _total_live_bytes(0),
   _total_remset_bytes(0),
-  _total_code_roots_bytes(0)
+  _total_code_roots_bytes(0),
+  _eden_remset_bytes_per_region(0),
+  _eden_code_roots_bytes_per_region(0),
+  _survivor_remset_bytes_per_region(0),
+  _survivor_code_roots_bytes_per_region(0)
 {
   if (!log_is_enabled(Trace, gc, liveness)) {
     return;
@@ -2981,6 +2985,24 @@ G1PrintRegionLivenessInfoClosure::G1PrintRegionLivenessInfoClosure(const char* p
   G1CollectedHeap* g1h = G1CollectedHeap::heap();
   MemRegion reserved = g1h->reserved();
   double now = os::elapsedTime();
+
+  uint num_eden_regions = g1h->eden_regions_count();
+  size_t eden_remset_bytes = g1h->eden_remset()->mem_size();
+  size_t eden_code_roots_bytes = g1h->eden_remset()->code_roots_mem_size();
+
+  if (num_eden_regions > 0) {
+    _eden_remset_bytes_per_region = eden_remset_bytes / num_eden_regions;
+    _eden_code_roots_bytes_per_region = eden_code_roots_bytes / num_eden_regions;
+  }
+
+  uint num_survivor_regions = g1h->survivor_regions_count();
+  size_t survivor_remset_bytes = g1h->survivor_remset()->mem_size();
+  size_t survivor_code_roots_bytes = g1h->survivor_remset()->code_roots_mem_size();
+
+  if (num_survivor_regions > 0) {
+    _survivor_remset_bytes_per_region = survivor_remset_bytes / num_survivor_regions;
+    _survivor_code_roots_bytes_per_region = survivor_code_roots_bytes / num_survivor_regions;
+  }
 
   // Print the header of the output.
   log_trace(gc, liveness)(G1PPRL_LINE_PREFIX" PHASE %s @ %1.3f", phase_name, now);
@@ -3032,6 +3054,14 @@ bool G1PrintRegionLivenessInfoClosure::do_heap_region(HeapRegion* r) {
   size_t code_roots_bytes = r->rem_set()->code_roots_mem_size();
   const char* remset_type = r->rem_set()->get_short_state_str();
   FormatBuffer<16> gc_efficiency("");
+
+  if (r->is_eden()) {
+    remset_bytes = _eden_remset_bytes_per_region;
+    code_roots_bytes = _eden_code_roots_bytes_per_region;
+  } else if (r->is_survivor()) {
+    remset_bytes = _survivor_remset_bytes_per_region;
+    code_roots_bytes = _survivor_code_roots_bytes_per_region;
+  }
 
   _total_used_bytes      += used_bytes;
   _total_capacity_bytes  += capacity_bytes;

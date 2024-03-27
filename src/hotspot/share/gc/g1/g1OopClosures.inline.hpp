@@ -50,6 +50,12 @@ inline void G1ScanClosureBase::prefetch_and_push(T* p, const oop obj) {
   // stall. We'll try to prefetch the object (for write, given that
   // we might need to install the forwarding reference) and we'll
   // get back to it when pop it from the queue
+
+  // Get the klass once.  We'll need it again later, and this avoids
+  // re-decoding when it's compressed.
+  // Klass* volatile klass = obj->klass();
+  // const size_t word_sz = obj->size_given_klass(klass);
+
   Prefetch::write(obj->mark_addr(), 0);
   Prefetch::read(obj->mark_addr(), (HeapWordSize*2));
 

@@ -247,8 +247,7 @@ void G1FullCollector::complete_collection() {
   _heap->prepare_for_mutator_after_full_collection();
 
   _heap->resize_all_tlabs();
-
-  _heap->eden_remset()->clear(false, true);
+  _heap->eden_remset()->clear(false /* only_cardset */, true /* keep_tracked */);
   _heap->survivor_remset()->clear(false, true);
 
   _heap->policy()->record_full_collection_end();

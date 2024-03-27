@@ -139,6 +139,9 @@ void HeapRegion::clear_cardtable() {
 }
 
 double HeapRegion::calc_gc_efficiency() {
+  if (is_young() || is_free()) {
+    return -1.0;
+  }
   // GC efficiency is the ratio of how much space would be
   // reclaimed over how long we predict it would take to reclaim it.
   G1Policy* policy = G1CollectedHeap::heap()->policy();

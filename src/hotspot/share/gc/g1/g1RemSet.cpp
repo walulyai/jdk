@@ -1399,7 +1399,6 @@ public:
         g1h->prev_eden_remset()->iterate_for_merge(merge);
         g1h->prev_survivor_remset()->iterate_for_merge(merge);
 
-
         g1h->collection_set_iterate_increment_from(&combined, nullptr, worker_id);
         G1MergeCardSetStats stats = merge.stats();
 

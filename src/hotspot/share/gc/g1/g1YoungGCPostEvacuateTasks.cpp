@@ -672,7 +672,7 @@ public:
 
     G1Policy *policy = g1h->policy();
     policy->old_gen_alloc_tracker()->add_allocated_bytes_since_last_gc(_bytes_allocated_in_old_since_last_gc);
-    // FIXME: add the remsets from the youn regions
+    // FIXME: add the remsets from the young regions
     _card_rs_length += (g1h->prev_eden_remset()->occupied() + g1h->prev_survivor_remset()->occupied());
 
     policy->record_card_rs_length(_card_rs_length);
