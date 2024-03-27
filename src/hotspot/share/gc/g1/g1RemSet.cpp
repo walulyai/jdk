@@ -846,23 +846,6 @@ public:
   size_t opt_refs_memory_used() const { return _opt_refs_memory_used; }
 };
 
-void G1RemSet::scan_group_code_root_sets(G1ParScanThreadState* pss,
-                                           uint worker_id,
-                                           G1GCPhaseTimes::GCParPhases coderoots_phase,
-                                           G1GCPhaseTimes::GCParPhases objcopy_phase) {
-    Tickspan group_code_root_scan_time;
-    Tickspan group_code_trim_partially_time;
-    G1EvacPhaseWithTrimTimeTracker timer(pss, group_code_root_scan_time, group_code_trim_partially_time);
-    G1ScanAndCountCodeBlobClosure group_cl(pss->closures()->weak_codeblobs());
-    _g1h->prev_eden_remset()->code_roots_do(&group_cl);
-    _g1h->prev_survivor_remset()->code_roots_do(&group_cl);
-    
-    G1GCPhaseTimes* p = _g1h->phase_times();
-    p->record_or_add_time_secs(coderoots_phase, worker_id, group_code_root_scan_time.seconds());
-    p->record_or_add_thread_work_item(coderoots_phase, worker_id, group_cl.count(), G1GCPhaseTimes::CodeRootsScannedNMethods);
-    p->add_time_secs(objcopy_phase, worker_id, group_code_trim_partially_time.seconds());           
-}
-
 void G1RemSet::scan_collection_set_regions(G1ParScanThreadState* pss,
                                            uint worker_id,
                                            G1GCPhaseTimes::GCParPhases scan_phase,
@@ -1221,6 +1204,65 @@ class G1MergeHeapRootsTask : public WorkerTask {
     }
   };
 
+  template <typename Closure>
+  class G1ContainerCardsOrRanges {
+    Closure& _cl;
+    uint _region_idx;
+    uint _offset;
+
+  public:
+    G1ContainerCardsOrRanges(Closure& cl, uint region_idx, uint offset) : _cl(cl), _region_idx(region_idx), _offset(offset) { }
+
+    bool start_iterate(uint tag) {
+      return _cl.start_iterate(tag, _region_idx);
+    }
+
+    void operator()(uint card_idx) {
+      _cl.do_card(card_idx + _offset);
+    }
+
+    void operator()(uint card_idx, uint length) {
+      _cl.do_card_range(card_idx + _offset, length);
+    }
+  };
+  template <typename Closure, template <typename> class CardOrRanges>
+  class G1CardSetMergeCardClosure : public G1CardSet::ContainerPtrClosure {
+    G1CardSet* _card_set;
+    Closure& _cl;
+    uint _log_card_regions_per_region;
+    uint _card_regions_per_region_mask;
+    uint _log_card_region_size;
+
+  public:
+
+    G1CardSetMergeCardClosure(G1CardSet* card_set,
+                                        Closure& cl,
+                                        uint log_card_regions_per_region,
+                                        uint log_card_region_size) :
+      _card_set(card_set),
+      _cl(cl),
+      _log_card_regions_per_region(log_card_regions_per_region),
+      _card_regions_per_region_mask((1 << log_card_regions_per_region) - 1),
+      _log_card_region_size(log_card_region_size) {
+    }
+
+    void do_containerptr(uint card_region_idx, size_t num_occupied, G1CardSet::ContainerPtr container) override {
+      CardOrRanges<Closure> cl(_cl,
+                              card_region_idx >> _log_card_regions_per_region,
+                              (card_region_idx & _card_regions_per_region_mask) << _log_card_region_size);
+      _card_set->iterate_cards_or_ranges_in_container(container, cl);
+    }
+  };
+
+template <class CardOrRangeVisitor>
+inline void cardset_iterate_for_merge(G1CardSet* card_set, CardOrRangeVisitor& cl) {
+  G1CardSetMergeCardClosure<CardOrRangeVisitor, G1ContainerCardsOrRanges> cl2(card_set,
+                                                                              cl,
+                                                                              card_set->config()->log2_card_regions_per_heap_region(),
+                                                                              card_set->config()->log2_cards_per_card_region());
+  card_set->iterate_containers(&cl2, true /* at_safepoint */);
+}
+
   // Visitor for the log buffer entries to merge them into the card table.
   class G1MergeLogBufferCardsClosure : public G1CardTableEntryClosure {
 
@@ -1359,6 +1401,7 @@ public:
       FREE_C_HEAP_ARRAY(Stack, _dirty_card_buffers);
     }
   }
+
   virtual void work(uint worker_id) {
     G1CollectedHeap* g1h = G1CollectedHeap::heap();
     G1GCPhaseTimes* p = g1h->phase_times();
@@ -1396,8 +1439,17 @@ public:
         G1ClearBitmapClosure clear(g1h);
         G1CombinedClosure combined(&merge, &clear);
 
-        g1h->prev_eden_remset()->iterate_for_merge(merge);
-        g1h->prev_survivor_remset()->iterate_for_merge(merge);
+        if (_initial_evacuation) {
+          cardset_iterate_for_merge(g1h->prev_young_regions_cardset(), merge);
+          if (worker_id == 0) {
+            log_debug(gc) ("g1h->prev_young_regions_cardset(): %zu", g1h->prev_young_regions_cardset()->occupied());
+          }
+        }
+        /*G1MergeCardSetStats stats1 = merge.stats();
+
+        for (uint i = 0; i < G1GCPhaseTimes::MergeRSContainersSentinel; i++) {
+          log_debug(gc)("%u -> %zu of %u", worker_id, stats1.merged(i), i);
+        }*/
 
         g1h->collection_set_iterate_increment_from(&combined, nullptr, worker_id);
         G1MergeCardSetStats stats = merge.stats();

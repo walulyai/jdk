@@ -108,11 +108,11 @@ public:
 
 template <class CardOrRangeVisitor>
 inline void HeapRegionRemSet::iterate_for_merge(CardOrRangeVisitor& cl) {
-  G1HeapRegionRemSetMergeCardClosure<CardOrRangeVisitor, G1ContainerCardsOrRanges> cl2(&_card_set,
+  G1HeapRegionRemSetMergeCardClosure<CardOrRangeVisitor, G1ContainerCardsOrRanges> cl2(_card_set,
                                                                                        cl,
-                                                                                       _card_set.config()->log2_card_regions_per_heap_region(),
-                                                                                       _card_set.config()->log2_cards_per_card_region());
-  _card_set.iterate_containers(&cl2, true /* at_safepoint */);
+                                                                                       _card_set->config()->log2_card_regions_per_heap_region(),
+                                                                                       _card_set->config()->log2_cards_per_card_region());
+  _card_set->iterate_containers(&cl2, true /* at_safepoint */);
 }
 
 
@@ -120,28 +120,28 @@ uintptr_t HeapRegionRemSet::to_card(OopOrNarrowOopStar from) const {
   return pointer_delta(from, _heap_base_address, 1) >> CardTable::card_shift();
 }
 
-void HeapRegionRemSet::add_reference(OopOrNarrowOopStar from, HeapRegion* to, uint tid) {
+void HeapRegionRemSet::add_reference(OopOrNarrowOopStar from, uint tid) {
   assert(_state != Untracked, "must be");
 
-  uint cur_idx = to->hrm_index();
+  uint cur_idx = _hr->hrm_index();
   uintptr_t from_card = uintptr_t(from) >> CardTable::card_shift();
 
-  if (_hr != nullptr && G1FromCardCache::contains_or_replace(tid, cur_idx, from_card)) {
+  if (G1FromCardCache::contains_or_replace(tid, cur_idx, from_card)) {
     // We can't check whether the card is in the remembered set - the card container
     // may be coarsened just now.
     //assert(contains_reference(from), "We just found " PTR_FORMAT " in the FromCardCache", p2i(from));
     return;
   }
 
-  _card_set.add_card(to_card(from));
+  _card_set->add_card(to_card(from));
 }
 
 bool HeapRegionRemSet::contains_reference(OopOrNarrowOopStar from) {
-  return _card_set.contains_card(to_card(from));
+  return _card_set->contains_card(to_card(from));
 }
 
 void HeapRegionRemSet::print_info(outputStream* st, OopOrNarrowOopStar from) {
-  _card_set.print_info(st, to_card(from));
+  _card_set->print_info(st, to_card(from));
 }
 
 #endif // SHARE_VM_GC_G1_G1HEAPREGIONREMSET_INLINE_HPP

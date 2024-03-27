@@ -961,7 +961,7 @@ class G1PrintRegionLivenessInfoClosure : public HeapRegionClosure {
   // Accumulator for code roots memory size
   size_t _total_code_roots_bytes;
 
-  size_t _eden_remset_bytes_per_region;
+  size_t _young_remset_bytes_per_region;
   size_t _eden_code_roots_bytes_per_region;
 
   size_t _survivor_remset_bytes_per_region;

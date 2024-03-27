@@ -704,20 +704,6 @@ public:
   { }
 };
 
-class G1EvacuateGroupCodeRootSets: public WorkerTask {
-  G1ParScanThreadStateSet* _per_thread_states;
-public:
-  G1EvacuateGroupCodeRootSets(const char* name, G1ParScanThreadStateSet* per_thread_states) :
-    WorkerTask(name),
-    _per_thread_states(per_thread_states) 
-  { }
-  
-  void work(uint worker_id) {
-    G1ParScanThreadState* pss = _per_thread_states->state_for_worker(worker_id);
-    G1CollectedHeap::heap()->rem_set()->scan_group_code_root_sets(pss, worker_id,  G1GCPhaseTimes::CodeRoots, G1GCPhaseTimes::ObjCopy);
-  }
-};
-
 void G1YoungCollector::evacuate_initial_collection_set(G1ParScanThreadStateSet* per_thread_states,
                                                       bool has_optional_evacuation_work) {
   G1GCPhaseTimes* p = phase_times();
@@ -729,7 +715,6 @@ void G1YoungCollector::evacuate_initial_collection_set(G1ParScanThreadStateSet* 
   }
 
   Tickspan task_time;
-  Tickspan code_roots_time;
   const uint num_workers = workers()->active_workers();
 
   Ticks start_processing = Ticks::now();
@@ -742,10 +727,6 @@ void G1YoungCollector::evacuate_initial_collection_set(G1ParScanThreadStateSet* 
                                       num_workers,
                                       has_optional_evacuation_work);
     task_time = run_task_timed(&g1_par_task);
-
-    // TODO: add comments
-    G1EvacuateGroupCodeRootSets code_root_sets_task("G1 Evacuate Group Code Roots", per_thread_states);
-    task_time += run_task_timed(&code_root_sets_task);
     // Closing the inner scope will execute the destructor for the
     // G1RootProcessor object. By subtracting the WorkerThreads task from the total
     // time of this scope, we get the "NMethod List Cleanup" time. This list is

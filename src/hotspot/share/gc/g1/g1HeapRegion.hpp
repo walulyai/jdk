@@ -36,6 +36,7 @@
 #include "runtime/mutex.hpp"
 #include "utilities/macros.hpp"
 
+class G1CardSet;
 class G1CardSetConfiguration;
 class G1CollectedHeap;
 class G1CMBitMap;
@@ -201,7 +202,6 @@ public:
 private:
   // The remembered set for this region.
   HeapRegionRemSet* _rem_set;
-  HeapRegionRemSet* _saved_rem_set;
 
   // Cached index of this region in the heap region sequence.
   const uint _hrm_index;
@@ -430,10 +430,6 @@ public:
     return _rem_set;
   }
 
-  bool has_group_rem_set() const {
-    return _saved_rem_set != nullptr;
-  }
-
   inline bool in_collection_set() const;
 
   inline const char* collection_set_candidate_short_type_str() const;
@@ -520,8 +516,8 @@ public:
   void install_surv_rate_group(G1SurvRateGroup* surv_rate_group);
   void uninstall_surv_rate_group();
 
-  void install_group_remset(HeapRegionRemSet* group_remset);
-  void uninstall_group_remset();
+  void install_group_cardset(G1CardSet* group_cardset);
+  void uninstall_group_cardset();
 
   void record_surv_words_in_group(size_t words_survived);
 

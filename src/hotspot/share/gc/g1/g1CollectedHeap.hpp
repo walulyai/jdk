@@ -785,28 +785,25 @@ private:
   // The g1 remembered set of the heap.
   G1RemSet* _rem_set;
 
-  // Group remsets
-  HeapRegionRemSet* _eden_remset;
-  HeapRegionRemSet* _survivor_remset;
-
-  HeapRegionRemSet* _prev_eden_remset;
-  HeapRegionRemSet* _prev_survivor_remset;
 
   // Global card set configuration
   G1CardSetConfiguration _card_set_config;
 
   G1MonotonicArenaFreePool _card_set_freelist_pool;
+  // Group remsets
+  G1CardSetMemoryManager _card_set_mm;
+  G1CardSet* _young_regions_cardset;
+
+  G1CardSet* _prev_young_regions_cardset;
 
 public:
   G1CardSetConfiguration* card_set_config() { return &_card_set_config; }
 
-  HeapRegionRemSet* prev_eden_remset() { return _prev_eden_remset; };
-  HeapRegionRemSet* prev_survivor_remset() { return _prev_survivor_remset; };
+  G1CardSet* prev_young_regions_cardset() { return _prev_young_regions_cardset; };
 
-  HeapRegionRemSet* eden_remset() { return _eden_remset; };
-  HeapRegionRemSet* survivor_remset() { return _survivor_remset; };
+  G1CardSet* young_regions_cardset() { return _young_regions_cardset; };
 
-  void free_prev_remsets();
+  void free_prev_cardsets();
 
   void prepare_group_remsets_for_scan ();
 

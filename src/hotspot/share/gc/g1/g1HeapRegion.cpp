@@ -119,7 +119,7 @@ void HeapRegion::hr_clear(bool clear_space) {
   clear_young_index_in_cset();
   clear_index_in_opt_cset();
   uninstall_surv_rate_group();
-  uninstall_group_remset();
+  uninstall_group_cardset();
   set_free();
   reset_pre_dummy_top();
 
@@ -213,7 +213,7 @@ void HeapRegion::clear_humongous() {
 }
 
 void HeapRegion::prepare_remset_for_scan() {
-  uninstall_group_remset();
+  uninstall_group_cardset();
   _rem_set->reset_table_scanner();
 }
 
@@ -227,7 +227,6 @@ HeapRegion::HeapRegion(uint hrm_index,
   _bot_part(bot, this),
   _pre_dummy_top(nullptr),
   _rem_set(nullptr),
-  _saved_rem_set(nullptr),
   _hrm_index(hrm_index),
   _type(),
   _humongous_start_region(nullptr),
@@ -348,7 +347,8 @@ public:
       VerifyCodeRootOopClosure oop_cl(_hr);
       nm->oops_do(&oop_cl);
       // FIXME: there might be better ways to handle this
-      if (!_hr->has_group_rem_set() && !oop_cl.has_oops_in_region()) {
+      // if (!_hr->has_group_rem_set() && !oop_cl.has_oops_in_region()) {
+      if (!oop_cl.has_oops_in_region()) {
         log_error(gc, verify)("region [" PTR_FORMAT "," PTR_FORMAT "] has nmethod " PTR_FORMAT " in its code roots with no pointers into region",
                               p2i(_hr->bottom()), p2i(_hr->end()), p2i(nm));
         _failures = true;

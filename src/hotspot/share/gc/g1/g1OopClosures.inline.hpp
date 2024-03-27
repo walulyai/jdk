@@ -50,12 +50,6 @@ inline void G1ScanClosureBase::prefetch_and_push(T* p, const oop obj) {
   // stall. We'll try to prefetch the object (for write, given that
   // we might need to install the forwarding reference) and we'll
   // get back to it when pop it from the queue
-
-  // Get the klass once.  We'll need it again later, and this avoids
-  // re-decoding when it's compressed.
-  // Klass* volatile klass = obj->klass();
-  // const size_t word_sz = obj->size_given_klass(klass);
-
   Prefetch::write(obj->mark_addr(), 0);
   Prefetch::read(obj->mark_addr(), (HeapWordSize*2));
 
@@ -152,12 +146,11 @@ inline void G1ConcurrentRefineOopClosure::do_oop_work(T* p) {
     return;
   }
 
-  HeapRegion* to = _g1h->heap_region_containing(obj);
-  HeapRegionRemSet* to_rem_set = to->rem_set();
+  HeapRegionRemSet* to_rem_set = _g1h->heap_region_containing(obj)->rem_set();
 
   assert(to_rem_set != nullptr, "Need per-region 'into' remsets.");
   if (to_rem_set->is_tracked()) {
-    to_rem_set->add_reference(p, to, _worker_id);
+    to_rem_set->add_reference(p, _worker_id);
   }
 }
 
@@ -275,7 +268,7 @@ template <class T> void G1RebuildRemSetClosure::do_oop_work(T* p) {
   HeapRegion* to = _g1h->heap_region_containing(obj);
   HeapRegionRemSet* rem_set = to->rem_set();
   if (rem_set->is_tracked()) {
-    rem_set->add_reference(p, to, _worker_id);
+    rem_set->add_reference(p, _worker_id);
   }
 }
 
