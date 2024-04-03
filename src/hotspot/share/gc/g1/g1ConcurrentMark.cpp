@@ -2973,10 +2973,7 @@ G1PrintRegionLivenessInfoClosure::G1PrintRegionLivenessInfoClosure(const char* p
   _total_live_bytes(0),
   _total_remset_bytes(0),
   _total_code_roots_bytes(0),
-  _young_remset_bytes_per_region(0),
-  _eden_code_roots_bytes_per_region(0),
-  _survivor_remset_bytes_per_region(0),
-  _survivor_code_roots_bytes_per_region(0)
+  _young_remset_bytes_per_region(0)
 {
   if (!log_is_enabled(Trace, gc, liveness)) {
     return;
