@@ -1391,15 +1391,7 @@ public:
 
         if (_initial_evacuation) {
           cardset_iterate_for_merge(g1h->prev_young_regions_cardset(), merge);
-          if (worker_id == 0) {
-            log_debug(gc) ("g1h->prev_young_regions_cardset(): %zu", g1h->prev_young_regions_cardset()->occupied());
-          }
         }
-        /*G1MergeCardSetStats stats1 = merge.stats();
-
-        for (uint i = 0; i < G1GCPhaseTimes::MergeRSContainersSentinel; i++) {
-          log_debug(gc)("%u -> %zu of %u", worker_id, stats1.merged(i), i);
-        }*/
 
         g1h->collection_set_iterate_increment_from(&combined, nullptr, worker_id);
         G1MergeCardSetStats stats = merge.stats();
