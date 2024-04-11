@@ -347,7 +347,7 @@ public:
   }
 
   void reset_table_scanner() {
-    _table_scanner.set(&_table, BucketClaimSize);
+    reset_table_scanner(BucketClaimSize);
   }
 
   void reset_table_scanner(uint claim_size) {

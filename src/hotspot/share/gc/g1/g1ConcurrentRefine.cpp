@@ -297,7 +297,6 @@ void G1ConcurrentRefine::adjust_young_list_target_length() {
     size_t sampled_card_rs_length = cl.sampled_card_rs_length() +
                                     g1h->young_regions_cardset()->occupied();
 
-
     size_t sampled_code_root_rs_length = cl.sampled_code_root_rs_length();
 
     _policy->revise_young_list_target_length(sampled_card_rs_length, sampled_code_root_rs_length);

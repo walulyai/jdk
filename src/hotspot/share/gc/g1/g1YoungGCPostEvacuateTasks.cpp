@@ -672,7 +672,8 @@ public:
 
     G1Policy *policy = g1h->policy();
     policy->old_gen_alloc_tracker()->add_allocated_bytes_since_last_gc(_bytes_allocated_in_old_since_last_gc);
-    // FIXME: add the remsets from the young regions
+
+    // Add the cards from the young regions group cardset.
     _card_rs_length += g1h->prev_young_regions_cardset()->occupied();
 
     policy->record_card_rs_length(_card_rs_length);
@@ -903,7 +904,6 @@ public:
       candidates->sort_by_efficiency();
     }
 
-    // FIXME: should be called before _remset()->clear()s below
     report_statistics();
     for (uint worker = 0; worker < _active_workers; worker++) {
       _worker_stats[worker].~FreeCSetStats();
@@ -917,7 +917,7 @@ public:
 
     _g1h->prev_young_regions_cardset()->clear();
 
-    _g1h->free_prev_cardsets();
+    _g1h->free_prev_group_cardsets();
   }
 
   double worker_cost() const override { return G1CollectedHeap::heap()->collection_set()->region_length(); }

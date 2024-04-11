@@ -2973,7 +2973,7 @@ G1PrintRegionLivenessInfoClosure::G1PrintRegionLivenessInfoClosure(const char* p
   _total_live_bytes(0),
   _total_remset_bytes(0),
   _total_code_roots_bytes(0),
-  _young_remset_bytes_per_region(0)
+  _young_cardset_bytes_per_region(0)
 {
   if (!log_is_enabled(Trace, gc, liveness)) {
     return;
@@ -2984,10 +2984,10 @@ G1PrintRegionLivenessInfoClosure::G1PrintRegionLivenessInfoClosure(const char* p
   double now = os::elapsedTime();
 
   uint num_young_regions = g1h->young_regions_count();
-  size_t young_remset_bytes = g1h->young_regions_cardset()->mem_size();
+  size_t young_cardset_bytes = g1h->young_regions_cardset()->mem_size();
 
   if (num_young_regions > 0) {
-    _young_remset_bytes_per_region = young_remset_bytes / num_young_regions;
+    _young_cardset_bytes_per_region = young_cardset_bytes / num_young_regions;
   }
 
   // Print the header of the output.
@@ -3042,7 +3042,7 @@ bool G1PrintRegionLivenessInfoClosure::do_heap_region(HeapRegion* r) {
   FormatBuffer<16> gc_efficiency("");
 
   if (r->is_young()) {
-    remset_bytes = _young_remset_bytes_per_region;
+    remset_bytes = _young_cardset_bytes_per_region;
   }
 
   _total_used_bytes      += used_bytes;

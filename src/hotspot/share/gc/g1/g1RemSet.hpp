@@ -118,11 +118,6 @@ public:
                                    G1GCPhaseTimes::GCParPhases coderoots_phase,
                                    G1GCPhaseTimes::GCParPhases objcopy_phase);
 
-  void scan_group_code_root_sets(G1ParScanThreadState* pss,
-                                 uint worker_id,
-                                 G1GCPhaseTimes::GCParPhases coderoots_phase,
-                                 G1GCPhaseTimes::GCParPhases objcopy_phase);
-
   // Two methods for concurrent refinement support, executed concurrently to
   // the mutator:
   // Cleans the card at "*card_ptr_addr" before refinement, returns true iff the

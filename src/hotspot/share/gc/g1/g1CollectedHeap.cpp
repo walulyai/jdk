@@ -2927,7 +2927,7 @@ HeapRegion* G1CollectedHeap::new_gc_alloc_region(size_t word_size, G1HeapRegionA
       _survivor.add(new_alloc_region);
       register_new_survivor_region_with_region_attr(new_alloc_region);
 
-      // TODO: Install the general remset
+      // Install the group cardset.
       new_alloc_region->install_group_cardset(young_regions_cardset());
     } else {
       new_alloc_region->set_old();
@@ -3085,18 +3085,17 @@ void G1CollectedHeap::finish_codecache_marking_cycle() {
   CodeCache::arm_all_nmethods();
 }
 
-void G1CollectedHeap::free_prev_cardsets() {
-    delete _prev_young_regions_cardset;
+void G1CollectedHeap::free_prev_group_cardsets() {
+  delete _prev_young_regions_cardset;
 
-    _prev_young_regions_cardset = nullptr;
-  }
+  _prev_young_regions_cardset = nullptr;
+}
 
-void G1CollectedHeap::prepare_group_remsets_for_scan () {
-    _young_regions_cardset->reset_table_scanner(4);
+void G1CollectedHeap::prepare_group_cardsets_for_scan () {
+  _young_regions_cardset->reset_table_scanner(4);
 
-    // TODO: assert nulls
-    _prev_young_regions_cardset = _young_regions_cardset;
+  assert(_prev_young_regions_cardset == nullptr, "Must be!");
+  _prev_young_regions_cardset = _young_regions_cardset;
 
-    _young_regions_cardset = new G1CardSet(card_set_config(), &_card_set_mm);
-  }
-
+  _young_regions_cardset = new G1CardSet(card_set_config(), &_card_set_mm);
+}
