@@ -80,6 +80,10 @@ public:
     }
   }
 
+  bool has_group_cardset() {
+    return _saved_card_set != nullptr;
+  }
+
   bool is_empty() const {
     return (code_roots_list_length() == 0) && cardset_is_empty();
   }
