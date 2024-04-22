@@ -1075,7 +1075,7 @@ class G1MergeHeapRootsTask : public WorkerTask {
       assert(r->in_collection_set() || r->is_starts_humongous(), "must be");
 
       HeapRegionRemSet* rem_set = r->rem_set();
-      if (!r->is_young() && !rem_set->is_empty()) {
+      if (!rem_set->is_empty()) {
         rem_set->iterate_for_merge(*this);
       }
     }
@@ -1084,7 +1084,10 @@ class G1MergeHeapRootsTask : public WorkerTask {
       assert(r->in_collection_set(), "must be");
 
       _scan_state->add_all_dirty_region(r->hrm_index());
-      merge_card_set_for_region(r);
+
+      if (!r->is_young()) {
+        merge_card_set_for_region(r);
+      }
 
       return false;
     }
