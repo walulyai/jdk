@@ -39,6 +39,7 @@
 
 inline void G1AllocRegion::reset_alloc_region() {
   _alloc_region = _dummy_region;
+  _used_bytes_before = 0;
 }
 
 inline HeapWord* G1AllocRegion::allocate(HeapRegion* alloc_region,
@@ -100,13 +101,13 @@ inline HeapWord* G1AllocRegion::attempt_allocation_using_new_region(size_t min_w
                                                                     size_t desired_word_size,
                                                                     size_t* actual_word_size) {
   HeapRegion* prev_region = get();
-
+  size_t used_bytes_before = _used_bytes_before;
   reset_alloc_region();
 
   HeapWord* result = new_alloc_region_and_allocate(desired_word_size, false /* force */);
 
   if (prev_region != nullptr) {
-    retire(prev_region, true /* fill_up */);
+    retire(prev_region, used_bytes_before, true /* fill_up */);
   }
 
   if (result != nullptr) {

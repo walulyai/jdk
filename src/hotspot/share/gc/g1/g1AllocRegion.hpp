@@ -125,9 +125,9 @@ protected:
   // sure that the region is full before we retire it so that no one
   // else can allocate out of it.
   // Returns the number of bytes that have been filled up during retire.
-  virtual size_t retire(HeapRegion* retired_region, bool fill_up);
+  virtual size_t retire(HeapRegion* retired_region, size_t used_bytes_before, bool fill_up);
 
-  size_t retire_internal(HeapRegion* alloc_region, bool fill_up);
+  size_t retire_internal(HeapRegion* alloc_region, size_t used_bytes_before, bool fill_up);
 
   // For convenience as subclasses use it.
   static G1CollectedHeap* _g1h;
@@ -209,13 +209,15 @@ private:
   // in a region about to be retired still could fit a TLAB.
   HeapRegion* volatile _retained_alloc_region;
 
+  size_t _retained_used_bytes_before;
+
   // Decide if the region should be retained, based on the free size
   // in it and the free size in the currently retained region, if any.
   bool should_retain(HeapRegion* region);
 protected:
   HeapRegion* allocate_new_region(size_t word_size, bool force) override;
   void retire_region(HeapRegion* alloc_region, size_t allocated_bytes) override;
-  size_t retire(HeapRegion* retired_region, bool fill_up) override;
+  size_t retire(HeapRegion* retired_region, size_t used_bytes_before, bool fill_up) override;
 public:
   MutatorAllocRegion(uint node_index)
     : G1AllocRegion("Mutator Alloc Region", false /* bot_updates */, node_index),
@@ -252,7 +254,7 @@ protected:
   HeapRegion* allocate_new_region(size_t word_size, bool force) override;
   void retire_region(HeapRegion* alloc_region, size_t allocated_bytes) override;
 
-  size_t retire(HeapRegion* retired_region, bool fill_up) override;
+  size_t retire(HeapRegion* retired_region, size_t used_bytes_before, bool fill_up) override;
 
   G1GCAllocRegion(const char* name, bool bot_updates, G1EvacStats* stats,
                   G1HeapRegionAttr::region_type_t purpose, uint node_index = G1NUMA::AnyNodeIndex) :

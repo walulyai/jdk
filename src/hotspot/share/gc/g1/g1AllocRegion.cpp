@@ -94,7 +94,7 @@ size_t G1AllocRegion::fill_up_remaining_space(HeapRegion* alloc_region) {
   return result;
 }
 
-size_t G1AllocRegion::retire_internal(HeapRegion* alloc_region, bool fill_up) {
+size_t G1AllocRegion::retire_internal(HeapRegion* alloc_region, size_t used_bytes_before, bool fill_up) {
   // We never have to check whether the active region is empty or not,
   // and potentially free it if it is, given that it's guaranteed that
   // it will never be empty.
@@ -106,22 +106,21 @@ size_t G1AllocRegion::retire_internal(HeapRegion* alloc_region, bool fill_up) {
     waste = fill_up_remaining_space(alloc_region);
   }
 
-  assert_alloc_region(alloc_region->used() >= _used_bytes_before, "invariant");
-  size_t allocated_bytes = alloc_region->used() - _used_bytes_before;
+  assert_alloc_region(alloc_region->used() >= used_bytes_before, "invariant");
+  size_t allocated_bytes = alloc_region->used() - used_bytes_before;
   retire_region(alloc_region, allocated_bytes);
-  _used_bytes_before = 0;
 
   return waste;
 }
 
-size_t G1AllocRegion::retire(HeapRegion* alloc_region, bool fill_up) {
+size_t G1AllocRegion::retire(HeapRegion* alloc_region, size_t used_bytes_before, bool fill_up) {
   assert_alloc_region(alloc_region != nullptr && alloc_region != _dummy_region, "not initialized properly");
 
   size_t waste = 0;
 
   trace("retiring");
   if (alloc_region != _dummy_region) {
-    waste = retire_internal(alloc_region, fill_up);
+    waste = retire_internal(alloc_region, used_bytes_before, fill_up);
   }
   trace("retired");
 
@@ -195,7 +194,7 @@ HeapRegion* G1AllocRegion::release() {
   trace("releasing");
   HeapRegion* alloc_region = get();
   if (alloc_region != nullptr) {
-    retire(alloc_region, false /* fill_up */);
+    retire(alloc_region, _used_bytes_before, false /* fill_up */);
   }
   reset_alloc_region();
   assert_alloc_region(_alloc_region == _dummy_region, "post-condition of retire()");
@@ -289,7 +288,7 @@ bool MutatorAllocRegion::should_retain(HeapRegion* region) {
   return true;
 }
 
-size_t MutatorAllocRegion::retire(HeapRegion* current_region, bool fill_up) {
+size_t MutatorAllocRegion::retire(HeapRegion* current_region, size_t used_bytes_before, bool fill_up) {
   size_t waste = 0;
   trace("retiring");
   if (current_region != nullptr) {
@@ -298,11 +297,12 @@ size_t MutatorAllocRegion::retire(HeapRegion* current_region, bool fill_up) {
     if (should_retain(current_region)) {
       trace("mutator retained");
       if (_retained_alloc_region != nullptr) {
-        waste = retire_internal(_retained_alloc_region, true);
+        waste = retire_internal(_retained_alloc_region, _retained_used_bytes_before, true);
       }
       _retained_alloc_region = current_region;
+      _retained_used_bytes_before = used_bytes_before;
     } else {
-      waste = retire_internal(current_region, fill_up);
+      waste = retire_internal(current_region, used_bytes_before, fill_up);
     }
   }
 
@@ -332,8 +332,9 @@ HeapRegion* MutatorAllocRegion::release() {
   // done after the above call to release the mutator alloc region,
   // since it might update the _retained_alloc_region member.
   if (_retained_alloc_region != nullptr) {
-    _wasted_bytes += retire_internal(_retained_alloc_region, false);
+    _wasted_bytes += retire_internal(_retained_alloc_region, _retained_used_bytes_before, false);
     _retained_alloc_region = nullptr;
+    _retained_used_bytes_before = 0;
   }
   log_debug(gc, alloc, region)("Mutator Allocation stats, regions: %u, wasted size: " SIZE_FORMAT "%s (%4.1f%%)",
                                count(),
@@ -355,8 +356,8 @@ void G1GCAllocRegion::retire_region(HeapRegion* alloc_region,
   _g1h->retire_gc_alloc_region(alloc_region, allocated_bytes, _purpose);
 }
 
-size_t G1GCAllocRegion::retire(HeapRegion* retired_region, bool fill_up) {
-  size_t end_waste = G1AllocRegion::retire(retired_region, fill_up);
+size_t G1GCAllocRegion::retire(HeapRegion* retired_region, size_t used_bytes_before, bool fill_up) {
+  size_t end_waste = G1AllocRegion::retire(retired_region, used_bytes_before, fill_up);
   // Do not count retirement of the dummy allocation region.
   if (retired_region != nullptr) {
     _stats->add_region_end_waste(end_waste / HeapWordSize);
