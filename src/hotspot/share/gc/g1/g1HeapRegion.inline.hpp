@@ -227,7 +227,26 @@ inline void HeapRegion::apply_to_marked_objects(G1CMBitMap* bitmap, ApplyToMarke
 inline HeapWord* HeapRegion::par_allocate(size_t min_word_size,
                                           size_t desired_word_size,
                                           size_t* actual_word_size) {
-  return par_allocate_impl(min_word_size, desired_word_size, actual_word_size);
+  HeapWord* obj = top();
+  do {
+    size_t available = pointer_delta(end(), obj);
+    size_t want_to_allocate = MIN2(available, desired_word_size);
+    if (want_to_allocate >= min_word_size) {
+      HeapWord* new_top = obj + want_to_allocate;
+      HeapWord* result = Atomic::cmpxchg(&_top, obj, new_top);
+      // result can be one of two:
+      // the old top value: the exchange succeeded
+      // otherwise: the new value of the top is returned.
+      if (result == obj) {
+        assert(is_object_aligned(obj) && is_object_aligned(new_top), "checking alignment");
+        *actual_word_size = want_to_allocate;
+        return obj;
+      }
+      obj = result;
+    } else {
+      return nullptr;
+    }
+  } while (true);
 }
 
 inline HeapWord* HeapRegion::allocate(size_t word_size) {
@@ -238,7 +257,18 @@ inline HeapWord* HeapRegion::allocate(size_t word_size) {
 inline HeapWord* HeapRegion::allocate(size_t min_word_size,
                                       size_t desired_word_size,
                                       size_t* actual_word_size) {
-  return allocate_impl(min_word_size, desired_word_size, actual_word_size);
+  HeapWord* obj = top();
+  size_t available = pointer_delta(end(), obj);
+  size_t want_to_allocate = MIN2(available, desired_word_size);
+  if (want_to_allocate >= min_word_size) {
+    HeapWord* new_top = obj + want_to_allocate;
+    set_top(new_top);
+    assert(is_object_aligned(obj) && is_object_aligned(new_top), "checking alignment");
+    *actual_word_size = want_to_allocate;
+    return obj;
+  } else {
+    return nullptr;
+  }
 }
 
 inline void HeapRegion::update_bot() {

@@ -125,7 +125,7 @@ protected:
   // sure that the region is full before we retire it so that no one
   // else can allocate out of it.
   // Returns the number of bytes that have been filled up during retire.
-  virtual size_t retire(bool fill_up);
+  virtual size_t retire(HeapRegion* retired_region, bool fill_up);
 
   size_t retire_internal(HeapRegion* alloc_region, bool fill_up);
 
@@ -213,9 +213,9 @@ private:
   // in it and the free size in the currently retained region, if any.
   bool should_retain(HeapRegion* region);
 protected:
-  virtual HeapRegion* allocate_new_region(size_t word_size, bool force);
-  virtual void retire_region(HeapRegion* alloc_region, size_t allocated_bytes);
-  virtual size_t retire(bool fill_up);
+  HeapRegion* allocate_new_region(size_t word_size, bool force) override;
+  void retire_region(HeapRegion* alloc_region, size_t allocated_bytes) override;
+  size_t retire(HeapRegion* retired_region, bool fill_up) override;
 public:
   MutatorAllocRegion(uint node_index)
     : G1AllocRegion("Mutator Alloc Region", false /* bot_updates */, node_index),
@@ -249,14 +249,17 @@ protected:
   G1EvacStats* _stats;
   G1HeapRegionAttr::region_type_t _purpose;
 
-  virtual HeapRegion* allocate_new_region(size_t word_size, bool force);
-  virtual void retire_region(HeapRegion* alloc_region, size_t allocated_bytes);
+  HeapRegion* allocate_new_region(size_t word_size, bool force) override;
+  void retire_region(HeapRegion* alloc_region, size_t allocated_bytes) override;
 
-  virtual size_t retire(bool fill_up);
+  size_t retire(HeapRegion* retired_region, bool fill_up) override;
 
   G1GCAllocRegion(const char* name, bool bot_updates, G1EvacStats* stats,
-                  G1HeapRegionAttr::region_type_t purpose, uint node_index = G1NUMA::AnyNodeIndex)
-  : G1AllocRegion(name, bot_updates, node_index), _stats(stats), _purpose(purpose) {
+                  G1HeapRegionAttr::region_type_t purpose, uint node_index = G1NUMA::AnyNodeIndex) :
+    G1AllocRegion(name, bot_updates, node_index),
+    _stats(stats),
+    _purpose(purpose)
+  {
     assert(stats != nullptr, "Must pass non-null PLAB statistics");
   }
 };

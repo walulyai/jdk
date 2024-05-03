@@ -114,16 +114,14 @@ size_t G1AllocRegion::retire_internal(HeapRegion* alloc_region, bool fill_up) {
   return waste;
 }
 
-size_t G1AllocRegion::retire(bool fill_up) {
-  assert_alloc_region(_alloc_region != nullptr, "not initialized properly");
+size_t G1AllocRegion::retire(HeapRegion* alloc_region, bool fill_up) {
+  assert_alloc_region(alloc_region != nullptr && alloc_region != _dummy_region, "not initialized properly");
 
   size_t waste = 0;
 
   trace("retiring");
-  HeapRegion* alloc_region = _alloc_region;
   if (alloc_region != _dummy_region) {
     waste = retire_internal(alloc_region, fill_up);
-    reset_alloc_region();
   }
   trace("retired");
 
@@ -141,7 +139,7 @@ HeapWord* G1AllocRegion::new_alloc_region_and_allocate(size_t word_size,
     new_alloc_region->reset_pre_dummy_top();
     // Need to do this before the allocation
     _used_bytes_before = new_alloc_region->used();
-    HeapWord* result = allocate(new_alloc_region, word_size);
+    HeapWord* result = new_alloc_region->allocate(word_size);
     assert_alloc_region(result != nullptr, "the allocation should succeeded");
 
     OrderAccess::storestore();
@@ -195,8 +193,11 @@ void G1AllocRegion::update_alloc_region(HeapRegion* alloc_region) {
 
 HeapRegion* G1AllocRegion::release() {
   trace("releasing");
-  HeapRegion* alloc_region = _alloc_region;
-  retire(false /* fill_up */);
+  HeapRegion* alloc_region = get();
+  if (alloc_region != nullptr) {
+    retire(alloc_region, false /* fill_up */);
+  }
+  reset_alloc_region();
   assert_alloc_region(_alloc_region == _dummy_region, "post-condition of retire()");
   _alloc_region = nullptr;
   trace("released");
@@ -288,10 +289,9 @@ bool MutatorAllocRegion::should_retain(HeapRegion* region) {
   return true;
 }
 
-size_t MutatorAllocRegion::retire(bool fill_up) {
+size_t MutatorAllocRegion::retire(HeapRegion* current_region, bool fill_up) {
   size_t waste = 0;
   trace("retiring");
-  HeapRegion* current_region = get();
   if (current_region != nullptr) {
     // Retain the current region if it fits a TLAB and has more
     // free than the currently retained region.
@@ -304,7 +304,6 @@ size_t MutatorAllocRegion::retire(bool fill_up) {
     } else {
       waste = retire_internal(current_region, fill_up);
     }
-    reset_alloc_region();
   }
 
   _wasted_bytes += waste;
@@ -352,14 +351,14 @@ HeapRegion* G1GCAllocRegion::allocate_new_region(size_t word_size,
 
 void G1GCAllocRegion::retire_region(HeapRegion* alloc_region,
                                     size_t allocated_bytes) {
+  assert(alloc_region != nullptr, "must not be!");
   _g1h->retire_gc_alloc_region(alloc_region, allocated_bytes, _purpose);
 }
 
-size_t G1GCAllocRegion::retire(bool fill_up) {
-  HeapRegion* retired = get();
-  size_t end_waste = G1AllocRegion::retire(fill_up);
+size_t G1GCAllocRegion::retire(HeapRegion* retired_region, bool fill_up) {
+  size_t end_waste = G1AllocRegion::retire(retired_region, fill_up);
   // Do not count retirement of the dummy allocation region.
-  if (retired != nullptr) {
+  if (retired_region != nullptr) {
     _stats->add_region_end_waste(end_waste / HeapWordSize);
   }
   return end_waste;
