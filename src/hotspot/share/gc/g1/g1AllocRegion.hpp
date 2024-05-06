@@ -232,9 +232,9 @@ public:
 
   // This specialization of release() makes sure that the retained alloc
   // region is retired and set to null.
-  virtual HeapRegion* release();
+  HeapRegion* release() override;
 
-  virtual void init();
+  void init() override;
 };
 
 // Common base class for allocation regions used during GC.
