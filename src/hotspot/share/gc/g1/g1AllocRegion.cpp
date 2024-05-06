@@ -119,9 +119,7 @@ size_t G1AllocRegion::retire(HeapRegion* alloc_region, size_t used_bytes_before,
   size_t waste = 0;
 
   trace("retiring");
-  if (alloc_region != _dummy_region) {
-    waste = retire_internal(alloc_region, used_bytes_before, fill_up);
-  }
+  waste = retire_internal(alloc_region, used_bytes_before, fill_up);
   trace("retired");
 
   return waste;

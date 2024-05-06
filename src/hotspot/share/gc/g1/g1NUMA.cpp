@@ -146,8 +146,6 @@ uint G1NUMA::index_of_current_thread() const {
   Thread* thr = Thread::current();
   int group_id = thr->lgrp_id();
 
-  log_error(gc) ("Group id %d", group_id);
-
   if (group_id == -1 || !os::numa_has_group_homing()) {
     group_id = os::numa_get_group_id();
     thr->set_lgrp_id(group_id);
