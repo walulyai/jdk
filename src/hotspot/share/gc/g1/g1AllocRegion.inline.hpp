@@ -42,26 +42,11 @@ inline void G1AllocRegion::reset_alloc_region() {
   _used_bytes_before = 0;
 }
 
-inline HeapWord* G1AllocRegion::allocate(HeapRegion* alloc_region,
-                                         size_t word_size) {
-  assert(alloc_region != nullptr, "pre-condition");
-
-  return alloc_region->allocate(word_size);
-}
-
 inline HeapWord* G1AllocRegion::par_allocate(HeapRegion* alloc_region, size_t word_size) {
-  size_t temp;
-  return par_allocate(alloc_region, word_size, word_size, &temp);
-}
-
-inline HeapWord* G1AllocRegion::par_allocate(HeapRegion* alloc_region,
-                                             size_t min_word_size,
-                                             size_t desired_word_size,
-                                             size_t* actual_word_size) {
   assert(alloc_region != nullptr, "pre-condition");
   assert(!alloc_region->is_empty(), "pre-condition");
-
-  return alloc_region->par_allocate(min_word_size, desired_word_size, actual_word_size);
+  size_t temp;
+  return alloc_region->par_allocate(word_size, word_size, &temp);
 }
 
 inline HeapWord* G1AllocRegion::attempt_allocation(size_t min_word_size,
@@ -122,7 +107,7 @@ inline HeapWord* G1AllocRegion::attempt_allocation_using_new_region(size_t min_w
 inline HeapWord* MutatorAllocRegion::attempt_retained_allocation(size_t min_word_size,
                                                                  size_t desired_word_size,
                                                                  size_t* actual_word_size) {
-  if (_retained_alloc_region != nullptr && (_retained_alloc_region->free() / HeapWordSize) >= min_word_size) {
+  if (_retained_alloc_region != nullptr) {
     HeapWord* result = _retained_alloc_region->par_allocate(min_word_size, desired_word_size, actual_word_size);
     if (result != nullptr) {
       trace("alloc retained", min_word_size, desired_word_size, *actual_word_size, result);

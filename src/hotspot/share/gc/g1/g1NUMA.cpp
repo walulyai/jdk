@@ -27,8 +27,7 @@
 #include "gc/shared/gc_globals.hpp"
 #include "logging/logStream.hpp"
 #include "runtime/globals.hpp"
-#include "runtime/javaThread.hpp"
-#include "runtime/os.inline.hpp"
+#include "runtime/os.hpp"
 
 G1NUMA* G1NUMA::_inst = nullptr;
 
@@ -143,20 +142,7 @@ uint G1NUMA::index_of_current_thread() const {
   if (!is_enabled()) {
     return 0;
   }
-  Thread* thr = Thread::current();
-  int group_id = thr->lgrp_id();
-
-  if (group_id == -1 || !os::numa_has_group_homing()) {
-    group_id = os::numa_get_group_id();
-    thr->set_lgrp_id(group_id);
-  }
-
-    // It is possible that a new CPU has been hotplugged and
-  // we haven't reshaped the space accordingly.
-  if (group_id == -1) {
-    group_id = os::random() % _len_node_id_to_index_map;
-  }
-  return index_of_node_id(group_id);
+  return index_of_node_id(os::numa_get_group_id());
 }
 
 uint G1NUMA::preferred_node_index_for_index(uint region_index) const {

@@ -97,21 +97,9 @@ protected:
   // Reset the alloc region to point the dummy region.
   void reset_alloc_region();
 
-  // Perform a non-MT-safe allocation out of the given region.
-  inline HeapWord* allocate(HeapRegion* alloc_region,
-                            size_t word_size);
-
   // Perform a MT-safe allocation out of the given region.
   inline HeapWord* par_allocate(HeapRegion* alloc_region,
                                 size_t word_size);
-  // Perform a MT-safe allocation out of the given region, with the given
-  // minimum and desired size. Returns the actual size allocated (between
-  // minimum and desired size) in actual_word_size if the allocation has been
-  // successful.
-  inline HeapWord* par_allocate(HeapRegion* alloc_region,
-                                size_t min_word_size,
-                                size_t desired_word_size,
-                                size_t* actual_word_size);
 
   // Ensure that the region passed as a parameter has been filled up
   // so that no one else can allocate out of it any more.

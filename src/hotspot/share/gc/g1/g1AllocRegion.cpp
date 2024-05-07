@@ -114,7 +114,7 @@ size_t G1AllocRegion::retire_internal(HeapRegion* alloc_region, size_t used_byte
 }
 
 size_t G1AllocRegion::retire(HeapRegion* alloc_region, size_t used_bytes_before, bool fill_up) {
-  assert_alloc_region(alloc_region != nullptr && alloc_region != _dummy_region, "not initialized properly");
+  assert_alloc_region(alloc_region != nullptr, "not initialized properly");
 
   size_t waste = 0;
 
@@ -192,12 +192,12 @@ HeapRegion* G1AllocRegion::release() {
   HeapRegion* alloc_region = get();
   if (alloc_region != nullptr) {
     retire(alloc_region, _used_bytes_before, false /* fill_up */);
+    reset_alloc_region();
+    assert_alloc_region(_alloc_region == _dummy_region, "post-condition of reset_alloc_region()");
   }
-  reset_alloc_region();
-  assert_alloc_region(_alloc_region == _dummy_region, "post-condition of retire()");
   _alloc_region = nullptr;
   trace("released");
-  return (alloc_region == _dummy_region) ? nullptr : alloc_region;
+  return alloc_region;
 }
 
 #ifndef PRODUCT
@@ -346,14 +346,13 @@ HeapRegion* G1GCAllocRegion::allocate_new_region(size_t word_size) {
 
 void G1GCAllocRegion::retire_region(HeapRegion* alloc_region,
                                     size_t allocated_bytes) {
-  assert(alloc_region != nullptr, "must not be!");
   _g1h->retire_gc_alloc_region(alloc_region, allocated_bytes, _purpose);
 }
 
-size_t G1GCAllocRegion::retire(HeapRegion* retired_region, size_t used_bytes_before, bool fill_up) {
-  size_t end_waste = G1AllocRegion::retire(retired_region, used_bytes_before, fill_up);
+size_t G1GCAllocRegion::retire(HeapRegion* retired, size_t used_bytes_before, bool fill_up) {
+  size_t end_waste = G1AllocRegion::retire(retired, used_bytes_before, fill_up);
   // Do not count retirement of the dummy allocation region.
-  if (retired_region != nullptr) {
+  if (retired != nullptr) {
     _stats->add_region_end_waste(end_waste / HeapWordSize);
   }
   return end_waste;
