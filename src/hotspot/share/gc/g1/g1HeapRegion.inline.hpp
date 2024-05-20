@@ -186,8 +186,8 @@ inline void HeapRegion::apply_to_marked_objects(G1CMBitMap* bitmap, ApplyToMarke
 inline HeapWord* HeapRegion::par_allocate(size_t min_word_size,
                                           size_t desired_word_size,
                                           size_t* actual_word_size) {
-  HeapWord* obj = top();
   do {
+    HeapWord* obj = top();
     size_t available = pointer_delta(end(), obj);
     size_t want_to_allocate = MIN2(available, desired_word_size);
     if (want_to_allocate >= min_word_size) {
@@ -201,7 +201,6 @@ inline HeapWord* HeapRegion::par_allocate(size_t min_word_size,
         *actual_word_size = want_to_allocate;
         return obj;
       }
-      obj = result;
     } else {
       return nullptr;
     }
