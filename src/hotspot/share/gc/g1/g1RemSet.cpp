@@ -30,6 +30,7 @@
 #include "gc/g1/g1CardTable.inline.hpp"
 #include "gc/g1/g1CardTableEntryClosure.hpp"
 #include "gc/g1/g1CollectedHeap.inline.hpp"
+#include "gc/g1/g1CollectionSet.inline.hpp"
 #include "gc/g1/g1ConcurrentRefine.hpp"
 #include "gc/g1/g1DirtyCardQueue.hpp"
 #include "gc/g1/g1FromCardCache.hpp"
@@ -1204,6 +1205,15 @@ class G1MergeHeapRootsTask : public WorkerTask {
     }
   };
 
+  template <class CardOrRangeVisitor>
+  inline void cardset_iterate_for_merge(G1CardSet* card_set, CardOrRangeVisitor& cl) {
+    G1HeapRegionRemSetMergeCardClosure<CardOrRangeVisitor, G1ContainerCardsOrRanges> cl2(card_set,
+                                                                                        cl,
+                                                                                        card_set->config()->log2_card_regions_per_heap_region(),
+                                                                                        card_set->config()->log2_cards_per_card_region());
+    card_set->iterate_containers(&cl2, true /* at_safepoint */);
+  }
+
   // Visitor for the log buffer entries to merge them into the card table.
   class G1MergeLogBufferCardsClosure : public G1CardTableEntryClosure {
 
@@ -1382,6 +1392,8 @@ public:
         if (_initial_evacuation) {
           G1HeapRegionRemSet::iterate_for_merge(g1h->young_regions_cardset(), merge);
         }
+
+        g1h->collection_set()->merge_remsets_for_collection_groups(g1h, merge, worker_id, _num_workers);
 
         g1h->collection_set_iterate_increment_from(&combined, nullptr, worker_id);
         G1MergeCardSetStats stats = merge.stats();

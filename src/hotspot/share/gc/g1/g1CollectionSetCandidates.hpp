@@ -25,6 +25,7 @@
 #ifndef SHARE_GC_G1_G1COLLECTIONSETCANDIDATES_HPP
 #define SHARE_GC_G1_G1COLLECTIONSETCANDIDATES_HPP
 
+#include "gc/g1/g1CollectionGroup.hpp"
 #include "gc/g1/g1CollectionSetCandidates.hpp"
 #include "gc/shared/gc_globals.hpp"
 #include "gc/shared/workerThread.hpp"
@@ -35,10 +36,70 @@
 
 class G1CollectionCandidateList;
 class G1CollectionSetCandidates;
+class G1CollectionCandidateGroupsList;
 class G1HeapRegion;
 class G1HeapRegionClosure;
 
 using G1CollectionCandidateRegionListIterator = GrowableArrayIterator<G1HeapRegion*>;
+
+class G1CollectionCandidateGroupsListIterator : public StackObj {
+  G1CollectionCandidateGroupsList* _which;
+  uint _position;
+
+public:
+  G1CollectionCandidateGroupsListIterator(G1CollectionCandidateGroupsList* which, uint position);
+
+  G1CollectionCandidateGroupsListIterator& operator++();
+  G1CollectionGroup* operator*();
+
+  bool operator==(const G1CollectionCandidateGroupsListIterator& rhs);
+  bool operator!=(const G1CollectionCandidateGroupsListIterator& rhs);
+};
+
+class G1CollectionCandidateGroupsList {
+  GrowableArray<G1CollectionGroup*> _groups;
+  volatile uint _num_regions;
+
+  // Comparison function to order regions in decreasing GC efficiency order. This
+  // will cause region groups with a lot of live objects and large remembered sets to end
+  // up at the end of the list.
+  static int compare_gc_efficiency(G1CollectionGroup** ci1, G1CollectionGroup** ci2);
+
+public:
+  G1CollectionCandidateGroupsList();
+  void append(G1CollectionGroup* group);
+
+  // Empty contents of the list.
+  void clear();
+
+  void abandon();
+
+  G1CollectionGroup* at(uint index);
+
+  uint length() const { return (uint)_groups.length(); }
+
+  uint num_regions() const { return _num_regions; }
+
+  void remove_selected(uint count, uint num_regions);
+
+  void prepare_for_scan();
+
+  void sort_by_efficiency();
+
+  GrowableArray<G1CollectionGroup*>*  groups() {
+    return &_groups;
+  }
+
+  void verify() const PRODUCT_RETURN;
+
+  G1CollectionCandidateGroupsListIterator begin() {
+    return G1CollectionCandidateGroupsListIterator(this, 0);
+  }
+
+  G1CollectionCandidateGroupsListIterator end() {
+    return G1CollectionCandidateGroupsListIterator(this, length());
+  }
+};
 
 // A set of G1HeapRegion*, a thin wrapper around GrowableArray.
 class G1CollectionCandidateRegionList {
@@ -141,22 +202,6 @@ public:
   }
 };
 
-// Iterator for G1CollectionSetCandidates. There are no guarantees on the order
-// of the regions returned.
-class G1CollectionSetCandidatesIterator : public StackObj {
-  G1CollectionSetCandidates* _which;
-    uint _position;
-
-  public:
-  G1CollectionSetCandidatesIterator(G1CollectionSetCandidates* which, uint position);
-
-  G1CollectionSetCandidatesIterator& operator++();
-  G1HeapRegion* operator*();
-
-  bool operator==(const G1CollectionSetCandidatesIterator& rhs);
-  bool operator!=(const G1CollectionSetCandidatesIterator& rhs);
-};
-
 // Tracks all collection set candidates, i.e. regions that could/should be evacuated soon.
 //
 // These candidate regions are tracked in two list of regions, sorted by decreasing
@@ -172,7 +217,6 @@ class G1CollectionSetCandidatesIterator : public StackObj {
 //                     Any young collection will try to evacuate them.
 //
 class G1CollectionSetCandidates : public CHeapObj<mtGC> {
-  friend class G1CollectionSetCandidatesIterator;
 
   enum class CandidateOrigin : uint8_t {
     Invalid,
@@ -181,10 +225,10 @@ class G1CollectionSetCandidates : public CHeapObj<mtGC> {
     Verify                     // Special value for verification.
   };
 
-  G1CollectionCandidateList _marking_regions;  // Set of regions selected by concurrent marking.
   G1CollectionCandidateList _retained_regions; // Set of regions selected from evacuation failed regions.
 
   CandidateOrigin* _contains_map;
+  G1CollectionCandidateGroupsList _candidate_groups; // Set of regions selected by concurrent marking.
   uint _max_regions;
 
   // The number of regions from the last merge of candidates from the marking.
@@ -196,7 +240,7 @@ public:
   G1CollectionSetCandidates();
   ~G1CollectionSetCandidates();
 
-  G1CollectionCandidateList& marking_regions() { return _marking_regions; }
+  G1CollectionCandidateGroupsList& candidate_groups() { return _candidate_groups; }
   G1CollectionCandidateList& retained_regions() { return _retained_regions; }
 
   void initialize(uint max_regions);
@@ -219,9 +263,7 @@ public:
   // Add the given region to the set of retained regions without regards to the
   // gc efficiency sorting. The retained regions must be re-sorted manually later.
   void add_retained_region_unsorted(G1HeapRegion* r);
-  // Remove the given regions from the candidates. All given regions must be part
-  // of the candidates.
-  void remove(G1CollectionCandidateRegionList* other);
+  void reset_region(G1HeapRegion* r);
 
   bool contains(const G1HeapRegion* r) const;
 
@@ -230,25 +272,23 @@ public:
   bool is_empty() const;
 
   bool has_more_marking_candidates() const;
-  uint marking_regions_length() const;
+  uint marking_groups_length() const;
   uint retained_regions_length() const;
 
 private:
-  void verify_helper(G1CollectionCandidateList* list, uint& from_marking, CandidateOrigin* verify_map) PRODUCT_RETURN;
+  void verify_retained_regions(uint& from_marking, CandidateOrigin* verify_map) PRODUCT_RETURN;
+
+  void verify_candidate_groups(uint& from_marking, CandidateOrigin* verify_map) PRODUCT_RETURN;
+
+  void verify_region(G1HeapRegion* r, CandidateOrigin* verify_map, CandidateOrigin expected_origin) PRODUCT_RETURN;
 
 public:
   void verify() PRODUCT_RETURN;
 
-  uint length() const { return marking_regions_length() + retained_regions_length(); }
+  uint length() const { return marking_groups_length() + retained_regions_length(); }
 
-  // Iteration
-  G1CollectionSetCandidatesIterator begin() {
-    return G1CollectionSetCandidatesIterator(this, 0);
-  }
-
-  G1CollectionSetCandidatesIterator end() {
-    return G1CollectionSetCandidatesIterator(this, length());
-  }
+  template<typename Func>
+  void iterate_regions(Func&& f);
 };
 
 #endif /* SHARE_GC_G1_G1COLLECTIONSETCANDIDATES_HPP */

@@ -103,7 +103,7 @@ class G1Policy: public CHeapObj<mtGC> {
 
   uint _free_regions_at_end_of_collection;
 
-  size_t _card_rs_length;
+  size_t _young_rs_length;
 
   size_t _pending_cards_at_gc_start;
 
@@ -132,15 +132,14 @@ public:
     hr->install_surv_rate_group(_survivor_surv_rate_group);
   }
 
-  void record_card_rs_length(size_t card_rs_length) {
-    _card_rs_length = card_rs_length;
+  void record_young_rs_length(size_t young_rs_length) {
+    _young_rs_length = young_rs_length;
   }
 
   double predict_base_time_ms(size_t pending_cards) const;
 
   double predict_base_time_ms(size_t pending_cards, size_t card_rs_length) const;
 
-private:
   // Base time contains handling remembered sets and constant other time of the
   // whole young gen, refinement buffers, and copying survivors.
   // Basically everything but copying eden regions.
@@ -158,8 +157,10 @@ private:
 
 public:
 
+  double predict_merge_scan_time(size_t card_rs_length) const;
   // Predict other time for count young regions.
   double predict_young_region_other_time_ms(uint count) const;
+  double predict_non_young_other_time_ms(uint count) const;
   // Predict copying live data time for count eden regions. Return the predict bytes if
   // bytes_to_copy is non-null.
   double predict_eden_copy_time_ms(uint count, size_t* bytes_to_copy = nullptr) const;
@@ -335,27 +336,6 @@ public:
 
   // Amount of allowed waste in bytes in the collection set.
   size_t allowed_waste_in_collection_set() const;
-  // Calculate and fill in the initial, optional and pinned old gen candidate regions from
-  // the given candidate list and the remaining time.
-  // Returns the remaining time.
-  double select_candidates_from_marking(G1CollectionCandidateList* marking_list,
-                                        double time_remaining_ms,
-                                        G1CollectionCandidateRegionList* initial_old_regions,
-                                        G1CollectionCandidateRegionList* optional_old_regions,
-                                        G1CollectionCandidateRegionList* pinned_old_regions);
-
-  void select_candidates_from_retained(G1CollectionCandidateList* retained_list,
-                                       double time_remaining_ms,
-                                       G1CollectionCandidateRegionList* initial_old_regions,
-                                       G1CollectionCandidateRegionList* optional_old_regions,
-                                       G1CollectionCandidateRegionList* pinned_old_regions);
-
-  // Calculate the number of optional regions from the given collection set candidates,
-  // the remaining time and the maximum number of these regions and return the number
-  // of actually selected regions in num_optional_regions.
-  void calculate_optional_collection_set_regions(G1CollectionCandidateRegionList* optional_old_regions,
-                                                 double time_remaining_ms,
-                                                 G1CollectionCandidateRegionList* selected);
 
 private:
 
@@ -423,12 +403,11 @@ private:
 
   size_t desired_survivor_size(uint max_regions) const;
 
+public:
   // Fraction used when predicting how many optional regions to include in
   // the CSet. This fraction of the available time is used for optional regions,
   // the rest is used to add old regions to the normal CSet.
   double optional_prediction_fraction() const { return 0.2; }
-
-public:
   // Fraction used when evacuating the optional regions. This fraction of the
   // remaining time is used to choose what regions to include in the evacuation.
   double optional_evacuation_fraction() const { return 0.75; }

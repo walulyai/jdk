@@ -51,32 +51,43 @@ inline bool G1CollectionCandidateListIterator::operator!=(const G1CollectionCand
   return !(*this == rhs);
 }
 
-inline G1CollectionSetCandidatesIterator::G1CollectionSetCandidatesIterator(G1CollectionSetCandidates* which, uint position) :
-  _which(which), _position(position) {
-}
+inline G1CollectionCandidateGroupsListIterator::G1CollectionCandidateGroupsListIterator(G1CollectionCandidateGroupsList* which, uint position) :
+  _which(which), _position(position) { }
 
-inline G1CollectionSetCandidatesIterator& G1CollectionSetCandidatesIterator::operator++() {
-  assert(_position < _which->length(), "must not be at end already");
+inline G1CollectionCandidateGroupsListIterator& G1CollectionCandidateGroupsListIterator::operator++() {
+  assert(_position < _which->length(), "must be");
   _position++;
   return *this;
 }
 
-inline G1HeapRegion* G1CollectionSetCandidatesIterator::operator*() {
-  uint length = _which->marking_regions_length();
-  if (_position < length) {
-    return _which->_marking_regions.at(_position)._r;
-  } else {
-    return _which->_retained_regions.at(_position - length)._r;
-  }
+inline G1CollectionGroup* G1CollectionCandidateGroupsListIterator::operator*() {
+  return _which->at(_position);
 }
 
-inline bool G1CollectionSetCandidatesIterator::operator==(const G1CollectionSetCandidatesIterator& rhs)  {
+inline bool G1CollectionCandidateGroupsListIterator::operator==(const G1CollectionCandidateGroupsListIterator& rhs) {
   assert(_which == rhs._which, "iterator belongs to different array");
   return _position == rhs._position;
 }
 
-inline bool G1CollectionSetCandidatesIterator::operator!=(const G1CollectionSetCandidatesIterator& rhs)  {
+inline bool G1CollectionCandidateGroupsListIterator::operator!=(const G1CollectionCandidateGroupsListIterator& rhs) {
   return !(*this == rhs);
+}
+
+template<typename Func>
+void G1CollectionSetCandidates::iterate_regions(Func&& f) {
+  for (G1CollectionGroup* group : _candidate_groups) {
+    const GrowableArray<G1HeapRegion*>* regions = group->regions();
+
+    for (int i = 0; i < regions->length(); i++) {
+      G1HeapRegion* r = regions->at(i);
+      f(r);
+    }
+  }
+
+  for (uint i = 0; i < (uint)_retained_regions.length(); i++) {
+    G1HeapRegion* r =_retained_regions.at(i)._r;
+    f(r);
+  }
 }
 
 #endif /* SHARE_GC_G1_G1COLLECTIONSETCANDIDATES_INLINE_HPP */
