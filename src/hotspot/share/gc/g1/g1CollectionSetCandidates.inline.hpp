@@ -85,7 +85,7 @@ void G1CollectionSetCandidates::iterate_regions(Func&& f) {
   }
 
   for (uint i = 0; i < (uint)_retained_regions.length(); i++) {
-    G1HeapRegion* r =_retained_regions.at(i)._r;
+    G1HeapRegion* r = _retained_regions.at(i)._r;
     f(r);
   }
 }
