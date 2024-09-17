@@ -383,7 +383,7 @@ void G1CollectionSetCandidates::verify_retained_regions(uint& from_marking, Cand
   _retained_regions.verify();
 
   for (uint i = 0; i < (uint)_retained_regions.length(); i++) {
-    G1HeapRegion* r =_retained_regions.at(i)._r;
+    G1HeapRegion* r = _retained_regions.at(i)._r;
 
     if (is_from_marking(r)) {
       from_marking++;

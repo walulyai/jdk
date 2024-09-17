@@ -298,6 +298,7 @@ class G1PrepareEvacuationTask : public WorkerTask {
       // Sample card set sizes for humongous before GC: this makes the policy to give
       // back memory to the OS keep the most recent amount of memory for these regions.
       if (hr->is_starts_humongous()) {
+        guarantee(!hr->rem_set()->has_group_cardset(), "double adding");
         _card_set_stats.add(hr->rem_set()->card_set_memory_stats());
       }
     }

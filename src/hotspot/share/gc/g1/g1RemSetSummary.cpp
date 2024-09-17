@@ -263,6 +263,10 @@ public:
     return false;
   }
 
+  void group_stats() {
+    
+  }
+
   void print_summary_on(outputStream* out) {
     RegionTypeCounter* counters[] = { &_young, &_humongous, &_free, &_old, nullptr };
 

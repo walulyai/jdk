@@ -106,9 +106,17 @@ public:
     G1CollectedHeap* g1h = G1CollectedHeap::heap();
 
     G1MonotonicArenaMemoryStats _total;
-    for (G1CollectionGroup* gr : g1h->collection_set()->candidates()->candidate_groups()) {
+
+    G1CollectionSetCandidates* candidates = g1h->collection_set()->candidates();
+    for (G1CollectionGroup* gr : candidates->candidate_groups()) {
       _total.add(gr->card_set_memory_stats());
     }
+
+    for (G1CollectionSetCandidateInfo* c_info : candidates->retained_regions()) {
+      G1HeapRegion* r = c_info->_r;
+      _total.add(r->rem_set()->card_set_memory_stats());
+    }
+
     g1h->set_collection_set_candidates_stats(_total);
   }
 };
