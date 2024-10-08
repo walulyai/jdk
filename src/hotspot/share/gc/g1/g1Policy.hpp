@@ -408,6 +408,10 @@ public:
   // the CSet. This fraction of the available time is used for optional regions,
   // the rest is used to add old regions to the normal CSet.
   double optional_prediction_fraction() const { return 0.2; }
+<<<<<<< HEAD
+=======
+
+>>>>>>> master
   // Fraction used when evacuating the optional regions. This fraction of the
   // remaining time is used to choose what regions to include in the evacuation.
   double optional_evacuation_fraction() const { return 0.75; }
