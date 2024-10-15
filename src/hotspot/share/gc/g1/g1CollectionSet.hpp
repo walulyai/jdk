@@ -204,7 +204,7 @@ class G1CollectionSet {
   // Select regions for evacuation from the optional candidates given the remaining time
   // and return the number  of actually selected regions.
   uint select_optional_collection_set_regions(double time_remaining_ms);
-  double select_from_optional_groups(double time_remaining_ms, uint& num_regions_selected);
+  double select_candidates_from_optional_groups(double time_remaining_ms, uint& num_regions_selected);
   double select_from_optional_retained(double time_remaining_ms, uint& num_regions_selected);
 
   void drop_pinned_retained_region(G1HeapRegion* r);
@@ -221,13 +221,9 @@ class G1CollectionSet {
   // and retained collection set candidates.
   void finalize_old_part(double time_remaining_ms);
 
-  // Calculate and fill in the initial, optional and pinned old gen candidate regions from
+  // FIXME: Calculate and fill in the initial, optional and pinned old gen candidate regions from
   // the given candidate list and the remaining time.
   // Returns the remaining time.
-  double select_candidates_from_marking(double time_remaining_ms,
-                                        G1CollectionCandidateRegionList* initial_old_regions,
-                                        G1CollectionCandidateRegionList* pinned_old_regions);
-
   void select_candidates_from_retained(double time_remaining_ms,
                                        G1CollectionCandidateRegionList* initial_old_regions,
                                        G1CollectionCandidateRegionList* pinned_old_regions);

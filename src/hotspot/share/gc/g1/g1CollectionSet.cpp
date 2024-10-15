@@ -339,42 +339,57 @@ static int compare_region_idx(const uint a, const uint b) {
   return static_cast<int>(a-b);
 }
 
+// The current mechanism skips evacuation of pinned old regions like g1 does for
+// young regions:
+// * evacuating pinned marking collection set candidate regions (available during mixed
+//   gc) like young regions would not result in any memory gain but only take additional
+//   time away from processing regions that would actually result in memory being freed.
+//   To advance mixed gc progress (we committed to evacuate all marking collection set
+//   candidate regions within the maximum number of mixed gcs in the phase), move them
+//   to the optional collection set candidates to reclaim them asap as time permits.
+// * evacuating out retained collection set candidates would also just take up time with
+//   no actual space freed in old gen. Better to concentrate on others.
+//   Retained collection set candidates are aged out, ie. made to regular old regions
+//   without remembered sets after a few attempts to save computation costs of keeping
+//   them candidates for very long living pinned regions.
+void G1CollectionSet::finalize_old_part(double time_remaining_ms) {
+  double non_young_start_time_sec = os::elapsedTime();
+
+  _selected_groups_cur_length = 0;
+  _selected_groups_inc_part_start = 0;
+
+  if (!candidates()->is_empty()) {
+    candidates()->verify();
+
+    if (collector_state()->in_mixed_phase()) {
+      time_remaining_ms = select_candidates_from_groups(time_remaining_ms);
+    } else {
+      log_debug(gc, ergo, cset)("Do not add marking candidates to collection set due to pause type.");
+    }
+
+    uint num_optional_regions = _optional_groups.num_regions();
+
+    if (candidates()->retained_regions().length() > 0) {
+      select_candidates_from_retained(time_remaining_ms);
+    }
+    candidates()->verify();
+  } else {
+    log_debug(gc, ergo, cset)("No candidates to reclaim.");
+  }
+
+  _selected_groups_cur_length = collection_set_groups()->length();
+  stop_incremental_building();
+
+  double non_young_end_time_sec = os::elapsedTime();
+  phase_times()->record_non_young_cset_choice_time_ms((non_young_end_time_sec - non_young_start_time_sec) * 1000.0);
+
+  QuickSort::sort(_collection_set_regions, _collection_set_cur_length, compare_region_idx);
+}
+
 static void print_finish_message(const char* reason, bool from_marking) {
   log_debug(gc, ergo, cset)("Finish adding %s candidates to collection set (%s).",
                             from_marking ? "marking" : "retained", reason);
 }
-
-void G1CollectionSet::prepare_optional_group(G1CollectionGroup* collection_group, uint cur_index) {
-  const GrowableArray<G1HeapRegion*>* regions = collection_group->regions();
-  for (int i = 0; i < regions->length(); i++) {
-    G1HeapRegion* r = regions->at(i);
-
-    assert(r->is_old(), "the region should be old");
-    assert(!r->in_collection_set(), "should not already be in the CSet");
-
-    _g1h->register_optional_region_with_region_attr(r);
-    r->set_index_in_opt_cset(cur_index++);
-  }
-}
-
-void G1CollectionSet::add_group_to_collection_set(G1CollectionGroup* collection_group) {
-  const GrowableArray<G1HeapRegion*>* regions = collection_group->regions();
-  for (int i = 0; i < regions->length(); i++) {
-    G1HeapRegion* r = regions->at(i);
-    add_region_to_collection_set(r);
-
-    r->uninstall_group_cardset();
-    r->rem_set()->set_state_complete();
-  }
-}
-
-void G1CollectionSet::add_region_to_collection_set(G1HeapRegion* r) {
-  _g1h->clear_region_attr(r);
-  candidates()->reset_region(r);
-  assert(r->rem_set()->is_complete(), "Must be %u complete %d", r->hrm_index(), r->rem_set()->is_complete());
-  add_old_region(r);
-}
-
 
 double G1CollectionSet::select_candidates_from_groups(double time_remaining_ms) {
   G1CollectionCandidateGroupsList* candidate_groups = &candidates()->candidate_groups();
@@ -573,88 +588,7 @@ void G1CollectionSet::select_candidates_from_retained(double time_remaining_ms) 
                             predicted_initial_time_ms, predicted_optional_time_ms, time_remaining_ms, optional_time_remaining_ms);
 }
 
-// The current mechanism skips evacuation of pinned old regions like g1 does for
-// young regions:
-// * evacuating pinned marking collection set candidate regions (available during mixed
-//   gc) like young regions would not result in any memory gain but only take additional
-//   time away from processing regions that would actually result in memory being freed.
-//   To advance mixed gc progress (we committed to evacuate all marking collection set
-//   candidate regions within the maximum number of mixed gcs in the phase), move them
-//   to the optional collection set candidates to reclaim them asap as time permits.
-// * evacuating out retained collection set candidates would also just take up time with
-//   no actual space freed in old gen. Better to concentrate on others.
-//   Retained collection set candidates are aged out, ie. made to regular old regions
-//   without remembered sets after a few attempts to save computation costs of keeping
-//   them candidates for very long living pinned regions.
-void G1CollectionSet::finalize_old_part(double time_remaining_ms) {
-  double non_young_start_time_sec = os::elapsedTime();
-
-  _selected_groups_cur_length = 0;
-  _selected_groups_inc_part_start = 0;
-
-  if (!candidates()->is_empty()) {
-    candidates()->verify();
-
-    if (collector_state()->in_mixed_phase()) {
-      time_remaining_ms = select_candidates_from_groups(time_remaining_ms);
-    } else {
-      log_debug(gc, ergo, cset)("Do not add marking candidates to collection set due to pause type.");
-    }
-
-    uint num_optional_regions = _optional_groups.num_regions();
-
-    if (candidates()->retained_regions().length() > 0) {
-      select_candidates_from_retained(time_remaining_ms);
-    }
-    candidates()->verify();
-  } else {
-    log_debug(gc, ergo, cset)("No candidates to reclaim.");
-  }
-
-  _selected_groups_cur_length = collection_set_groups()->length();
-  stop_incremental_building();
-
-  double non_young_end_time_sec = os::elapsedTime();
-  phase_times()->record_non_young_cset_choice_time_ms((non_young_end_time_sec - non_young_start_time_sec) * 1000.0);
-
-  QuickSort::sort(_collection_set_regions, _collection_set_cur_length, compare_region_idx);
-}
-
-
-void G1CollectionSet::prepare_optional_regions(G1CollectionCandidateRegionList* regions, uint cur_index) {
-
-  for (G1HeapRegion* r : *regions) {
-    assert(r->is_old(), "the region should be old");
-    assert(!r->in_collection_set(), "should not already be in the CSet");
-
-    _g1h->register_optional_region_with_region_attr(r);
-
-    r->set_index_in_opt_cset(cur_index++);
-  }
-}
-
-void G1CollectionSet::add_optional_region(G1HeapRegion* r, uint cur_index) {
-
-  assert(r->is_old(), "the region should be old");
-  assert(!r->in_collection_set(), "should not already be in the CSet");
-
-  _g1h->register_optional_region_with_region_attr(r);
-
-  r->set_index_in_opt_cset(cur_index);
-  _optional_old_regions.append(r);
-}
-
-void G1CollectionSet::drop_pinned_retained_region(G1HeapRegion* r) {
-  candidates()->reset_region(r);
-  r->rem_set()->clear(true /* only_cardset */);
-}
-
-void G1CollectionSet::finalize_initial_collection_set(double target_pause_time_ms, G1SurvivorRegions* survivor) {
-  double time_remaining_ms = finalize_young_part(target_pause_time_ms, survivor);
-  finalize_old_part(time_remaining_ms);
-}
-
-double G1CollectionSet::select_from_optional_groups(double time_remaining_ms, uint& num_regions_selected) {
+double G1CollectionSet::select_candidates_from_optional_groups(double time_remaining_ms, uint& num_regions_selected) {
   uint num_groups_selected = 0;
   double total_predicted_ms = 0.0;
 
@@ -723,7 +657,7 @@ uint G1CollectionSet::select_optional_collection_set_regions(double time_remaini
   uint optional_regions_count = num_optional_regions();
   uint num_regions_selected = 0;
 
-  double total_predicted_ms = select_from_optional_groups(time_remaining_ms, num_regions_selected);
+  double total_predicted_ms = select_candidates_from_optional_groups(time_remaining_ms, num_regions_selected);
 
   time_remaining_ms -= total_predicted_ms;
 
@@ -735,6 +669,73 @@ uint G1CollectionSet::select_optional_collection_set_regions(double time_remaini
                             num_regions_selected, optional_regions_count, total_predicted_ms);
   return num_regions_selected;
 }
+
+void G1CollectionSet::prepare_optional_group(G1CollectionGroup* collection_group, uint cur_index) {
+  const GrowableArray<G1HeapRegion*>* regions = collection_group->regions();
+  for (int i = 0; i < regions->length(); i++) {
+    G1HeapRegion* r = regions->at(i);
+
+    assert(r->is_old(), "the region should be old");
+    assert(!r->in_collection_set(), "should not already be in the CSet");
+
+    _g1h->register_optional_region_with_region_attr(r);
+    r->set_index_in_opt_cset(cur_index++);
+  }
+}
+
+void G1CollectionSet::add_group_to_collection_set(G1CollectionGroup* collection_group) {
+  const GrowableArray<G1HeapRegion*>* regions = collection_group->regions();
+  for (int i = 0; i < regions->length(); i++) {
+    G1HeapRegion* r = regions->at(i);
+    add_region_to_collection_set(r);
+
+    r->uninstall_group_cardset();
+    r->rem_set()->set_state_complete();
+  }
+}
+
+void G1CollectionSet::add_region_to_collection_set(G1HeapRegion* r) {
+  _g1h->clear_region_attr(r);
+  candidates()->reset_region(r);
+  assert(r->rem_set()->is_complete(), "Must be %u complete %d", r->hrm_index(), r->rem_set()->is_complete());
+  add_old_region(r);
+}
+
+
+void G1CollectionSet::prepare_optional_regions(G1CollectionCandidateRegionList* regions, uint cur_index) {
+
+  for (G1HeapRegion* r : *regions) {
+    assert(r->is_old(), "the region should be old");
+    assert(!r->in_collection_set(), "should not already be in the CSet");
+
+    _g1h->register_optional_region_with_region_attr(r);
+
+    r->set_index_in_opt_cset(cur_index++);
+  }
+}
+
+void G1CollectionSet::add_optional_region(G1HeapRegion* r, uint cur_index) {
+
+  assert(r->is_old(), "the region should be old");
+  assert(!r->in_collection_set(), "should not already be in the CSet");
+
+  _g1h->register_optional_region_with_region_attr(r);
+
+  r->set_index_in_opt_cset(cur_index);
+  _optional_old_regions.append(r);
+}
+
+void G1CollectionSet::drop_pinned_retained_region(G1HeapRegion* r) {
+  candidates()->reset_region(r);
+  r->rem_set()->clear(true /* only_cardset */);
+}
+
+void G1CollectionSet::finalize_initial_collection_set(double target_pause_time_ms, G1SurvivorRegions* survivor) {
+  double time_remaining_ms = finalize_young_part(target_pause_time_ms, survivor);
+  finalize_old_part(time_remaining_ms);
+}
+
+
 
 bool G1CollectionSet::finalize_optional_for_evacuation(double remaining_pause_time) {
   update_incremental_marker();
