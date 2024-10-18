@@ -158,9 +158,6 @@ class G1CollectionSet {
   uint _survivor_region_length;
   uint _initial_old_region_length;
 
-  // When doing mixed collections we can add old regions to the collection set, which
-  // will be collected only if there is enough time. We call these optional (old) regions.
-  G1CollectionCandidateRegionList _optional_old_regions;
   // We maintain a distinction between _optional_old_regions and _optional_groups; _optional_old_regions
   // hold regions selected for optional evacuation from retained regions. These are not part of any
   // remset group. _optional_groups holds remset groups that are selected for optional evacuation.
@@ -185,17 +182,11 @@ class G1CollectionSet {
   // Add the given old region to the head of the current collection set.
   void add_old_region(G1HeapRegion* hr);
 
-  // Prepares old regions in the given set for optional collection later. Does not
-  // add the region to collection set yet.
-  void prepare_optional_regions(G1CollectionCandidateRegionList* regions, uint cur_index);
-
   void prepare_optional_group(G1CollectionGroup* collection_group, uint cur_index);
 
   void add_group_to_collection_set(G1CollectionGroup* collection_group);
 
   void add_region_to_collection_set(G1HeapRegion* r);
-
-  void add_optional_region(G1HeapRegion* r, uint cur_index);
 
   double select_candidates_from_groups(double time_remaining_ms);
 
@@ -205,8 +196,6 @@ class G1CollectionSet {
   // and return the number  of actually selected regions.
   uint select_optional_collection_set_regions(double time_remaining_ms);
   double select_candidates_from_optional_groups(double time_remaining_ms, uint& num_regions_selected);
-  double select_from_optional_retained(double time_remaining_ms, uint& num_regions_selected);
-
   void drop_pinned_retained_region(G1HeapRegion* r);
 
   // Finalize the young part of the initial collection set. Relabel survivor regions
@@ -220,18 +209,6 @@ class G1CollectionSet {
   // Select the regions comprising the initial and optional collection set from marking
   // and retained collection set candidates.
   void finalize_old_part(double time_remaining_ms);
-
-  // FIXME: Calculate and fill in the initial, optional and pinned old gen candidate regions from
-  // the given candidate list and the remaining time.
-  // Returns the remaining time.
-  void select_candidates_from_retained(double time_remaining_ms,
-                                       G1CollectionCandidateRegionList* initial_old_regions,
-                                       G1CollectionCandidateRegionList* pinned_old_regions);
-
-  // Calculate the number of optional regions from the given collection set candidates,
-  // the remaining time and the maximum number of these regions.
-  void select_candidates_from_optional_regions(double time_remaining_ms,
-                                               G1CollectionCandidateRegionList* selected);
 
   // Iterate the part of the collection set given by the offset and length applying the given
   // G1HeapRegionClosure. The worker_id will determine where in the part to start the iteration
@@ -269,7 +246,7 @@ public:
   uint eden_region_length() const     { return _eden_region_length; }
   uint survivor_region_length() const { return _survivor_region_length; }
   uint initial_old_region_length() const      { return _initial_old_region_length; }
-  uint num_optional_regions() const { return _optional_old_regions.length() + _optional_groups.num_regions(); }
+  uint num_optional_regions() const { return _optional_groups.num_regions(); }
   uint optional_groups_length() const { return _optional_groups.length(); }
 
   bool only_contains_young_regions() const { return (initial_old_region_length() + num_optional_regions()) == 0; }

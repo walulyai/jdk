@@ -51,6 +51,7 @@ inline bool G1CollectionCandidateListIterator::operator!=(const G1CollectionCand
   return !(*this == rhs);
 }
 
+/*
 inline G1CollectionCandidateGroupsListIterator::G1CollectionCandidateGroupsListIterator(G1CollectionCandidateGroupsList* which, uint position) :
   _which(which), _position(position) { }
 
@@ -72,6 +73,8 @@ inline bool G1CollectionCandidateGroupsListIterator::operator==(const G1Collecti
 inline bool G1CollectionCandidateGroupsListIterator::operator!=(const G1CollectionCandidateGroupsListIterator& rhs) {
   return !(*this == rhs);
 }
+
+*/
 
 template<typename Func>
 void G1CollectionSetCandidates::iterate_regions(Func&& f) {

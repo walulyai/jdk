@@ -42,6 +42,7 @@ class G1HeapRegionClosure;
 
 using G1CollectionCandidateRegionListIterator = GrowableArrayIterator<G1HeapRegion*>;
 
+/*
 class G1CollectionCandidateGroupsListIterator : public StackObj {
   G1CollectionCandidateGroupsList* _which;
   uint _position;
@@ -55,6 +56,9 @@ public:
   bool operator==(const G1CollectionCandidateGroupsListIterator& rhs);
   bool operator!=(const G1CollectionCandidateGroupsListIterator& rhs);
 };
+*/
+
+using G1CollectionCandidateGroupsListIterator = GrowableArrayIterator<G1CollectionGroup*>;
 
 class G1CollectionCandidateGroupsList {
   GrowableArray<G1CollectionGroup*> _groups;
@@ -94,12 +98,12 @@ public:
 
   void verify() const PRODUCT_RETURN;
 
-  G1CollectionCandidateGroupsListIterator begin() {
-    return G1CollectionCandidateGroupsListIterator(this, 0);
+  G1CollectionCandidateGroupsListIterator begin() const {
+    return _groups.begin();
   }
 
-  G1CollectionCandidateGroupsListIterator end() {
-    return G1CollectionCandidateGroupsListIterator(this, length());
+  G1CollectionCandidateGroupsListIterator end() const {
+    return _groups.end();
   }
 };
 

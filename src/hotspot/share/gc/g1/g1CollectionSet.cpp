@@ -60,7 +60,6 @@ G1CollectionSet::G1CollectionSet(G1CollectedHeap* g1h, G1Policy* policy) :
   _eden_region_length(0),
   _survivor_region_length(0),
   _initial_old_region_length(0),
-  _optional_old_regions(),
   _optional_groups(),
   _inc_build_state(Inactive),
   _inc_part_start(0) {
@@ -82,7 +81,7 @@ void G1CollectionSet::init_region_lengths(uint eden_cset_region_length,
          "Young region length %u should match collection set length %u", young_region_length(), _collection_set_cur_length);
 
   _initial_old_region_length = 0;
-  _optional_old_regions.clear();
+  _optional_groups.clear();
 }
 
 void G1CollectionSet::initialize(uint max_region_length) {
@@ -96,7 +95,7 @@ void G1CollectionSet::initialize(uint max_region_length) {
 void G1CollectionSet::abandon_all_candidates() {
   _candidates.clear();
   _initial_old_region_length = 0;
-  _optional_old_regions.clear();
+  _optional_groups.clear();
 }
 
 void G1CollectionSet::prepare_groups_for_scan () {
@@ -164,9 +163,12 @@ void G1CollectionSet::par_iterate(G1HeapRegionClosure* cl,
 void G1CollectionSet::iterate_optional(G1HeapRegionClosure* cl) const {
   assert_at_safepoint();
 
-  for (G1HeapRegion* r : _optional_old_regions) {
-    bool result = cl->do_heap_region(r);
-    guarantee(!result, "Must not cancel iteration");
+  for (G1CollectionGroup* gr : _optional_groups) {
+    uint length = gr->length();
+    for (uint i = 0; i < length; i++) {
+      bool result = cl->do_heap_region(gr->region_at(i));
+      guarantee(!result, "Must not cancel iteration");
+    }
   }
 }
 
@@ -731,35 +733,6 @@ double G1CollectionSet::select_candidates_from_optional_groups(double time_remai
   return total_predicted_ms;
 }
 
-double G1CollectionSet::select_from_optional_retained(double time_remaining_ms, uint& num_regions_selected) {
-  double total_predicted_ms = 0.0;
-
-  G1CollectionCandidateRegionList selected_optional_regions;
-
-  for (G1HeapRegion* r : _optional_old_regions) {
-    double prediction_ms = _policy->predict_region_total_time_ms(r, false);
-    if (prediction_ms > time_remaining_ms) {
-      log_debug(gc, ergo, cset)("Prediction %.3fms for region %u does not fit remaining time: %.3fms.",
-                                prediction_ms, r->hrm_index(), time_remaining_ms);
-      break;
-    }
-    // This region will be included in the next optional evacuation.
-    total_predicted_ms += prediction_ms;
-    time_remaining_ms -= prediction_ms;
-    selected_optional_regions.append(r);
-    num_regions_selected++;
-
-    add_region_to_collection_set(r);
-  }
-
-  _optional_old_regions.remove_prefix(&selected_optional_regions);
-
-  // Remove selected regions from retained list.
-  candidates()->retained_regions().remove(&selected_optional_regions);
-
-  return total_predicted_ms;
-}
-
 uint G1CollectionSet::select_optional_collection_set_regions(double time_remaining_ms) {
   assert(num_optional_regions() > 0,
          "Should only be called when there are optional regions");
@@ -770,10 +743,6 @@ uint G1CollectionSet::select_optional_collection_set_regions(double time_remaini
   double total_predicted_ms = select_candidates_from_optional_groups(time_remaining_ms, num_regions_selected);
 
   time_remaining_ms -= total_predicted_ms;
-
-  if (_optional_old_regions.length() > 0) {
-    total_predicted_ms += select_from_optional_retained(time_remaining_ms, num_regions_selected);
-  }
 
   log_debug(gc, ergo, cset)("Prepared %u regions out of %u for optional evacuation. Total predicted time: %.3fms",
                             num_regions_selected, optional_regions_count, total_predicted_ms);
@@ -811,30 +780,6 @@ void G1CollectionSet::add_region_to_collection_set(G1HeapRegion* r) {
   add_old_region(r);
 }
 
-
-void G1CollectionSet::prepare_optional_regions(G1CollectionCandidateRegionList* regions, uint cur_index) {
-
-  for (G1HeapRegion* r : *regions) {
-    assert(r->is_old(), "the region should be old");
-    assert(!r->in_collection_set(), "should not already be in the CSet");
-
-    _g1h->register_optional_region_with_region_attr(r);
-
-    r->set_index_in_opt_cset(cur_index++);
-  }
-}
-
-void G1CollectionSet::add_optional_region(G1HeapRegion* r, uint cur_index) {
-
-  assert(r->is_old(), "the region should be old");
-  assert(!r->in_collection_set(), "should not already be in the CSet");
-
-  _g1h->register_optional_region_with_region_attr(r);
-
-  r->set_index_in_opt_cset(cur_index);
-  _optional_old_regions.append(r);
-}
-
 void G1CollectionSet::drop_pinned_retained_region(G1HeapRegion* r) {
   candidates()->reset_region(r);
   r->rem_set()->clear(true /* only_cardset */);
@@ -845,12 +790,9 @@ void G1CollectionSet::finalize_initial_collection_set(double target_pause_time_m
   finalize_old_part(time_remaining_ms);
 }
 
-
-
 bool G1CollectionSet::finalize_optional_for_evacuation(double remaining_pause_time) {
   update_incremental_marker();
 
-  G1CollectionCandidateRegionList selected_regions;
   uint num_regions_selected = select_optional_collection_set_regions(remaining_pause_time);
 
   // FIXME: add a uniform way of dealing with this.
@@ -863,17 +805,6 @@ bool G1CollectionSet::finalize_optional_for_evacuation(double remaining_pause_ti
 }
 
 void G1CollectionSet::abandon_optional_collection_set(G1ParScanThreadStateSet* pss) {
-  for (G1HeapRegion* r : _optional_old_regions) {
-    pss->record_unused_optional_region(r);
-    // Clear collection set marker and make sure that the remembered set information
-    // is correct as we still need it later.
-    _g1h->clear_region_attr(r);
-    _g1h->register_region_with_region_attr(r);
-    r->clear_index_in_opt_cset();
-  }
-  _optional_old_regions.clear();
-
-
   // FIXME: fix below loginc
   if (_optional_groups.length() > 0) {
     for (uint i = 0; i < _optional_groups.length(); i++) {
