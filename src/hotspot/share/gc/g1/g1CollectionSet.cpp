@@ -369,7 +369,7 @@ void G1CollectionSet::finalize_old_part(double time_remaining_ms) {
 
     uint num_optional_regions = _optional_groups.num_regions();
 
-    if (candidates()->retained_regions().length() > 0) {
+    if (candidates()->retained_groups().num_regions() > 0) {
       select_candidates_from_retained(time_remaining_ms);
     }
     candidates()->verify();
@@ -494,6 +494,47 @@ double G1CollectionSet::select_candidates_from_groups(double time_remaining_ms) 
 }
 
 void G1CollectionSet::select_candidates_from_retained(double time_remaining_ms) {
+  G1CollectionCandidateGroupsList* retained_groups = &candidates()->retained_groups();
+
+  uint min_regions = _policy->min_retained_old_cset_length();
+
+  uint num_initial_regions_selected = 0;
+  // FIXME: Find a better name.
+  uint num_optional_cur = _optional_groups.num_regions();
+  uint num_optional_regions_selected = 0;
+  uint num_expensive_regions_selected = 0;
+  uint num_pinned_regions = 0;
+
+  double predicted_initial_time_ms = 0.0;
+  double predicted_optional_time_ms = 0.0;
+
+  G1CollectionCandidateRegionList remove_from_retained;
+
+  // We want to make sure that on the one hand we process the retained regions asap,
+  // but on the other hand do not take too many of them as optional regions.
+  // So we split the time budget into budget we will unconditionally take into the
+  // initial old regions, and budget for taking optional regions from the retained
+  // list.
+  double optional_time_remaining_ms = _policy->max_time_for_retaining();
+  time_remaining_ms = MIN2(time_remaining_ms, optional_time_remaining_ms);
+
+  log_debug(gc, ergo, cset)("Start adding retained candidates to collection set. "
+                            "Min %u regions, available %u, "
+                            "time remaining %1.2fms, optional remaining %1.2fms",
+                            min_regions, retained_list->length(), time_remaining_ms, optional_time_remaining_ms);
+
+  for (G1CollectionGroup* group: *retained_groups) {
+    assert(group->length() == 1, "Retained groups should have only 1 region");
+
+    double predicted_time_ms = group->predict_group_total_time_ms();
+
+    bool fits_in_remaining_time = predicted_time_ms <= time_remaining_ms;
+
+    G1HeapRegion* r = group->regions()[0]; // we only have one region in the group
+  }
+}
+
+void G1CollectionSet::select_candidates_from_retainedV2(double time_remaining_ms) {
 
   G1CollectionCandidateList* retained_list = &candidates()->retained_regions();
 

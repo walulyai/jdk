@@ -229,6 +229,7 @@ class G1CollectionSetCandidates : public CHeapObj<mtGC> {
 
   CandidateOrigin* _contains_map;
   G1CollectionCandidateGroupsList _candidate_groups; // Set of regions selected by concurrent marking.
+  G1CollectionCandidateGroupsList _retained_groups; // Set of regions selected by concurrent marking.
   uint _max_regions;
 
   // The number of regions from the last merge of candidates from the marking.
@@ -241,6 +242,7 @@ public:
   ~G1CollectionSetCandidates();
 
   G1CollectionCandidateGroupsList& candidate_groups() { return _candidate_groups; }
+  G1CollectionCandidateGroupsList& retained_groups() { return _retained_groups; }
   G1CollectionCandidateList& retained_regions() { return _retained_regions; }
 
   void initialize(uint max_regions);

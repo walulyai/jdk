@@ -84,9 +84,13 @@ void G1CollectionSetCandidates::iterate_regions(Func&& f) {
     }
   }
 
-  for (uint i = 0; i < (uint)_retained_regions.length(); i++) {
-    G1HeapRegion* r = _retained_regions.at(i)._r;
-    f(r);
+  for (G1CollectionGroup* group : _retained_groups) {
+    const GrowableArray<G1HeapRegion*>* regions = group->regions();
+
+    for (int i = 0; i < regions->length(); i++) {
+      G1HeapRegion* r = regions->at(i);
+      f(r);
+    }
   }
 }
 

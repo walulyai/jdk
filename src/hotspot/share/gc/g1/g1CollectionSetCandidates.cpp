@@ -244,6 +244,7 @@ G1CollectionSetCandidates::G1CollectionSetCandidates() :
   _retained_regions(),
   _contains_map(nullptr),
   _candidate_groups(),
+  _retained_groups(),
   _max_regions(0),
   _last_marking_candidates_length(0)
 { }
@@ -266,7 +267,7 @@ void G1CollectionSetCandidates::initialize(uint max_regions) {
 }
 
 void G1CollectionSetCandidates::clear() {
-  _retained_regions.clear();
+  _retained_groups.abandon();
   _candidate_groups.abandon();
   for (uint i = 0; i < _max_regions; i++) {
     _contains_map[i] = CandidateOrigin::Invalid;
@@ -338,14 +339,19 @@ void G1CollectionSetCandidates::sort_by_efficiency() {
   // From marking regions must always be sorted so no reason to actually sort
   // them.
   _candidate_groups.verify();
-  _retained_regions.sort_by_efficiency();
-  _retained_regions.verify();
+  _retained_groups.sort_by_efficiency();
+  _retained_groups.verify();
 }
 
 void G1CollectionSetCandidates::add_retained_region_unsorted(G1HeapRegion* r) {
   assert(!contains(r), "must not contain region %u", r->hrm_index());
   _contains_map[r->hrm_index()] = CandidateOrigin::Retained;
-  _retained_regions.append_unsorted(r);
+
+  G1CollectionGroup* gr = new G1CollectionGroup(G1CollectedHeap::heap()->card_set_config());
+  gr->add(r);
+  r->install_group_cardset(gr->card_set());
+
+  _retained_groups.append(gr);
 }
 
 void G1CollectionSetCandidates::reset_region(G1HeapRegion* r) {
@@ -366,7 +372,7 @@ uint G1CollectionSetCandidates::marking_groups_length() const {
 }
 
 uint G1CollectionSetCandidates::retained_regions_length() const {
-  return _retained_regions.length();
+  return _retained_groups.num_regions();
 }
 
 #ifndef PRODUCT
@@ -379,16 +385,19 @@ void G1CollectionSetCandidates::verify_region(G1HeapRegion* r, CandidateOrigin* 
   verify_map[hrm_index] = CandidateOrigin::Verify;
 }
 
+
 void G1CollectionSetCandidates::verify_retained_regions(uint& from_marking, CandidateOrigin* verify_map) {
-  _retained_regions.verify();
+  for (G1CollectionGroup* group : _retained_groups) {
+    const GrowableArray<G1HeapRegion*>* regions = group->regions();
 
-  for (uint i = 0; i < (uint)_retained_regions.length(); i++) {
-    G1HeapRegion* r = _retained_regions.at(i)._r;
+    for (int i = 0; i < regions->length(); i++) {
+      G1HeapRegion* r = regions->at(i);
 
-    if (is_from_marking(r)) {
-      from_marking++;
+      if (is_from_marking(r)) {
+        from_marking++;
+      }
+      verify_region(r, verify_map, CandidateOrigin::Retained);
     }
-    verify_region(r, verify_map, CandidateOrigin::Retained);
   }
 }
 
