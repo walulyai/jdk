@@ -29,20 +29,31 @@
 #include "gc/g1/g1CardSetMemory.hpp"
 #include "gc/g1/g1MonotonicArenaFreePool.hpp"
 #include "gc/g1/g1HeapRegion.hpp"
+#include "gc/shared/gc_globals.hpp"
 #include "logging/log.hpp"
 #include "utilities/growableArray.hpp"
 
+struct G1CollectionSetCandidateInfo {
+  G1HeapRegion* _r;
+  double _gc_efficiency;
+  uint _num_unreclaimed;          // Number of GCs this region has been found unreclaimable.
+
+  G1CollectionSetCandidateInfo() : G1CollectionSetCandidateInfo(nullptr, 0.0) { }
+  G1CollectionSetCandidateInfo(G1HeapRegion* r, double gc_efficiency) : _r(r), _gc_efficiency(gc_efficiency), _num_unreclaimed(0) { }
+
+  bool update_num_unreclaimed() {
+    ++_num_unreclaimed;
+    return _num_unreclaimed < G1NumCollectionsKeepPinned;
+  }
+};
 
 class G1CollectionGroup : public CHeapObj<mtGCCardSet>{
-  GrowableArray<G1HeapRegion*> _regions;
+  GrowableArray<G1CollectionSetCandidateInfo> _candidates;
 
   G1CardSetMemoryManager _card_set_mm;
 
   // The set of cards in the Java heap
   G1CardSet _card_set;
-
-  //
-  volatile uint _num_regions;
 
   //
   double _gc_efficiency;
@@ -54,22 +65,23 @@ public:
   ~G1CollectionGroup() { assert(length() == 0, "post condition!"); }
 
   void add(G1HeapRegion* hr);
+  void add(G1CollectionSetCandidateInfo &hr_info);
 
-  uint length() const {
-    return (uint)_regions.length();
+  uint length() const { return (uint)_candidates.length(); }
+
+  const GrowableArray<G1CollectionSetCandidateInfo>* regions() const {
+    return &_candidates;
   }
 
-  const GrowableArray<G1HeapRegion*>* regions() const {
-    return &_regions;
-  }
-
-  G1CardSet* card_set() {
-    return &_card_set;
-  }
+  G1CardSet* card_set() { return &_card_set; }
 
   void calculate_efficiency();
 
   double gc_efficiency() { return _gc_efficiency; }
+
+  G1HeapRegion* region_at(uint i) const { return _candidates.at(i)._r; }
+
+  G1CollectionSetCandidateInfo* at(uint i) { return &_candidates.at(i); }
 
   double predict_group_total_time_ms() const;
 

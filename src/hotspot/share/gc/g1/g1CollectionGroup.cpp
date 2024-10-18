@@ -27,25 +27,31 @@
 #include "gc/g1/g1CollectionGroup.hpp"
 
 G1CollectionGroup::G1CollectionGroup(G1CardSetConfiguration* config) :
-  _regions(4, mtGCCardSet),
+  _candidates(4, mtGCCardSet),
   _card_set_mm(config, G1CollectedHeap::heap()->card_set_freelist_pool()),
   _card_set(config, &_card_set_mm),
-  _num_regions(0),
   _gc_efficiency(0.0) {
 
-  }
+}
 
 void G1CollectionGroup::add(G1HeapRegion* hr) {
-    assert(!hr->is_young(), "should be flagged as survivor region");
-    _regions.append(hr);
-    _num_regions++;
-    hr->install_group_cardset(&_card_set);
-  }
+  G1CollectionSetCandidateInfo c(hr, hr->calc_gc_efficiency());
+  add(c);
+}
+
+void G1CollectionGroup::add(G1CollectionSetCandidateInfo &hr_info) {
+  G1HeapRegion* hr = hr_info._r;
+  assert(!hr->is_young(), "should be flagged as survivor region");
+
+  _candidates.append(hr_info);
+  hr->install_group_cardset(&_card_set);
+}
 
 void G1CollectionGroup::calculate_efficiency() {
   size_t reclaimable_bytes = 0;
-  for (uint i = 0; i < _num_regions; i++) {
-    G1HeapRegion* hr = _regions.at(i);
+  uint num_candidates = _candidates.length();
+  for (uint i = 0; i < num_candidates; i++) {
+    G1HeapRegion* hr = region_at(i);
     reclaimable_bytes += hr->reclaimable_bytes();
   }
 
@@ -55,44 +61,45 @@ void G1CollectionGroup::calculate_efficiency() {
 
 void G1CollectionGroup::clear() {
     _card_set.clear();
-    _regions.clear();
-    _num_regions = 0;
+    _candidates.clear();
   }
 
 void G1CollectionGroup::abandon() {
-    for (uint i = 0; i < _num_regions; i++) {
-      G1HeapRegion* r = _regions.at(i);
-      r->uninstall_group_cardset();
-      r->rem_set()->clear(true /* only_cardset */);
-    }
-    clear();
+  uint num_candidates = _candidates.length();
+  for (uint i = 0; i < num_candidates; i++) {
+    G1HeapRegion* r = region_at(i);
+    r->uninstall_group_cardset();
+    r->rem_set()->clear(true /* only_cardset */);
+  }
+  clear();
   }
 
 double G1CollectionGroup::predict_group_copy_time_ms() const {
-    G1Policy* p = G1CollectedHeap::heap()->policy();
+  G1Policy* p = G1CollectedHeap::heap()->policy();
 
-    double predicted_region_copy_time_ms = 0.0;
-    double predict_region_code_root_scan_time = 0.0;
+  double predicted_region_copy_time_ms = 0.0;
+  double predict_region_code_root_scan_time = 0.0;
 
-    for (uint i = 0; i < _num_regions; i++) {
-      G1HeapRegion* r = _regions.at(i);
-      assert(r->rem_set()->card_set() == &_card_set, "Must be!");
+  uint num_candidates = _candidates.length();
+  for (uint i = 0; i < num_candidates; i++) {
+    G1HeapRegion* r = region_at(i);
+    assert(r->rem_set()->card_set() == &_card_set, "Must be!");
 
-      predicted_region_copy_time_ms += p->predict_region_copy_time_ms(r, false /* for_young_only_phase */);
-      predict_region_code_root_scan_time += p->predict_region_code_root_scan_time(r, false /* for_young_only_phase */);
-    }
+    predicted_region_copy_time_ms += p->predict_region_copy_time_ms(r, false /* for_young_only_phase */);
+    predict_region_code_root_scan_time += p->predict_region_code_root_scan_time(r, false /* for_young_only_phase */);
+  }
 
-    return predicted_region_copy_time_ms + predict_region_code_root_scan_time;
+  return predicted_region_copy_time_ms + predict_region_code_root_scan_time;
 }
 
 double G1CollectionGroup::predict_group_total_time_ms() const {
-    G1Policy* p = G1CollectedHeap::heap()->policy();
+  G1Policy* p = G1CollectedHeap::heap()->policy();
 
-    size_t card_rs_length = _card_set.occupied();
+  size_t card_rs_length = _card_set.occupied();
 
-    double predicted_region_evac_time_ms = p->predict_merge_scan_time(card_rs_length);
-    predicted_region_evac_time_ms += predict_group_copy_time_ms();
-    predicted_region_evac_time_ms += p->predict_non_young_other_time_ms(_num_regions);
+  double predicted_region_evac_time_ms = p->predict_merge_scan_time(card_rs_length);
+  predicted_region_evac_time_ms += predict_group_copy_time_ms();
+  predicted_region_evac_time_ms += p->predict_non_young_other_time_ms(length());
 
-    return predicted_region_evac_time_ms;
-  }
+  return predicted_region_evac_time_ms;
+}

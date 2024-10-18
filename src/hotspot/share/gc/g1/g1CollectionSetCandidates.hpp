@@ -82,6 +82,8 @@ public:
 
   void remove_selected(uint count, uint num_regions);
 
+  void remove(G1CollectionCandidateGroupsList* other);
+
   void prepare_for_scan();
 
   void sort_by_efficiency();
@@ -124,20 +126,6 @@ public:
 
   G1CollectionCandidateRegionListIterator begin() const { return _regions.begin(); }
   G1CollectionCandidateRegionListIterator end() const { return _regions.end(); }
-};
-
-struct G1CollectionSetCandidateInfo {
-  G1HeapRegion* _r;
-  double _gc_efficiency;
-  uint _num_unreclaimed;          // Number of GCs this region has been found unreclaimable.
-
-  G1CollectionSetCandidateInfo() : G1CollectionSetCandidateInfo(nullptr, 0.0) { }
-  G1CollectionSetCandidateInfo(G1HeapRegion* r, double gc_efficiency) : _r(r), _gc_efficiency(gc_efficiency), _num_unreclaimed(0) { }
-
-  bool update_num_unreclaimed() {
-    ++_num_unreclaimed;
-    return _num_unreclaimed < G1NumCollectionsKeepPinned;
-  }
 };
 
 class G1CollectionCandidateListIterator : public StackObj {

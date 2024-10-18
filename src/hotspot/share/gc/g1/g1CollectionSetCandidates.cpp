@@ -173,9 +173,38 @@ void G1CollectionCandidateGroupsList::prepare_for_scan() {
 }
 
 void G1CollectionCandidateGroupsList::remove_selected(uint count, uint num_regions) {
-    _groups.remove_till(count);
-    _num_regions -= num_regions;
+  _groups.remove_till(count);
+  _num_regions -= num_regions;
+}
+
+void G1CollectionCandidateGroupsList::remove(G1CollectionCandidateGroupsList* other) {
+  guarantee((uint)_groups.length() >= other->length(), "must be");
+
+  if (other->length() == 0) {
+    // Nothing to remove or nothing in the original set.
+    return;
   }
+
+  // Create a list from scratch, copying over the elements from the candidate
+  // list not in the other list. Finally deallocate and overwrite the old list.
+  int new_length = _groups.length() - other->length();
+  _num_regions = num_regions() - other->num_regions();
+  GrowableArray<G1CollectionGroup*> new_list(new_length, mtGC);
+
+  uint other_idx = 0;
+
+  for (uint gr_idx = 0; gr_idx < (uint)_groups.length(); gr_idx++) {
+    if ((other_idx == other->length()) || _groups.at(gr_idx) != other->at(other_idx)) {
+      new_list.append(_groups.at(gr_idx));
+    } else {
+      other_idx++;
+    }
+  }
+  _groups.swap(&new_list);
+
+  verify();
+  assert(_groups.length() == new_length, "must be %u %u", _groups.length(), new_length);
+}
 
 int G1CollectionCandidateGroupsList::compare_gc_efficiency(G1CollectionGroup** gr1, G1CollectionGroup** gr2) {
 
@@ -321,7 +350,7 @@ void G1CollectionSetCandidates::set_candidates_from_marking(G1CollectionSetCandi
       current = new G1CollectionGroup(G1CollectedHeap::heap()->card_set_config());
       num_added_to_group = 0;
     }
-    current->add(r);
+    current->add(candidate_infos[i]);
     num_added_to_group++;
   }
 
@@ -388,10 +417,10 @@ void G1CollectionSetCandidates::verify_region(G1HeapRegion* r, CandidateOrigin* 
 
 void G1CollectionSetCandidates::verify_retained_regions(uint& from_marking, CandidateOrigin* verify_map) {
   for (G1CollectionGroup* group : _retained_groups) {
-    const GrowableArray<G1HeapRegion*>* regions = group->regions();
+    const GrowableArray<G1CollectionSetCandidateInfo>* regions = group->regions();
 
     for (int i = 0; i < regions->length(); i++) {
-      G1HeapRegion* r = regions->at(i);
+      G1HeapRegion* r = regions->at(i)._r;
 
       if (is_from_marking(r)) {
         from_marking++;
@@ -403,10 +432,10 @@ void G1CollectionSetCandidates::verify_retained_regions(uint& from_marking, Cand
 
 void G1CollectionSetCandidates::verify_candidate_groups(uint& from_marking, CandidateOrigin* verify_map) {
   for (G1CollectionGroup* group : _candidate_groups) {
-    const GrowableArray<G1HeapRegion*>* regions = group->regions();
+    const GrowableArray<G1CollectionSetCandidateInfo>* regions = group->regions();
 
     for (int i = 0; i < regions->length(); i++) {
-      G1HeapRegion* r = regions->at(i);
+      G1HeapRegion* r = regions->at(i)._r;
 
       if (is_from_marking(r)) {
         from_marking++;

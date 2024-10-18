@@ -498,6 +498,7 @@ void G1CollectionSet::select_candidates_from_retained(double time_remaining_ms) 
 
   uint min_regions = _policy->min_retained_old_cset_length();
 
+  uint num_initial_groups = 0;
   uint num_initial_regions_selected = 0;
   // FIXME: Find a better name.
   uint num_optional_cur = _optional_groups.num_regions();
@@ -508,7 +509,8 @@ void G1CollectionSet::select_candidates_from_retained(double time_remaining_ms) 
   double predicted_initial_time_ms = 0.0;
   double predicted_optional_time_ms = 0.0;
 
-  G1CollectionCandidateRegionList remove_from_retained;
+  G1CollectionCandidateGroupsList remove_from_retained;
+  G1CollectionCandidateGroupsList abandonded;
 
   // We want to make sure that on the one hand we process the retained regions asap,
   // but on the other hand do not take too many of them as optional regions.
@@ -521,7 +523,7 @@ void G1CollectionSet::select_candidates_from_retained(double time_remaining_ms) 
   log_debug(gc, ergo, cset)("Start adding retained candidates to collection set. "
                             "Min %u regions, available %u, "
                             "time remaining %1.2fms, optional remaining %1.2fms",
-                            min_regions, retained_list->length(), time_remaining_ms, optional_time_remaining_ms);
+                            min_regions, retained_groups->length(), time_remaining_ms, optional_time_remaining_ms);
 
   for (G1CollectionGroup* group: *retained_groups) {
     assert(group->length() == 1, "Retained groups should have only 1 region");
@@ -530,10 +532,76 @@ void G1CollectionSet::select_candidates_from_retained(double time_remaining_ms) 
 
     bool fits_in_remaining_time = predicted_time_ms <= time_remaining_ms;
 
-    G1HeapRegion* r = group->regions()[0]; // we only have one region in the group
-  }
-}
+    G1CollectionSetCandidateInfo* ci = group->at(0); // we only have one region in the group
+    G1HeapRegion* r = ci->_r;
 
+    // If we can't reclaim that region ignore it for now.
+    if (r->has_pinned_objects()) {
+      num_pinned_regions++;
+      if (ci->update_num_unreclaimed()) {
+        log_trace(gc, ergo, cset)("Retained candidate %u can not be reclaimed currently. Skipping.", r->hrm_index());
+      } else {
+        log_trace(gc, ergo, cset)("Retained candidate %u can not be reclaimed currently. Dropping.", r->hrm_index());
+        // Drop pinned retained regions to make progress with retained regions. Regions
+        // in that list must have been pinned for at least G1NumCollectionsKeepPinned
+        // GCs and hence are considered "long lived".
+        group->abandon();
+        abandonded.append(group);
+        remove_from_retained.append(group);
+      }
+      continue;
+    }
+
+    if (fits_in_remaining_time || (num_expensive_regions_selected < min_regions)) {
+      predicted_initial_time_ms += predicted_time_ms;
+      if (!fits_in_remaining_time) {
+        num_expensive_regions_selected++;
+      }
+
+      _collection_set_groups.append(group);
+      num_initial_groups++;
+
+      add_group_to_collection_set(group);
+      remove_from_retained.append(group);
+
+      num_initial_regions_selected += group->length();
+    } else if (predicted_time_ms <= optional_time_remaining_ms) {
+      // Prepare optional collection region.
+      _optional_groups.append(group);
+      prepare_optional_group(group, num_optional_regions_selected);
+      num_optional_regions_selected += group->length();
+      predicted_optional_time_ms += predicted_time_ms;
+    } else {
+      // Fits neither initial nor optional time limit. Exit.
+      break;
+    }
+    time_remaining_ms = MAX2(0.0, time_remaining_ms - predicted_time_ms);
+    optional_time_remaining_ms = MAX2(0.0, optional_time_remaining_ms - predicted_time_ms);
+  }
+
+  // FIXME: not really true, if we add optional regions.
+  uint num_regions_selected = num_initial_regions_selected + num_optional_regions_selected;
+  if (num_regions_selected == retained_groups->length()) {
+    log_debug(gc, ergo, cset)("Retained candidates exhausted.");
+  }
+  if (num_expensive_regions_selected > 0) {
+    log_debug(gc, ergo, cset)("Added %u retained candidates to collection set although the predicted time was too high.",
+                              num_expensive_regions_selected);
+  }
+
+  // remove remove from retained.
+  retained_groups->remove(&remove_from_retained);
+
+  // FIXME: clean up.
+  abandonded.clear();
+
+  log_debug(gc, ergo, cset)("Finish adding retained candidates to collection set. Initial: %u, optional: %u, pinned: %u, "
+                            "predicted initial time: %1.2fms, predicted optional time: %1.2fms, "
+                            "time remaining: %1.2fms optional time remaining %1.2fms",
+                            num_initial_regions_selected, num_optional_regions_selected, num_pinned_regions,
+                            predicted_initial_time_ms, predicted_optional_time_ms, time_remaining_ms, optional_time_remaining_ms);
+}
+/*
 void G1CollectionSet::select_candidates_from_retainedV2(double time_remaining_ms) {
 
   G1CollectionCandidateList* retained_list = &candidates()->retained_regions();
@@ -628,7 +696,7 @@ void G1CollectionSet::select_candidates_from_retainedV2(double time_remaining_ms
                             num_initial_regions_selected, num_optional_regions_selected, num_pinned_regions,
                             predicted_initial_time_ms, predicted_optional_time_ms, time_remaining_ms, optional_time_remaining_ms);
 }
-
+*/
 double G1CollectionSet::select_candidates_from_optional_groups(double time_remaining_ms, uint& num_regions_selected) {
   uint num_groups_selected = 0;
   double total_predicted_ms = 0.0;
@@ -657,6 +725,7 @@ double G1CollectionSet::select_candidates_from_optional_groups(double time_remai
   // Remove selected groups from candidate list.
   if (num_groups_selected > 0) {
     _optional_groups.remove_selected(num_groups_selected, num_regions_selected);
+    // FIXME: some regions are from retained, while others are from marking.
     candidates()->candidate_groups().remove_selected(num_groups_selected, num_regions_selected);
   }
   return total_predicted_ms;
@@ -711,10 +780,10 @@ uint G1CollectionSet::select_optional_collection_set_regions(double time_remaini
   return num_regions_selected;
 }
 
-void G1CollectionSet::prepare_optional_group(G1CollectionGroup* collection_group, uint cur_index) {
-  const GrowableArray<G1HeapRegion*>* regions = collection_group->regions();
-  for (int i = 0; i < regions->length(); i++) {
-    G1HeapRegion* r = regions->at(i);
+void G1CollectionSet::prepare_optional_group(G1CollectionGroup* gr, uint cur_index) {
+  uint length = gr->length();
+  for (uint i = 0; i < length; i++) {
+    G1HeapRegion* r = gr->region_at(i);
 
     assert(r->is_old(), "the region should be old");
     assert(!r->in_collection_set(), "should not already be in the CSet");
@@ -724,10 +793,10 @@ void G1CollectionSet::prepare_optional_group(G1CollectionGroup* collection_group
   }
 }
 
-void G1CollectionSet::add_group_to_collection_set(G1CollectionGroup* collection_group) {
-  const GrowableArray<G1HeapRegion*>* regions = collection_group->regions();
-  for (int i = 0; i < regions->length(); i++) {
-    G1HeapRegion* r = regions->at(i);
+void G1CollectionSet::add_group_to_collection_set(G1CollectionGroup* gr) {
+  uint length = gr->length();
+  for (uint i = 0; i < length; i++) {
+    G1HeapRegion* r = gr->region_at(i);
     add_region_to_collection_set(r);
 
     r->uninstall_group_cardset();
@@ -808,10 +877,10 @@ void G1CollectionSet::abandon_optional_collection_set(G1ParScanThreadStateSet* p
   // FIXME: fix below loginc
   if (_optional_groups.length() > 0) {
     for (uint i = 0; i < _optional_groups.length(); i++) {
-    G1CollectionGroup* group = _optional_groups.at(i);
-    const GrowableArray<G1HeapRegion*>* regions = group->regions();
-      for (int i = 0; i < regions->length(); i++) {
-        G1HeapRegion* r = regions->at(i);
+      G1CollectionGroup* group = _optional_groups.at(i);
+      uint length = group->length();
+      for (uint i = 0; i < length; i++) {
+        G1HeapRegion* r = group->region_at(i);
         pss->record_unused_optional_region(r);
         // Clear collection set marker and make sure that the remembered set information
         // is correct as we still need it later.

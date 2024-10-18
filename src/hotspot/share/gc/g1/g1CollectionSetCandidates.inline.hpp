@@ -76,19 +76,17 @@ inline bool G1CollectionCandidateGroupsListIterator::operator!=(const G1Collecti
 template<typename Func>
 void G1CollectionSetCandidates::iterate_regions(Func&& f) {
   for (G1CollectionGroup* group : _candidate_groups) {
-    const GrowableArray<G1HeapRegion*>* regions = group->regions();
-
-    for (int i = 0; i < regions->length(); i++) {
-      G1HeapRegion* r = regions->at(i);
+    uint length = group->length();
+    for (uint i = 0; i < length; i++) {
+      G1HeapRegion* r = group->region_at(i);
       f(r);
     }
   }
 
   for (G1CollectionGroup* group : _retained_groups) {
-    const GrowableArray<G1HeapRegion*>* regions = group->regions();
-
-    for (int i = 0; i < regions->length(); i++) {
-      G1HeapRegion* r = regions->at(i);
+    uint length = group->length();
+    for (uint i = 0; i < length; i++) {
+      G1HeapRegion* r = group->region_at(i);
       f(r);
     }
   }
