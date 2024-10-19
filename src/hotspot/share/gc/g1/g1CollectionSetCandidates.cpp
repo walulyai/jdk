@@ -134,37 +134,6 @@ void G1CollectionCandidateGroupsList::verify() const {
 #endif
 
 
-G1CollectionCandidateRegionList::G1CollectionCandidateRegionList() : _regions(2, mtGC) { }
-
-void G1CollectionCandidateRegionList::append(G1HeapRegion* r) {
-  assert(!_regions.contains(r), "must be");
-  _regions.append(r);
-}
-
-void G1CollectionCandidateRegionList::remove_prefix(G1CollectionCandidateRegionList* other) {
-#ifdef ASSERT
-  // Check that the given list is a prefix of this list.
-  int i = 0;
-  for (G1HeapRegion* r : *other) {
-    assert(_regions.at(i) == r, "must be in order, but element %d is not", i);
-    i++;
-  }
-#endif
-
-  if (other->length() == 0) {
-    return;
-  }
-  _regions.remove_till(other->length());
-}
-
-G1HeapRegion* G1CollectionCandidateRegionList::at(uint index) {
-  return _regions.at(index);
-}
-
-void G1CollectionCandidateRegionList::clear() {
-  _regions.clear();
-}
-
 G1CollectionSetCandidates::G1CollectionSetCandidates() :
   _contains_map(nullptr),
   _candidate_groups(),

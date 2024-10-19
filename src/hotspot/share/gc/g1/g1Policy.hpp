@@ -48,7 +48,6 @@ class G1HeapRegion;
 class G1CollectionSet;
 class G1CollectionSetCandidates;
 class G1CollectionSetChooser;
-class G1CollectionCandidateRegionList;
 class G1IHOPControl;
 class G1Analytics;
 class G1SurvivorRegions;

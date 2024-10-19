@@ -39,24 +39,6 @@ class G1CollectionCandidateGroupsList;
 class G1HeapRegion;
 class G1HeapRegionClosure;
 
-using G1CollectionCandidateRegionListIterator = GrowableArrayIterator<G1HeapRegion*>;
-
-/*
-class G1CollectionCandidateGroupsListIterator : public StackObj {
-  G1CollectionCandidateGroupsList* _which;
-  uint _position;
-
-public:
-  G1CollectionCandidateGroupsListIterator(G1CollectionCandidateGroupsList* which, uint position);
-
-  G1CollectionCandidateGroupsListIterator& operator++();
-  G1CollectionGroup* operator*();
-
-  bool operator==(const G1CollectionCandidateGroupsListIterator& rhs);
-  bool operator!=(const G1CollectionCandidateGroupsListIterator& rhs);
-};
-*/
-
 using G1CollectionCandidateGroupsListIterator = GrowableArrayIterator<G1CollectionGroup*>;
 
 class G1CollectionCandidateGroupsList {
@@ -104,31 +86,6 @@ public:
   G1CollectionCandidateGroupsListIterator end() const {
     return _groups.end();
   }
-};
-
-// A set of G1HeapRegion*, a thin wrapper around GrowableArray.
-class G1CollectionCandidateRegionList {
-  GrowableArray<G1HeapRegion*> _regions;
-
-public:
-  G1CollectionCandidateRegionList();
-
-  // Append a G1HeapRegion to the end of this list. The region must not be in the list
-  // already.
-  void append(G1HeapRegion* r);
-  // Remove the given list of G1HeapRegion* from this list. The given list must be a prefix
-  // of this list.
-  void remove_prefix(G1CollectionCandidateRegionList* list);
-
-  // Empty contents of the list.
-  void clear();
-
-  G1HeapRegion* at(uint index);
-
-  uint length() const { return (uint)_regions.length(); }
-
-  G1CollectionCandidateRegionListIterator begin() const { return _regions.begin(); }
-  G1CollectionCandidateRegionListIterator end() const { return _regions.end(); }
 };
 
 // Tracks all collection set candidates, i.e. regions that could/should be evacuated soon.
