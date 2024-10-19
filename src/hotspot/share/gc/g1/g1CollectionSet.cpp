@@ -109,6 +109,8 @@ void G1CollectionSet::add_old_region(G1HeapRegion* hr) {
          "Precondition, actively building cset or adding optional later on");
   assert(hr->is_old(), "the region should be old");
 
+  assert(!hr->rem_set()->has_group_cardset(), "Must not have a group remset");
+
   assert(!hr->in_collection_set(), "should not already be in the collection set");
   _g1h->register_old_region_with_region_attr(hr);
 
@@ -429,7 +431,7 @@ double G1CollectionSet::select_candidates_from_groups(double time_remaining_ms) 
     time_remaining_ms = MAX2(time_remaining_ms - predicted_time_ms, 0.0);
     // Add regions to old set until we reach the minimum amount
     if (num_inital_regions < min_old_cset_length) {
-      _collection_set_groups.append(group);
+      
       num_initial_groups++;
 
       add_group_to_collection_set(group);
@@ -449,7 +451,6 @@ double G1CollectionSet::select_candidates_from_groups(double time_remaining_ms) 
     } else {
       // Keep adding regions to old set until we reach the optional threshold
       if (time_remaining_ms > optional_threshold_ms) {
-        _collection_set_groups.append(group);
         num_initial_groups++;
 
         add_group_to_collection_set(group);
@@ -547,9 +548,11 @@ void G1CollectionSet::select_candidates_from_retained(double time_remaining_ms) 
         // Drop pinned retained regions to make progress with retained regions. Regions
         // in that list must have been pinned for at least G1NumCollectionsKeepPinned
         // GCs and hence are considered "long lived".
-        group->abandon();
+        _g1h->clear_region_attr(r);
+        candidates()->reset_region(r);
         abandonded.append(group);
         remove_from_retained.append(group);
+        group->abandon();
       }
       continue;
     }
@@ -560,7 +563,6 @@ void G1CollectionSet::select_candidates_from_retained(double time_remaining_ms) 
         num_expensive_regions_selected++;
       }
 
-      _collection_set_groups.append(group);
       num_initial_groups++;
 
       add_group_to_collection_set(group);
@@ -621,7 +623,6 @@ double G1CollectionSet::select_candidates_from_optional_groups(double time_remai
     total_predicted_ms += predicted_time_ms;
     time_remaining_ms -= predicted_time_ms;
 
-    _collection_set_groups.append(group);
     num_regions_selected += group->length();
     num_groups_selected++;
 
@@ -671,11 +672,12 @@ void G1CollectionSet::add_group_to_collection_set(G1CollectionGroup* gr) {
   uint length = gr->length();
   for (uint i = 0; i < length; i++) {
     G1HeapRegion* r = gr->region_at(i);
-    add_region_to_collection_set(r);
 
     r->uninstall_group_cardset();
     r->rem_set()->set_state_complete();
+    add_region_to_collection_set(r);
   }
+  _collection_set_groups.append(gr);
 }
 
 void G1CollectionSet::add_region_to_collection_set(G1HeapRegion* r) {

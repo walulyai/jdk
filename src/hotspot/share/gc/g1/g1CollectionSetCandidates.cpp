@@ -242,7 +242,6 @@ void G1CollectionSetCandidates::add_retained_region_unsorted(G1HeapRegion* r) {
 
   G1CollectionGroup* gr = new G1CollectionGroup(G1CollectedHeap::heap()->card_set_config());
   gr->add(r);
-  r->install_group_cardset(gr->card_set());
 
   _retained_groups.append(gr);
 }

@@ -65,13 +65,7 @@ public:
     return _card_set->is_empty();
   }
 
-  void install_group_cardset(G1CardSet* group_cardset) {
-    assert(group_cardset != nullptr, "pre-condition");
-    assert(_saved_card_set == nullptr, "pre-condition");
-
-    _saved_card_set = _card_set;
-    _card_set = group_cardset;
-  }
+  inline void install_group_cardset(G1CardSet* group_cardset);
 
   void uninstall_group_cardset();
 
