@@ -34,7 +34,6 @@
 #include "utilities/bitMap.hpp"
 #include "utilities/growableArray.hpp"
 
-class G1CollectionCandidateList;
 class G1CollectionSetCandidates;
 class G1CollectionCandidateGroupsList;
 class G1HeapRegion;
@@ -130,68 +129,6 @@ public:
 
   G1CollectionCandidateRegionListIterator begin() const { return _regions.begin(); }
   G1CollectionCandidateRegionListIterator end() const { return _regions.end(); }
-};
-
-class G1CollectionCandidateListIterator : public StackObj {
-  G1CollectionCandidateList* _which;
-  uint _position;
-
-public:
-  G1CollectionCandidateListIterator(G1CollectionCandidateList* which, uint position);
-
-  G1CollectionCandidateListIterator& operator++();
-  G1CollectionSetCandidateInfo* operator*();
-
-  bool operator==(const G1CollectionCandidateListIterator& rhs);
-  bool operator!=(const G1CollectionCandidateListIterator& rhs);
-};
-
-// List of collection set candidates (regions with their efficiency) ordered by
-// decreasing gc efficiency.
-class G1CollectionCandidateList : public CHeapObj<mtGC> {
-  friend class G1CollectionCandidateListIterator;
-
-  GrowableArray<G1CollectionSetCandidateInfo> _candidates;
-
-public:
-  G1CollectionCandidateList();
-
-  // Put the given set of candidates into this list, preserving the efficiency ordering.
-  void set(G1CollectionSetCandidateInfo* candidate_infos, uint num_infos);
-  // Add the given G1HeapRegion to this list at the end, (potentially) making the list unsorted.
-  void append_unsorted(G1HeapRegion* r);
-  // Restore sorting order by decreasing gc efficiency, using the existing efficiency
-  // values.
-  void sort_by_efficiency();
-  // Removes any heap regions stored in this list also in the other list. The other
-  // list may only contain regions in this list, sorted by gc efficiency. It need
-  // not be a prefix of this list. Returns the number of regions removed.
-  // E.g. if this list is "A B G H", the other list may be "A G H", but not "F" (not in
-  // this list) or "A H G" (wrong order).
-  void remove(G1CollectionCandidateRegionList* other);
-
-  void clear();
-
-  G1CollectionSetCandidateInfo& at(uint position) { return _candidates.at(position); }
-
-  uint length() const { return (uint)_candidates.length(); }
-
-  void verify() PRODUCT_RETURN;
-
-  // Comparison function to order regions in decreasing GC efficiency order. This
-  // will cause regions with a lot of live objects and large remembered sets to end
-  // up at the end of the list.
-  static int compare_gc_efficiency(G1CollectionSetCandidateInfo* ci1, G1CollectionSetCandidateInfo* ci2);
-
-  static int compare_reclaimble_bytes(G1CollectionSetCandidateInfo* ci1, G1CollectionSetCandidateInfo* ci2);
-
-  G1CollectionCandidateListIterator begin() {
-    return G1CollectionCandidateListIterator(this, 0);
-  }
-
-  G1CollectionCandidateListIterator end() {
-    return G1CollectionCandidateListIterator(this, length());
-  }
 };
 
 // Tracks all collection set candidates, i.e. regions that could/should be evacuated soon.

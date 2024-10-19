@@ -77,6 +77,13 @@ public:
 
   void calculate_efficiency();
 
+  // Comparison function to order regions in decreasing GC efficiency order. This
+  // will cause regions with a lot of live objects and large remembered sets to end
+  // up at the end of the list.
+  static int compare_gc_efficiency(G1CollectionSetCandidateInfo* ci1, G1CollectionSetCandidateInfo* ci2);
+
+  static int compare_reclaimble_bytes(G1CollectionSetCandidateInfo* ci1, G1CollectionSetCandidateInfo* ci2);
+
   double gc_efficiency() { return _gc_efficiency; }
 
   G1HeapRegion* region_at(uint i) const { return _candidates.at(i)._r; }

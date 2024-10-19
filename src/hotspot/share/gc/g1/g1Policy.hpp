@@ -46,7 +46,6 @@
 
 class G1HeapRegion;
 class G1CollectionSet;
-class G1CollectionCandidateList;
 class G1CollectionSetCandidates;
 class G1CollectionSetChooser;
 class G1CollectionCandidateRegionList;

@@ -103,3 +103,43 @@ double G1CollectionGroup::predict_group_total_time_ms() const {
 
   return predicted_region_evac_time_ms;
 }
+
+
+int G1CollectionGroup::compare_gc_efficiency(G1CollectionSetCandidateInfo* ci1, G1CollectionSetCandidateInfo* ci2) {
+  assert(ci1->_r != nullptr && ci2->_r != nullptr, "Should not be!");
+
+  double gc_eff1 = ci1->_gc_efficiency;
+  double gc_eff2 = ci2->_gc_efficiency;
+
+  if (gc_eff1 > gc_eff2) {
+    return -1;
+  } else if (gc_eff1 < gc_eff2) {
+    return 1;
+  } else {
+    return 0;
+  }
+}
+
+int G1CollectionGroup::compare_reclaimble_bytes(G1CollectionSetCandidateInfo* ci1, G1CollectionSetCandidateInfo* ci2) {
+  // Make sure that null entries are moved to the end.
+  if (ci1->_r == nullptr) {
+    if (ci2->_r == nullptr) {
+      return 0;
+    } else {
+      return 1;
+    }
+  } else if (ci2->_r == nullptr) {
+    return -1;
+  }
+
+  size_t reclaimable1 = ci1->_r->reclaimable_bytes();
+  size_t reclaimable2 = ci2->_r->reclaimable_bytes();
+
+  if (reclaimable1 > reclaimable2) {
+    return -1;
+  } else if (reclaimable1 < reclaimable2) {
+    return 1;
+  } else {
+    return 0;
+  }
+}

@@ -29,53 +29,6 @@
 
 #include "utilities/growableArray.hpp"
 
-inline G1CollectionCandidateListIterator::G1CollectionCandidateListIterator(G1CollectionCandidateList* which, uint position) :
-  _which(which), _position(position) { }
-
-inline G1CollectionCandidateListIterator& G1CollectionCandidateListIterator::operator++() {
-  assert(_position < _which->length(), "must be");
-  _position++;
-  return *this;
-}
-
-inline G1CollectionSetCandidateInfo* G1CollectionCandidateListIterator::operator*() {
-  return &_which->_candidates.at(_position);
-}
-
-inline bool G1CollectionCandidateListIterator::operator==(const G1CollectionCandidateListIterator& rhs) {
-  assert(_which == rhs._which, "iterator belongs to different array");
-  return _position == rhs._position;
-}
-
-inline bool G1CollectionCandidateListIterator::operator!=(const G1CollectionCandidateListIterator& rhs) {
-  return !(*this == rhs);
-}
-
-/*
-inline G1CollectionCandidateGroupsListIterator::G1CollectionCandidateGroupsListIterator(G1CollectionCandidateGroupsList* which, uint position) :
-  _which(which), _position(position) { }
-
-inline G1CollectionCandidateGroupsListIterator& G1CollectionCandidateGroupsListIterator::operator++() {
-  assert(_position < _which->length(), "must be");
-  _position++;
-  return *this;
-}
-
-inline G1CollectionGroup* G1CollectionCandidateGroupsListIterator::operator*() {
-  return _which->at(_position);
-}
-
-inline bool G1CollectionCandidateGroupsListIterator::operator==(const G1CollectionCandidateGroupsListIterator& rhs) {
-  assert(_which == rhs._which, "iterator belongs to different array");
-  return _position == rhs._position;
-}
-
-inline bool G1CollectionCandidateGroupsListIterator::operator!=(const G1CollectionCandidateGroupsListIterator& rhs) {
-  return !(*this == rhs);
-}
-
-*/
-
 template<typename Func>
 void G1CollectionSetCandidates::iterate_regions(Func&& f) {
   for (G1CollectionGroup* group : _candidate_groups) {
