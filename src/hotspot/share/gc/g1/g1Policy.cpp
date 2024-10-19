@@ -522,12 +522,13 @@ double G1Policy::predict_retained_regions_evac_time() const {
 
   double result = 0.0;
 
-  G1CollectionCandidateList& list = candidates()->retained_regions();
+  G1CollectionCandidateGroupsList* retained_groups = &candidates()->retained_groups();
   uint min_regions_left = MIN2(min_retained_old_cset_length(),
-                               list.length());
+                               retained_groups->num_regions());
 
-  for (G1CollectionSetCandidateInfo* ci : list) {
-    G1HeapRegion* r = ci->_r;
+  for (G1CollectionGroup* group: *retained_groups) {
+    // FIXME: assert that we only have one region
+    G1HeapRegion* r = group->region_at(0); // We only have one region per group.
     // We optimistically assume that any of these marking candidate regions will
     // be reclaimable the next gc, so just consider them as normal.
     if (r->has_pinned_objects()) {
@@ -543,7 +544,7 @@ double G1Policy::predict_retained_regions_evac_time() const {
   }
 
   log_trace(gc, ergo, heap)("Selected %u of %u retained candidates (pinned %u) taking %1.3fms additional time",
-                            num_regions, list.length(), num_pinned_regions, result);
+                            num_regions, retained_groups->num_regions(), num_pinned_regions, result);
   return result;
 }
 

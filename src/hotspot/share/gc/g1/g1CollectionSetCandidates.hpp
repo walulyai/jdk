@@ -217,8 +217,6 @@ class G1CollectionSetCandidates : public CHeapObj<mtGC> {
     Verify                     // Special value for verification.
   };
 
-  G1CollectionCandidateList _retained_regions; // Set of regions selected from evacuation failed regions.
-
   CandidateOrigin* _contains_map;
   G1CollectionCandidateGroupsList _candidate_groups; // Set of regions selected by concurrent marking.
   G1CollectionCandidateGroupsList _retained_groups; // Set of regions selected by concurrent marking.
@@ -235,7 +233,6 @@ public:
 
   G1CollectionCandidateGroupsList& candidate_groups() { return _candidate_groups; }
   G1CollectionCandidateGroupsList& retained_groups() { return _retained_groups; }
-  G1CollectionCandidateList& retained_regions() { return _retained_regions; }
 
   void initialize(uint max_regions);
 

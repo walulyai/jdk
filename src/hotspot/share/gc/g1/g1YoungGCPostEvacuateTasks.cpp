@@ -112,9 +112,8 @@ public:
       _total.add(gr->card_set_memory_stats());
     }
 
-    for (G1CollectionSetCandidateInfo* c_info : candidates->retained_regions()) {
-      G1HeapRegion* r = c_info->_r;
-      _total.add(r->rem_set()->card_set_memory_stats());
+    for (G1CollectionGroup* gr : candidates->retained_groups()) {
+      _total.add(gr->card_set_memory_stats());
     }
 
     g1h->set_collection_set_candidates_stats(_total);

@@ -270,7 +270,6 @@ void G1CollectionCandidateRegionList::clear() {
 }
 
 G1CollectionSetCandidates::G1CollectionSetCandidates() :
-  _retained_regions(),
   _contains_map(nullptr),
   _candidate_groups(),
   _retained_groups(),
