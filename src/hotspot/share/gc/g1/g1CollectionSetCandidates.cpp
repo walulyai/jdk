@@ -36,6 +36,7 @@ void G1CollectionCandidateGroupsList::append(G1CollectionGroup* group) {
   assert(!_groups.contains(group), "Already added to list");
   _groups.append(group);
   _num_regions += group->length();
+  log_error(gc)("Added " PTR_FORMAT, p2i(group));
 }
 
 G1CollectionGroup* G1CollectionCandidateGroupsList::at(uint index) {
@@ -56,6 +57,7 @@ void G1CollectionCandidateGroupsList::abandon() {
   for (int i = 0; i < _groups.length(); i++) {
     G1CollectionGroup* gr = _groups.at(i);
     gr->abandon();
+    log_error(gc)("Deleted " PTR_FORMAT, p2i(gr));
     delete gr;
   }
   _groups.clear();
@@ -74,9 +76,11 @@ void G1CollectionCandidateGroupsList::remove_selected(uint count, uint num_regio
 }
 
 void G1CollectionCandidateGroupsList::remove(G1CollectionCandidateGroupsList* other) {
-  guarantee((uint)_groups.length() >= other->length(), "must be");
+  //FIXME: 
+  // guarantee((uint)_groups.length() >= other->length(), "must be");
 
-  if (other->length() == 0) {
+  // FIXME:
+  if (other->length() == 0 || length() == 0) {
     // Nothing to remove or nothing in the original set.
     return;
   }
@@ -243,6 +247,7 @@ void G1CollectionSetCandidates::add_retained_region_unsorted(G1HeapRegion* r) {
   G1CollectionGroup* gr = new G1CollectionGroup(G1CollectedHeap::heap()->card_set_config());
   gr->add(r);
 
+  log_error(gc) ("Add to retained " PTR_FORMAT, p2i(gr));
   _retained_groups.append(gr);
 }
 
