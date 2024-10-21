@@ -585,18 +585,16 @@ void G1CollectionSet::select_candidates_from_retained(double time_remaining_ms) 
     optional_time_remaining_ms = MAX2(0.0, optional_time_remaining_ms - predicted_time_ms);
   }
 
-  // FIXME: not really true, if we add optional regions.
-  uint num_regions_selected = num_initial_regions_selected + num_optional_regions_selected;
-  if (num_regions_selected == retained_groups->length()) {
+  if (num_initial_regions_selected == retained_groups->length()) {
     log_debug(gc, ergo, cset)("Retained candidates exhausted.");
   }
+
   if (num_expensive_regions_selected > 0) {
     log_debug(gc, ergo, cset)("Added %u retained candidates to collection set although the predicted time was too high.",
                               num_expensive_regions_selected);
   }
 
   // remove remove from retained.
-  
   candidates()->remove(&remove_from_retained);
 
   // FIXME: clean up.
@@ -636,14 +634,7 @@ double G1CollectionSet::select_candidates_from_optional_groups(double time_remai
   // Remove selected groups from candidate list.
   if (num_groups_selected > 0) {
     _optional_groups.remove(&selected);
-    //candidates()->from_marking_groups().remove(&selected);
-    //candidates()->retained_groups().remove(&selected);
     candidates()->remove(&selected);
-
-    // FIXME: group could be from retained, so remove from retained
-    // _optional_groups.remove_selected(num_groups_selected, num_regions_selected);
-    // FIXME: some regions are from retained, while others are from marking.
-    // candidates()->from_marking_groups().remove_selected(num_groups_selected, num_regions_selected);
   }
   return total_predicted_ms;
 }
