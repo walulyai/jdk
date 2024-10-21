@@ -147,7 +147,7 @@ class G1CollectionSet {
   uint _collection_set_max_length;
 
   // Old gen groups selected for evacuation.
-  G1CollectionCandidateGroupsList _collection_set_groups;
+  G1CSetCandidateGroupsList _collection_set_groups;
 
   // Groups are added to the collection set in increments when performing optional evacuations.
   // We use the value below to track these increments.
@@ -161,7 +161,7 @@ class G1CollectionSet {
   // We maintain a distinction between _optional_old_regions and _optional_groups; _optional_old_regions
   // hold regions selected for optional evacuation from retained regions. These are not part of any
   // remset group. _optional_groups holds remset groups that are selected for optional evacuation.
-  G1CollectionCandidateGroupsList _optional_groups;
+  G1CSetCandidateGroupsList _optional_groups;
 
   enum CSetBuildType {
     Active,             // We are actively building the collection set
@@ -182,9 +182,9 @@ class G1CollectionSet {
   // Add the given old region to the head of the current collection set.
   void add_old_region(G1HeapRegion* hr);
 
-  void prepare_optional_group(G1CollectionGroup* collection_group, uint cur_index);
+  void prepare_optional_group(G1CSetCandidateGroup* collection_group, uint cur_index);
 
-  void add_group_to_collection_set(G1CollectionGroup* collection_group);
+  void add_group_to_collection_set(G1CSetCandidateGroup* collection_group);
 
   void add_region_to_collection_set(G1HeapRegion* r);
 
@@ -230,8 +230,8 @@ public:
   G1CollectionSetCandidates* candidates() { return &_candidates; }
   const G1CollectionSetCandidates* candidates() const { return &_candidates; }
 
-  G1CollectionCandidateGroupsList* collection_set_groups() { return &_collection_set_groups; }
-  const G1CollectionCandidateGroupsList* collection_set_groups() const { return &_collection_set_groups; }
+  G1CSetCandidateGroupsList* collection_set_groups() { return &_collection_set_groups; }
+  const G1CSetCandidateGroupsList* collection_set_groups() const { return &_collection_set_groups; }
 
   void prepare_groups_for_scan();
 

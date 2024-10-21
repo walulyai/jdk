@@ -31,7 +31,7 @@
 
 template<typename Func>
 void G1CollectionSetCandidates::iterate_regions(Func&& f) {
-  for (G1CollectionGroup* group : _candidate_groups) {
+  for (G1CSetCandidateGroup* group : _from_marking_groups) {
     uint length = group->length();
     for (uint i = 0; i < length; i++) {
       G1HeapRegion* r = group->region_at(i);
@@ -39,7 +39,7 @@ void G1CollectionSetCandidates::iterate_regions(Func&& f) {
     }
   }
 
-  for (G1CollectionGroup* group : _retained_groups) {
+  for (G1CSetCandidateGroup* group : _retained_groups) {
     uint length = group->length();
     for (uint i = 0; i < length; i++) {
       G1HeapRegion* r = group->region_at(i);

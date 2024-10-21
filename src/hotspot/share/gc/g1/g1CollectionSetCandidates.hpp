@@ -33,7 +33,7 @@
 #include "utilities/growableArray.hpp"
 
 class G1CollectionSetCandidates;
-class G1CollectionCandidateGroupsList;
+class G1CSetCandidateGroupsList;
 class G1HeapRegion;
 class G1HeapRegionClosure;
 
@@ -51,7 +51,9 @@ struct G1CollectionSetCandidateInfo {
   }
 };
 
-class G1CollectionGroup : public CHeapObj<mtGCCardSet>{
+using G1CSetCandidateGroupIterator = GrowableArrayIterator<G1CollectionSetCandidateInfo>;
+
+class G1CSetCandidateGroup : public CHeapObj<mtGCCardSet>{
   GrowableArray<G1CollectionSetCandidateInfo> _candidates;
 
   G1CardSetMemoryManager _card_set_mm;
@@ -65,8 +67,8 @@ class G1CollectionGroup : public CHeapObj<mtGCCardSet>{
   double predict_group_copy_time_ms() const;
 
 public:
-  G1CollectionGroup(G1CardSetConfiguration* config);
-  ~G1CollectionGroup() { 
+  G1CSetCandidateGroup(G1CardSetConfiguration* config);
+  ~G1CSetCandidateGroup() { 
     assert(length() == 0, "post condition!");
   }
 
@@ -106,6 +108,14 @@ public:
 
   void abandon();
 
+  G1CSetCandidateGroupIterator begin() const {
+    return _candidates.begin();
+  }
+
+  G1CSetCandidateGroupIterator end() const {
+    return _candidates.end();
+  }
+
   // Limit to the number regions in a collection group. We make an exception
   // for the first collection group to be as large as G1Policy::calc_min_old_cset_length
   // because we are certain that these regions have to be collected together.
@@ -113,27 +123,27 @@ public:
 };
 
 
-using G1CollectionCandidateGroupsListIterator = GrowableArrayIterator<G1CollectionGroup*>;
+using G1CSetCandidateGroupsListIterator = GrowableArrayIterator<G1CSetCandidateGroup*>;
 
-class G1CollectionCandidateGroupsList {
-  GrowableArray<G1CollectionGroup*> _groups;
+class G1CSetCandidateGroupsList {
+  GrowableArray<G1CSetCandidateGroup*> _groups;
   volatile uint _num_regions;
 
   // Comparison function to order regions in decreasing GC efficiency order. This
   // will cause region groups with a lot of live objects and large remembered sets to end
   // up at the end of the list.
-  static int compare_gc_efficiency(G1CollectionGroup** ci1, G1CollectionGroup** ci2);
+  static int compare_gc_efficiency(G1CSetCandidateGroup** ci1, G1CSetCandidateGroup** ci2);
 
 public:
-  G1CollectionCandidateGroupsList();
-  void append(G1CollectionGroup* group);
+  G1CSetCandidateGroupsList();
+  void append(G1CSetCandidateGroup* group);
 
   // Empty contents of the list.
   void clear();
 
   void abandon();
 
-  G1CollectionGroup* at(uint index);
+  G1CSetCandidateGroup* at(uint index);
 
   uint length() const { return (uint)_groups.length(); }
 
@@ -141,23 +151,23 @@ public:
 
   void remove_selected(uint count, uint num_regions);
 
-  void remove(G1CollectionCandidateGroupsList* other);
+  void remove(G1CSetCandidateGroupsList* other);
 
   void prepare_for_scan();
 
   void sort_by_efficiency();
 
-  GrowableArray<G1CollectionGroup*>*  groups() {
+  GrowableArray<G1CSetCandidateGroup*>*  groups() {
     return &_groups;
   }
 
   void verify() const PRODUCT_RETURN;
 
-  G1CollectionCandidateGroupsListIterator begin() const {
+  G1CSetCandidateGroupsListIterator begin() const {
     return _groups.begin();
   }
 
-  G1CollectionCandidateGroupsListIterator end() const {
+  G1CSetCandidateGroupsListIterator end() const {
     return _groups.end();
   }
 };
@@ -186,8 +196,8 @@ class G1CollectionSetCandidates : public CHeapObj<mtGC> {
   };
 
   CandidateOrigin* _contains_map;
-  G1CollectionCandidateGroupsList _candidate_groups; // Set of regions selected by concurrent marking.
-  G1CollectionCandidateGroupsList _retained_groups; // Set of regions selected by concurrent marking.
+  G1CSetCandidateGroupsList _from_marking_groups; // Set of regions selected by concurrent marking.
+  G1CSetCandidateGroupsList _retained_groups; // Set of regions selected by concurrent marking.
   uint _max_regions;
 
   // The number of regions from the last merge of candidates from the marking.
@@ -199,8 +209,8 @@ public:
   G1CollectionSetCandidates();
   ~G1CollectionSetCandidates();
 
-  G1CollectionCandidateGroupsList& candidate_groups() { return _candidate_groups; }
-  G1CollectionCandidateGroupsList& retained_groups() { return _retained_groups; }
+  G1CSetCandidateGroupsList& from_marking_groups() { return _from_marking_groups; }
+  G1CSetCandidateGroupsList& retained_groups() { return _retained_groups; }
 
   void initialize(uint max_regions);
 
@@ -231,20 +241,16 @@ public:
   bool is_empty() const;
 
   bool has_more_marking_candidates() const;
-  uint marking_groups_length() const;
+  uint marking_regions_length() const;
   uint retained_regions_length() const;
 
 private:
-  void verify_retained_regions(uint& from_marking, CandidateOrigin* verify_map) PRODUCT_RETURN;
-
-  void verify_candidate_groups(uint& from_marking, CandidateOrigin* verify_map) PRODUCT_RETURN;
-
-  void verify_region(G1HeapRegion* r, CandidateOrigin* verify_map, CandidateOrigin expected_origin) PRODUCT_RETURN;
+  void verify_helper(G1CSetCandidateGroupsList* list, uint& from_marking, CandidateOrigin* verify_map) PRODUCT_RETURN;
 
 public:
   void verify() PRODUCT_RETURN;
 
-  uint length() const { return marking_groups_length() + retained_regions_length(); }
+  uint length() const { return marking_regions_length() + retained_regions_length(); }
 
   template<typename Func>
   void iterate_regions(Func&& f);

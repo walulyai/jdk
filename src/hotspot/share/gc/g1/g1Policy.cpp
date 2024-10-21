@@ -489,9 +489,9 @@ uint G1Policy::calculate_desired_eden_length_before_mixed(double base_time_ms,
                                                           uint min_eden_length,
                                                           uint max_eden_length) const {
   uint min_marking_candidates = MIN2(calc_min_old_cset_length(candidates()->last_marking_candidates_length()),
-                                     candidates()->candidate_groups().num_regions());
+                                     candidates()->from_marking_groups().num_regions());
   double predicted_region_evac_time_ms = base_time_ms;
-  for (G1CollectionGroup* gr : candidates()->candidate_groups()) {
+  for (G1CSetCandidateGroup* gr : candidates()->from_marking_groups()) {
     if (min_marking_candidates == 0) {
       break;
     }
@@ -522,11 +522,11 @@ double G1Policy::predict_retained_regions_evac_time() const {
 
   double result = 0.0;
 
-  G1CollectionCandidateGroupsList* retained_groups = &candidates()->retained_groups();
+  G1CSetCandidateGroupsList* retained_groups = &candidates()->retained_groups();
   uint min_regions_left = MIN2(min_retained_old_cset_length(),
                                retained_groups->num_regions());
 
-  for (G1CollectionGroup* group: *retained_groups) {
+  for (G1CSetCandidateGroup* group: *retained_groups) {
     // FIXME: assert that we only have one region
     G1HeapRegion* r = group->region_at(0); // We only have one region per group.
     // We optimistically assume that any of these marking candidate regions will
