@@ -551,7 +551,6 @@ void G1CollectionSet::select_candidates_from_retained(double time_remaining_ms) 
         // GCs and hence are considered "long lived".
         _g1h->clear_region_attr(r);
         candidates()->reset_region(r);
-        log_error(gc) ("Added to Abandoned group and remove_from_retained " PTR_FORMAT, p2i(group));  
         abandonded.append(group);
         remove_from_retained.append(group);
         group->abandon();
@@ -568,13 +567,11 @@ void G1CollectionSet::select_candidates_from_retained(double time_remaining_ms) 
       num_initial_groups++;
 
       add_group_to_collection_set(group);
-      log_error(gc) ("Added to collection set and remove_from_retained " PTR_FORMAT, p2i(group)); 
       remove_from_retained.append(group);
 
       num_initial_regions_selected += group->length();
     } else if (predicted_time_ms <= optional_time_remaining_ms) {
       // Prepare optional collection region.
-      log_error(gc) ("Added to _optional_groups: " PTR_FORMAT, p2i(group)); 
       _optional_groups.append(group);
       prepare_optional_group(group, num_optional_regions_selected);
       num_optional_regions_selected += group->length();
@@ -631,7 +628,6 @@ double G1CollectionSet::select_candidates_from_optional_groups(double time_remai
     num_groups_selected++;
 
     selected.append(group);
-    log_error(gc) ("From optional to collection set " PTR_FORMAT, p2i(group));  
     add_group_to_collection_set(group);
   }
 
@@ -723,10 +719,9 @@ bool G1CollectionSet::finalize_optional_for_evacuation(double remaining_pause_ti
 }
 
 void G1CollectionSet::abandon_optional_collection_set(G1ParScanThreadStateSet* pss) {
-  // FIXME: fix below loginc
+  // FIXME: fix below logic
   if (_optional_groups.length() > 0) {
-    for (uint i = 0; i < _optional_groups.length(); i++) {
-      G1CollectionGroup* group = _optional_groups.at(i);
+    for (G1CollectionGroup* group: _optional_groups) {
       uint length = group->length();
       for (uint i = 0; i < length; i++) {
         G1HeapRegion* r = group->region_at(i);

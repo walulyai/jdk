@@ -63,7 +63,6 @@ class G1CollectionGroup : public CHeapObj<mtGCCardSet>{
 public:
   G1CollectionGroup(G1CardSetConfiguration* config);
   ~G1CollectionGroup() { 
-    log_error(gc) ("Destructor called " PTR_FORMAT, p2i(this));  
     assert(length() == 0, "post condition!");
   }
 
