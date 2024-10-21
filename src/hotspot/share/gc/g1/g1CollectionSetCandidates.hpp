@@ -232,7 +232,9 @@ public:
   // Add the given region to the set of retained regions without regards to the
   // gc efficiency sorting. The retained regions must be re-sorted manually later.
   void add_retained_region_unsorted(G1HeapRegion* r);
-  void reset_region(G1HeapRegion* r);
+  // Remove the given groups from the candidates. All given regions must be part
+  // of the candidates.
+  void remove(G1CSetCandidateGroupsList* other);
 
   bool contains(const G1HeapRegion* r) const;
 

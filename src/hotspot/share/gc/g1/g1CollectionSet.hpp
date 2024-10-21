@@ -196,7 +196,6 @@ class G1CollectionSet {
   // and return the number  of actually selected regions.
   uint select_optional_collection_set_regions(double time_remaining_ms);
   double select_candidates_from_optional_groups(double time_remaining_ms, uint& num_regions_selected);
-  void drop_pinned_retained_region(G1HeapRegion* r);
 
   // Finalize the young part of the initial collection set. Relabel survivor regions
   // as Eden and calculate a prediction on how long the evacuation of all young regions

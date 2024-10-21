@@ -397,6 +397,8 @@ static void print_finish_message(const char* reason, bool from_marking) {
 double G1CollectionSet::select_candidates_from_groups(double time_remaining_ms) {
   G1CSetCandidateGroupsList* from_marking_groups = &candidates()->from_marking_groups();
 
+  G1CSetCandidateGroupsList selected_groups;
+
   uint min_old_cset_length = _policy->calc_min_old_cset_length(candidates()->last_marking_candidates_length());
   uint max_old_cset_length = MAX2(min_old_cset_length, _policy->calc_max_old_cset_length());
   uint max_optional_regions = max_old_cset_length - min_old_cset_length;
@@ -434,6 +436,7 @@ double G1CollectionSet::select_candidates_from_groups(double time_remaining_ms) 
       num_initial_groups++;
 
       add_group_to_collection_set(group);
+      selected_groups.append(group);
 
       num_inital_regions += group->length();
 
@@ -453,6 +456,7 @@ double G1CollectionSet::select_candidates_from_groups(double time_remaining_ms) 
         num_initial_groups++;
 
         add_group_to_collection_set(group);
+        selected_groups.append(group);
 
         num_inital_regions += group->length();
 
@@ -474,7 +478,8 @@ double G1CollectionSet::select_candidates_from_groups(double time_remaining_ms) 
   // Remove selected groups from list of candidate groups.
   guarantee(num_initial_groups > 0, "why would this happen");
   if (num_initial_groups > 0) {
-    from_marking_groups->remove_selected(num_initial_groups, num_inital_regions);
+    candidates()->remove(&selected_groups);
+    /// from_marking_groups->remove_selected(num_initial_groups, num_inital_regions);
   }
 
   if (from_marking_groups->length() == 0) {
@@ -548,10 +553,8 @@ void G1CollectionSet::select_candidates_from_retained(double time_remaining_ms) 
         // in that list must have been pinned for at least G1NumCollectionsKeepPinned
         // GCs and hence are considered "long lived".
         _g1h->clear_region_attr(r);
-        candidates()->reset_region(r);
         abandonded.append(group);
         remove_from_retained.append(group);
-        group->abandon();
       }
       continue;
     }
@@ -594,10 +597,10 @@ void G1CollectionSet::select_candidates_from_retained(double time_remaining_ms) 
 
   // remove remove from retained.
   
-  retained_groups->remove(&remove_from_retained);
+  candidates()->remove(&remove_from_retained);
 
   // FIXME: clean up.
-  abandonded.clear();
+  abandonded.abandon();
 
   log_debug(gc, ergo, cset)("Finish adding retained candidates to collection set. Initial: %u, optional: %u, pinned: %u, "
                             "predicted initial time: %1.2fms, predicted optional time: %1.2fms, "
@@ -625,16 +628,17 @@ double G1CollectionSet::select_candidates_from_optional_groups(double time_remai
     num_regions_selected += group->length();
     num_groups_selected++;
 
-    selected.append(group);
     add_group_to_collection_set(group);
+    selected.append(group);
   }
 
   log_debug(gc, ergo, cset) ("Completed with groups, selected %u", num_regions_selected);
   // Remove selected groups from candidate list.
   if (num_groups_selected > 0) {
     _optional_groups.remove(&selected);
-    candidates()->from_marking_groups().remove(&selected);
-    candidates()->retained_groups().remove(&selected);
+    //candidates()->from_marking_groups().remove(&selected);
+    //candidates()->retained_groups().remove(&selected);
+    candidates()->remove(&selected);
 
     // FIXME: group could be from retained, so remove from retained
     // _optional_groups.remove_selected(num_groups_selected, num_regions_selected);
@@ -687,14 +691,8 @@ void G1CollectionSet::add_group_to_collection_set(G1CSetCandidateGroup* gr) {
 
 void G1CollectionSet::add_region_to_collection_set(G1HeapRegion* r) {
   _g1h->clear_region_attr(r);
-  candidates()->reset_region(r);
   assert(r->rem_set()->is_complete(), "Must be %u complete %d", r->hrm_index(), r->rem_set()->is_complete());
   add_old_region(r);
-}
-
-void G1CollectionSet::drop_pinned_retained_region(G1HeapRegion* r) {
-  candidates()->reset_region(r);
-  r->rem_set()->clear(true /* only_cardset */);
 }
 
 void G1CollectionSet::finalize_initial_collection_set(double target_pause_time_ms, G1SurvivorRegions* survivor) {

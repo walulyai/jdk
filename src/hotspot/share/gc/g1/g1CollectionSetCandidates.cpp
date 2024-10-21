@@ -191,11 +191,9 @@ void G1CSetCandidateGroupsList::remove_selected(uint count, uint num_regions) {
 }
 
 void G1CSetCandidateGroupsList::remove(G1CSetCandidateGroupsList* other) {
-  //FIXME: 
-  // guarantee((uint)_groups.length() >= other->length(), "must be");
+  guarantee((uint)_groups.length() >= other->length(), "must be");
 
-  // FIXME:
-  if (other->length() == 0 || length() == 0) {
+  if (other->length() == 0) {
     // Nothing to remove or nothing in the original set.
     return;
   }
@@ -251,7 +249,6 @@ void G1CSetCandidateGroupsList::verify() const {
   }
 }
 #endif
-
 
 G1CollectionSetCandidates::G1CollectionSetCandidates() :
   _contains_map(nullptr),
@@ -355,6 +352,44 @@ void G1CollectionSetCandidates::sort_by_efficiency() {
   _retained_groups.verify();
 }
 
+void G1CollectionSetCandidates::remove(G1CSetCandidateGroupsList* other) {
+  // During removal, we exploit the fact that elements in the marking_regions,
+  // retained_regions and other list are sorted by gc_efficiency. Furthermore,
+  // all regions in the passed other list are in one of the two other lists.
+  //
+  // Split original list into elements for the marking list and elements from the
+  // retained list.
+  G1CSetCandidateGroupsList other_marking_groups;
+  G1CSetCandidateGroupsList other_retained_groups;
+
+
+  for (G1CSetCandidateGroup* group : *other) {
+    assert(group->length() > 0, "Should not have empty groups! %u", group->length());
+    // Regions in the same group have the same source (i.e from_marking or retained).
+    G1HeapRegion* r = group->region_at(0);
+    if (is_from_marking(r)) {
+      other_marking_groups.append(group);
+    } else {
+      other_retained_groups.append(group);
+    }
+  }
+
+  _from_marking_groups.remove(&other_marking_groups);
+  _retained_groups.remove(&other_retained_groups);
+
+#ifndef PRODUCT
+  for (G1CSetCandidateGroup* group : *other) {
+    for (G1CollectionSetCandidateInfo ci : *group) {
+      G1HeapRegion* r = ci._r;
+      assert(contains(r), "must contain region %u", r->hrm_index());
+      _contains_map[r->hrm_index()] = CandidateOrigin::Invalid;
+    }
+  }
+
+  verify();
+#endif
+}
+
 void G1CollectionSetCandidates::add_retained_region_unsorted(G1HeapRegion* r) {
   assert(!contains(r), "must not contain region %u", r->hrm_index());
   _contains_map[r->hrm_index()] = CandidateOrigin::Retained;
@@ -363,11 +398,6 @@ void G1CollectionSetCandidates::add_retained_region_unsorted(G1HeapRegion* r) {
   gr->add(r);
 
   _retained_groups.append(gr);
-}
-
-void G1CollectionSetCandidates::reset_region(G1HeapRegion* r) {
-  assert(contains(r), "must contain region %u", r->hrm_index());
-  _contains_map[r->hrm_index()] = CandidateOrigin::Invalid;
 }
 
 bool G1CollectionSetCandidates::is_empty() const {
@@ -387,67 +417,6 @@ uint G1CollectionSetCandidates::retained_regions_length() const {
 }
 
 #ifndef PRODUCT
-/*
-void G1CollectionSetCandidates::verify_retained_regions(uint& from_marking, CandidateOrigin* verify_map) {
-  for (G1CSetCandidateGroup* group : _retained_groups) {
-    const GrowableArray<G1CollectionSetCandidateInfo>* regions = group->regions();
-
-    for (int i = 0; i < regions->length(); i++) {
-      G1HeapRegion* r = regions->at(i)._r;
-
-      if (is_from_marking(r)) {
-        from_marking++;
-      }
-      verify_region(r, verify_map, CandidateOrigin::Retained);
-    }
-  }
-}
-
-void G1CollectionSetCandidates::verify_candidate_groups(uint& from_marking, CandidateOrigin* verify_map) {
-  for (G1CSetCandidateGroup* group : _from_marking_groups) {
-    const GrowableArray<G1CollectionSetCandidateInfo>* regions = group->regions();
-
-    for (int i = 0; i < regions->length(); i++) {
-      G1HeapRegion* r = regions->at(i)._r;
-
-      if (is_from_marking(r)) {
-        from_marking++;
-      }
-      verify_region(r, verify_map, CandidateOrigin::Marking);
-    }
-  }
-}
-
-void G1CollectionSetCandidates::verify() {
-  CandidateOrigin* verify_map = NEW_C_HEAP_ARRAY(CandidateOrigin, _max_regions, mtGC);
-  for (uint i = 0; i < _max_regions; i++) {
-    verify_map[i] = CandidateOrigin::Invalid;
-  }
-
-  uint from_marking = 0;
-  verify_candidate_groups(from_marking, verify_map);
-  assert(from_marking == marking_regions_length(), "must be");
-
-  uint from_marking_retained = 0;
-  verify_retained_regions(from_marking_retained, verify_map);
-  assert(from_marking_retained == 0, "must be");
-
-  assert(length() >= marking_regions_length(), "must be");
-
-  // Check whether the _contains_map is consistent with the list.
-  for (uint i = 0; i < _max_regions; i++) {
-    assert(_contains_map[i] == verify_map[i] ||
-           (_contains_map[i] != CandidateOrigin::Invalid && verify_map[i] == CandidateOrigin::Verify),
-           "Candidate origin does not match for region %u, is %u but should be %u",
-           i,
-           static_cast<std::underlying_type<CandidateOrigin>::type>(_contains_map[i]),
-           static_cast<std::underlying_type<CandidateOrigin>::type>(verify_map[i]));
-  }
-
-  FREE_C_HEAP_ARRAY(CandidateOrigin, verify_map);
-}
-*/
-
 void G1CollectionSetCandidates::verify_helper(G1CSetCandidateGroupsList* list, uint& from_marking, CandidateOrigin* verify_map) {
   list->verify();
 
