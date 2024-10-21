@@ -32,17 +32,15 @@
 template<typename Func>
 void G1CollectionSetCandidates::iterate_regions(Func&& f) {
   for (G1CSetCandidateGroup* group : _from_marking_groups) {
-    uint length = group->length();
-    for (uint i = 0; i < length; i++) {
-      G1HeapRegion* r = group->region_at(i);
+    for (G1CollectionSetCandidateInfo ci : *group) {
+      G1HeapRegion* r = ci._r;
       f(r);
     }
   }
 
   for (G1CSetCandidateGroup* group : _retained_groups) {
-    uint length = group->length();
-    for (uint i = 0; i < length; i++) {
-      G1HeapRegion* r = group->region_at(i);
+    for (G1CollectionSetCandidateInfo ci : *group) {
+      G1HeapRegion* r = ci._r;
       f(r);
     }
   }

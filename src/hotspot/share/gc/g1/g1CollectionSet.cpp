@@ -95,8 +95,6 @@ void G1CollectionSet::initialize(uint max_region_length) {
 void G1CollectionSet::abandon_all_candidates() {
   _candidates.clear();
   _initial_old_region_length = 0;
-  // FIXME: optional groups still part of _candidate groups
-  // _optional_groups.clear();
 }
 
 void G1CollectionSet::prepare_groups_for_scan () {
