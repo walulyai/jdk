@@ -916,8 +916,6 @@ public:
     _g1h->clear_collection_set();
 
     _g1h->young_regions_cardset()->clear();
-
-    _g1h->collection_set()->free_collection_groups();
   }
 
   double worker_cost() const override { return G1CollectedHeap::heap()->collection_set()->region_length(); }

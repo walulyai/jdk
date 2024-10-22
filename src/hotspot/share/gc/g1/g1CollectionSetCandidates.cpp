@@ -74,7 +74,7 @@ void G1CSetCandidateGroup::abandon() {
     r->rem_set()->clear(true /* only_cardset */);
   }
   clear();
-  }
+}
 
 double G1CSetCandidateGroup::predict_group_copy_time_ms() const {
   G1Policy* p = G1CollectedHeap::heap()->policy();

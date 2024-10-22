@@ -158,9 +158,8 @@ class G1CollectionSet {
   uint _survivor_region_length;
   uint _initial_old_region_length;
 
-  // We maintain a distinction between _optional_old_regions and _optional_groups; _optional_old_regions
-  // hold regions selected for optional evacuation from retained regions. These are not part of any
-  // remset group. _optional_groups holds remset groups that are selected for optional evacuation.
+  // When doing mixed collections we can add old regions to the collection set, which
+  // will be collected only if there is enough time. We call these optional (old) regions.
   G1CSetCandidateGroupsList _optional_groups;
 
   enum CSetBuildType {
@@ -182,9 +181,9 @@ class G1CollectionSet {
   // Add the given old region to the head of the current collection set.
   void add_old_region(G1HeapRegion* hr);
 
-  void prepare_optional_group(G1CSetCandidateGroup* collection_group, uint cur_index);
+  void prepare_optional_group(G1CSetCandidateGroup* gr, uint cur_index);
 
-  void add_group_to_collection_set(G1CSetCandidateGroup* collection_group);
+  void add_group_to_collection_set(G1CSetCandidateGroup* gr);
 
   void add_region_to_collection_set(G1HeapRegion* r);
 
@@ -255,8 +254,6 @@ public:
 
   // Reset the contents of the collection set.
   void clear();
-
-  void free_collection_groups();
 
   // Incremental collection set support
 
