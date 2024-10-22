@@ -377,7 +377,6 @@ void G1CollectionSetCandidates::remove(G1CSetCandidateGroupsList* other) {
   _from_marking_groups.remove(&other_marking_groups);
   _retained_groups.remove(&other_retained_groups);
 
-#ifndef PRODUCT
   for (G1CSetCandidateGroup* group : *other) {
     for (G1CollectionSetCandidateInfo ci : *group) {
       G1HeapRegion* r = ci._r;
@@ -387,7 +386,6 @@ void G1CollectionSetCandidates::remove(G1CSetCandidateGroupsList* other) {
   }
 
   verify();
-#endif
 }
 
 void G1CollectionSetCandidates::add_retained_region_unsorted(G1HeapRegion* r) {
