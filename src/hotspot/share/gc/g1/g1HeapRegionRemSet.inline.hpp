@@ -55,15 +55,6 @@ void G1HeapRegionRemSet::set_state_complete() {
   _state = Complete;
 }
 
- inline void  G1HeapRegionRemSet::install_group_cardset(G1CardSet* group_cardset) {
-    assert(group_cardset != nullptr, "pre-condition");
-    assert(_saved_card_set == nullptr, "pre-condition hr %u", _hr->hrm_index());
-
-    _saved_card_set = _card_set;
-    _card_set = group_cardset;
-  }
-
-
 template <typename Closure>
 class G1ContainerCardsOrRanges {
   Closure& _cl;

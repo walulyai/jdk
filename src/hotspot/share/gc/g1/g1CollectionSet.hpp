@@ -147,7 +147,7 @@ class G1CollectionSet {
   uint _collection_set_max_length;
 
   // Old gen groups selected for evacuation.
-  G1CSetCandidateGroupsList _collection_set_groups;
+  G1CSetCandidateGroupList _collection_set_groups;
 
   // Groups are added to the collection set in increments when performing optional evacuations.
   // We use the value below to track these increments.
@@ -160,7 +160,7 @@ class G1CollectionSet {
 
   // When doing mixed collections we can add old regions to the collection set, which
   // will be collected only if there is enough time. We call these optional (old) regions.
-  G1CSetCandidateGroupsList _optional_groups;
+  G1CSetCandidateGroupList _optional_groups;
 
   enum CSetBuildType {
     Active,             // We are actively building the collection set
@@ -228,8 +228,8 @@ public:
   G1CollectionSetCandidates* candidates() { return &_candidates; }
   const G1CollectionSetCandidates* candidates() const { return &_candidates; }
 
-  G1CSetCandidateGroupsList* collection_set_groups() { return &_collection_set_groups; }
-  const G1CSetCandidateGroupsList* collection_set_groups() const { return &_collection_set_groups; }
+  G1CSetCandidateGroupList* collection_set_groups() { return &_collection_set_groups; }
+  const G1CSetCandidateGroupList* collection_set_groups() const { return &_collection_set_groups; }
 
   void prepare_groups_for_scan();
 
@@ -245,12 +245,11 @@ public:
   uint survivor_region_length() const { return _survivor_region_length; }
   uint initial_old_region_length() const      { return _initial_old_region_length; }
   uint num_optional_regions() const { return _optional_groups.num_regions(); }
-  uint optional_groups_length() const { return _optional_groups.length(); }
 
   bool only_contains_young_regions() const { return (initial_old_region_length() + num_optional_regions()) == 0; }
 
   template <class CardOrRangeVisitor>
-  inline void merge_remsets_for_collection_groups(G1CollectedHeap* g1h, CardOrRangeVisitor& cl, uint worker_id, uint num_workers);
+  inline void merge_cardsets_for_collection_groups(G1CollectedHeap* g1h, CardOrRangeVisitor& cl, uint worker_id, uint num_workers);
 
   // Reset the contents of the collection set.
   void clear();

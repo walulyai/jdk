@@ -388,9 +388,9 @@ static void print_finish_message(const char* reason, bool from_marking) {
 }
 
 double G1CollectionSet::select_candidates_from_groups(double time_remaining_ms) {
-  G1CSetCandidateGroupsList* from_marking_groups = &candidates()->from_marking_groups();
+  G1CSetCandidateGroupList* from_marking_groups = &candidates()->from_marking_groups();
 
-  G1CSetCandidateGroupsList selected_groups;
+  G1CSetCandidateGroupList selected_groups;
 
   uint min_old_cset_length = _policy->calc_min_old_cset_length(candidates()->last_marking_candidates_length());
   uint max_old_cset_length = MAX2(min_old_cset_length, _policy->calc_max_old_cset_length());
@@ -493,7 +493,7 @@ double G1CollectionSet::select_candidates_from_groups(double time_remaining_ms) 
 }
 
 void G1CollectionSet::select_candidates_from_retained(double time_remaining_ms) {
-  G1CSetCandidateGroupsList* retained_groups = &candidates()->retained_groups();
+  G1CSetCandidateGroupList* retained_groups = &candidates()->retained_groups();
 
   uint num_initial_regions_selected = 0;
   uint num_optional_regions_selected = 0;
@@ -505,8 +505,8 @@ void G1CollectionSet::select_candidates_from_retained(double time_remaining_ms) 
 
   uint min_regions = _policy->min_retained_old_cset_length();
 
-  G1CSetCandidateGroupsList remove_from_retained;
-  G1CSetCandidateGroupsList groups_to_abandon;
+  G1CSetCandidateGroupList remove_from_retained;
+  G1CSetCandidateGroupList groups_to_abandon;
 
   // We want to make sure that on the one hand we process the retained regions asap,
   // but on the other hand do not take too many of them as optional regions.
@@ -601,7 +601,7 @@ double G1CollectionSet::select_candidates_from_optional_groups(double time_remai
 
   uint num_groups_selected = 0;
   double total_predicted_ms = 0.0;
-  G1CSetCandidateGroupsList selected;
+  G1CSetCandidateGroupList selected;
   for (G1CSetCandidateGroup* group : _optional_groups) {
     double predicted_time_ms = group->predict_group_total_time_ms();
 

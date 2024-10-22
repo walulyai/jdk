@@ -270,8 +270,8 @@ uint G1Policy::calculate_young_desired_length(size_t pending_cards,
     double retained_time_ms = predict_retained_regions_evac_time();
     double total_time_ms = base_time_ms + retained_time_ms;
 
-    log_trace(gc, ergo, heap)("Predicted total base time: total %f base_time %f retained_time %f pending_cards %zu card_rs_length %zu",
-                              total_time_ms, base_time_ms, retained_time_ms, pending_cards, card_rs_length);
+    log_trace(gc, ergo, heap)("Predicted total base time: total %f base_time %f retained_time %f",
+                              total_time_ms, base_time_ms, retained_time_ms);
 
     desired_eden_length_by_pause =
       calculate_desired_eden_length_by_pause(total_time_ms,
@@ -522,7 +522,7 @@ double G1Policy::predict_retained_regions_evac_time() const {
 
   double result = 0.0;
 
-  G1CSetCandidateGroupsList* retained_groups = &candidates()->retained_groups();
+  G1CSetCandidateGroupList* retained_groups = &candidates()->retained_groups();
   uint min_regions_left = MIN2(min_retained_old_cset_length(),
                                retained_groups->num_regions());
 
@@ -869,7 +869,7 @@ void G1Policy::record_young_collection_end(bool concurrent_operation_is_full_mar
     size_t const merged_cards_from_log_buffers = p->sum_thread_work_items(G1GCPhaseTimes::MergeLB, G1GCPhaseTimes::MergeLBDirtyCards);
     // MergeRSCards includes the cards from the Eager Reclaim phase.
     size_t const merged_cards_from_rs = p->sum_thread_work_items(G1GCPhaseTimes::MergeRS, G1GCPhaseTimes::MergeRSCards) +
-                                  p->sum_thread_work_items(G1GCPhaseTimes::OptMergeRS, G1GCPhaseTimes::MergeRSCards);
+                                        p->sum_thread_work_items(G1GCPhaseTimes::OptMergeRS, G1GCPhaseTimes::MergeRSCards);
     size_t const total_cards_merged = merged_cards_from_rs +
                                       merged_cards_from_log_buffers;
 
@@ -891,12 +891,6 @@ void G1Policy::record_young_collection_end(bool concurrent_operation_is_full_mar
                                         average_time_ms(G1GCPhaseTimes::OptScanHR);
 
       _analytics->report_cost_per_card_scan_ms(avg_time_dirty_card_scan / total_cards_scanned, is_young_only_pause);
-
-      log_trace(gc,ergo,heap) ("total_cards_scanned %zu, avg_time_dirty_card_scan %1.2fms (%1.2fms) report_cost_per_card_scan_ms %1.6f",
-                            total_cards_scanned,
-                            avg_time_dirty_card_scan,
-                            _analytics->predict_card_scan_time_ms(total_cards_scanned, is_young_only_pause),
-                            avg_time_dirty_card_scan / total_cards_scanned);
     }
 
     // Update prediction for the ratio between cards from the remembered
@@ -908,9 +902,6 @@ void G1Policy::record_young_collection_end(bool concurrent_operation_is_full_mar
     if (merged_cards_from_rs > 0) {
       scan_to_merge_ratio = (double)scanned_cards_from_rs / merged_cards_from_rs;
     }
-
-    log_trace(gc,ergo,cset) ("total_cards_scanned %zu scanned_cards_from_rs %zu merged_cards_from_log_buffers %zu scan_to_merge_ratio %1.2f (%1.2f) merged_cards_from_rs %zu",
-                              total_cards_scanned, scanned_cards_from_rs, merged_cards_from_log_buffers, scan_to_merge_ratio, ((double)scanned_cards_from_rs / merged_cards_from_rs), merged_cards_from_rs);
     _analytics->report_card_scan_to_merge_ratio(scan_to_merge_ratio, is_young_only_pause);
 
     // Update prediction for code root scan

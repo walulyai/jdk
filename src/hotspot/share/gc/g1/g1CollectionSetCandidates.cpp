@@ -146,20 +146,20 @@ int G1CSetCandidateGroup::compare_reclaimble_bytes(G1CollectionSetCandidateInfo*
   }
 }
 
-G1CSetCandidateGroupsList::G1CSetCandidateGroupsList() : _groups(8, mtGC), _num_regions(0) { }
+G1CSetCandidateGroupList::G1CSetCandidateGroupList() : _groups(8, mtGC), _num_regions(0) { }
 
-void G1CSetCandidateGroupsList::append(G1CSetCandidateGroup* group) {
+void G1CSetCandidateGroupList::append(G1CSetCandidateGroup* group) {
   assert(group->length() > 0, "Do not add empty groups");
   assert(!_groups.contains(group), "Already added to list");
   _groups.append(group);
   _num_regions += group->length();
 }
 
-G1CSetCandidateGroup* G1CSetCandidateGroupsList::at(uint index) {
+G1CSetCandidateGroup* G1CSetCandidateGroupList::at(uint index) {
   return _groups.at(index);
 }
 
-void G1CSetCandidateGroupsList::clear() {
+void G1CSetCandidateGroupList::clear() {
   for (int i = 0; i < _groups.length(); i++) {
     G1CSetCandidateGroup* gr = _groups.at(i);
     gr->clear();
@@ -169,7 +169,7 @@ void G1CSetCandidateGroupsList::clear() {
   _num_regions = 0;
 }
 
-void G1CSetCandidateGroupsList::abandon() {
+void G1CSetCandidateGroupList::abandon() {
   for (int i = 0; i < _groups.length(); i++) {
     G1CSetCandidateGroup* gr = _groups.at(i);
     gr->abandon();
@@ -179,18 +179,18 @@ void G1CSetCandidateGroupsList::abandon() {
   _num_regions = 0;
 }
 
-void G1CSetCandidateGroupsList::prepare_for_scan() {
+void G1CSetCandidateGroupList::prepare_for_scan() {
   for (int i = 0; i < _groups.length(); i++) {
     _groups.at(i)->card_set()->reset_table_scanner();
   }
 }
 
-void G1CSetCandidateGroupsList::remove_selected(uint count, uint num_regions) {
+void G1CSetCandidateGroupList::remove_selected(uint count, uint num_regions) {
   _groups.remove_till(count);
   _num_regions -= num_regions;
 }
 
-void G1CSetCandidateGroupsList::remove(G1CSetCandidateGroupsList* other) {
+void G1CSetCandidateGroupList::remove(G1CSetCandidateGroupList* other) {
   guarantee((uint)_groups.length() >= other->length(), "must be");
 
   if (other->length() == 0) {
@@ -219,7 +219,7 @@ void G1CSetCandidateGroupsList::remove(G1CSetCandidateGroupsList* other) {
   assert(_groups.length() == new_length, "must be %u %u", _groups.length(), new_length);
 }
 
-int G1CSetCandidateGroupsList::compare_gc_efficiency(G1CSetCandidateGroup** gr1, G1CSetCandidateGroup** gr2) {
+int G1CSetCandidateGroupList::compare_gc_efficiency(G1CSetCandidateGroup** gr1, G1CSetCandidateGroup** gr2) {
 
   double gc_eff1 = (*gr1)->gc_efficiency();
   double gc_eff2 = (*gr2)->gc_efficiency();
@@ -233,12 +233,12 @@ int G1CSetCandidateGroupsList::compare_gc_efficiency(G1CSetCandidateGroup** gr1,
   }
 }
 
-void G1CSetCandidateGroupsList::sort_by_efficiency() {
+void G1CSetCandidateGroupList::sort_by_efficiency() {
   _groups.sort(compare_gc_efficiency);
 }
 
 #ifndef PRODUCT
-void G1CSetCandidateGroupsList::verify() const {
+void G1CSetCandidateGroupList::verify() const {
   G1CSetCandidateGroup* prev = nullptr;
 
   for (uint i = 0; i < (uint)_groups.length(); i++) {
@@ -352,15 +352,15 @@ void G1CollectionSetCandidates::sort_by_efficiency() {
   _retained_groups.verify();
 }
 
-void G1CollectionSetCandidates::remove(G1CSetCandidateGroupsList* other) {
+void G1CollectionSetCandidates::remove(G1CSetCandidateGroupList* other) {
   // During removal, we exploit the fact that elements in the marking_regions,
   // retained_regions and other list are sorted by gc_efficiency. Furthermore,
   // all regions in the passed other list are in one of the two other lists.
   //
   // Split original list into elements for the marking list and elements from the
   // retained list.
-  G1CSetCandidateGroupsList other_marking_groups;
-  G1CSetCandidateGroupsList other_retained_groups;
+  G1CSetCandidateGroupList other_marking_groups;
+  G1CSetCandidateGroupList other_retained_groups;
 
 
   for (G1CSetCandidateGroup* group : *other) {
@@ -415,7 +415,7 @@ uint G1CollectionSetCandidates::retained_regions_length() const {
 }
 
 #ifndef PRODUCT
-void G1CollectionSetCandidates::verify_helper(G1CSetCandidateGroupsList* list, uint& from_marking, CandidateOrigin* verify_map) {
+void G1CollectionSetCandidates::verify_helper(G1CSetCandidateGroupList* list, uint& from_marking, CandidateOrigin* verify_map) {
   list->verify();
 
   for (G1CSetCandidateGroup* group : *list) {
