@@ -259,7 +259,11 @@ public:
   // Initialize incremental collection set info.
   void start_incremental_building();
   // Start a new collection set increment.
-  void update_incremental_marker() { _inc_build_state = Active; _inc_part_start = _collection_set_cur_length; _selected_groups_inc_part_start = _selected_groups_cur_length;}
+  void update_incremental_marker() {
+    _inc_build_state = Active;
+    _inc_part_start = _collection_set_cur_length;
+    _selected_groups_inc_part_start = _selected_groups_cur_length;
+  }
   // Stop adding regions to the current collection set increment.
   void stop_incremental_building() { _inc_build_state = Inactive; }
 
