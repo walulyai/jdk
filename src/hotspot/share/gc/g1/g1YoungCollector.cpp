@@ -975,8 +975,8 @@ void G1YoungCollector::enqueue_candidates_as_root_regions() {
 
   G1CollectionSetCandidates* candidates = collection_set()->candidates();
   candidates->iterate_regions([&] (G1HeapRegion* r) {
-                                _g1h->concurrent_mark()->add_root_region(r);
-                              });
+    _g1h->concurrent_mark()->add_root_region(r);
+  });
 }
 
 void G1YoungCollector::post_evacuate_collection_set(G1EvacInfo* evacuation_info,

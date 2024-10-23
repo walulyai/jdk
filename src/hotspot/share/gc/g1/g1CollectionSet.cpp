@@ -162,9 +162,9 @@ void G1CollectionSet::iterate_optional(G1HeapRegionClosure* cl) const {
   assert_at_safepoint();
 
   _optional_groups.iterate([&] (G1HeapRegion* r) {
-                              bool result = cl->do_heap_region(r);
-                              guarantee(!result, "Must not cancel iteration");
-                          });
+    bool result = cl->do_heap_region(r);
+    guarantee(!result, "Must not cancel iteration");
+  });
 }
 
 void G1CollectionSet::iterate_incremental_part_from(G1HeapRegionClosure* cl,

@@ -1004,7 +1004,7 @@ bool G1CardSet::is_empty() const {
 }
 
 size_t G1CardSet::occupied() const {
-  return Atomic::load(&_num_occupied);
+  return _num_occupied;
 }
 
 size_t G1CardSet::num_containers() {
