@@ -693,14 +693,16 @@ bool G1CollectionSet::finalize_optional_for_evacuation(double remaining_pause_ti
 
 void G1CollectionSet::abandon_optional_collection_set(G1ParScanThreadStateSet* pss) {
   if (_optional_groups.length() > 0) {
-    _optional_groups.iterate([&] (G1HeapRegion* r) {
-                                pss->record_unused_optional_region(r);
-                                // Clear collection set marker and make sure that the remembered set information
-                                // is correct as we still need it later.
-                                _g1h->clear_region_attr(r);
-                                _g1h->register_region_with_region_attr(r);
-                                r->clear_index_in_opt_cset();
-                              });
+    auto reset = [&] (G1HeapRegion* r) {
+      pss->record_unused_optional_region(r);
+      // Clear collection set marker and make sure that the remembered set information
+      // is correct as we still need it later.
+      _g1h->clear_region_attr(r);
+      _g1h->register_region_with_region_attr(r);
+      r->clear_index_in_opt_cset();
+    };
+
+    _optional_groups.iterate(reset);
     // Remove groups from list without deleting the groups or clearing the associated cardsets.
     _optional_groups.remove_selected(_optional_groups.length(), _optional_groups.num_regions());
   }

@@ -125,11 +125,6 @@ class G1CSetCandidateGroupList {
   GrowableArray<G1CSetCandidateGroup*> _groups;
   volatile uint _num_regions;
 
-  // Comparison function to order regions in decreasing GC efficiency order. This
-  // will cause region groups with a lot of live objects and large remembered sets to end
-  // up at the end of the list.
-  static int compare_gc_efficiency(G1CSetCandidateGroup** ci1, G1CSetCandidateGroup** ci2);
-
 public:
   G1CSetCandidateGroupList();
   void append(G1CSetCandidateGroup* group);

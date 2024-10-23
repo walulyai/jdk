@@ -67,9 +67,8 @@ void G1CSetCandidateGroup::clear() {
   }
 
 void G1CSetCandidateGroup::abandon() {
-  uint num_candidates = _candidates.length();
-  for (uint i = 0; i < num_candidates; i++) {
-    G1HeapRegion* r = region_at(i);
+  for (G1CollectionSetCandidateInfo ci : _candidates) {
+    G1HeapRegion* r = ci._r;
     r->uninstall_group_cardset();
     r->rem_set()->clear(true /* only_cardset */);
   }
@@ -82,9 +81,8 @@ double G1CSetCandidateGroup::predict_group_copy_time_ms() const {
   double predicted_region_copy_time_ms = 0.0;
   double predict_region_code_root_scan_time = 0.0;
 
-  uint num_candidates = _candidates.length();
-  for (uint i = 0; i < num_candidates; i++) {
-    G1HeapRegion* r = region_at(i);
+  for (G1CollectionSetCandidateInfo ci : _candidates) {
+    G1HeapRegion* r = ci._r;
     assert(r->rem_set()->card_set() == &_card_set, "Must be!");
 
     predicted_region_copy_time_ms += p->predict_region_copy_time_ms(r, false /* for_young_only_phase */);
@@ -107,7 +105,6 @@ double G1CSetCandidateGroup::predict_group_total_time_ms() const {
 }
 
 int G1CSetCandidateGroup::compare_gc_efficiency(G1CSetCandidateGroup** gr1, G1CSetCandidateGroup** gr2) {
-
   double gc_eff1 = (*gr1)->gc_efficiency();
   double gc_eff2 = (*gr2)->gc_efficiency();
 
@@ -158,8 +155,7 @@ G1CSetCandidateGroup* G1CSetCandidateGroupList::at(uint index) {
 }
 
 void G1CSetCandidateGroupList::clear() {
-  for (int i = 0; i < _groups.length(); i++) {
-    G1CSetCandidateGroup* gr = _groups.at(i);
+  for (G1CSetCandidateGroup* gr : _groups) {
     gr->clear();
     delete gr;
   }
@@ -168,8 +164,7 @@ void G1CSetCandidateGroupList::clear() {
 }
 
 void G1CSetCandidateGroupList::abandon() {
-  for (int i = 0; i < _groups.length(); i++) {
-    G1CSetCandidateGroup* gr = _groups.at(i);
+  for (G1CSetCandidateGroup* gr : _groups) {
     gr->abandon();
     delete gr;
   }
@@ -178,8 +173,8 @@ void G1CSetCandidateGroupList::abandon() {
 }
 
 void G1CSetCandidateGroupList::prepare_for_scan() {
-  for (int i = 0; i < _groups.length(); i++) {
-    _groups.at(i)->card_set()->reset_table_scanner();
+  for (G1CSetCandidateGroup* gr : _groups) {
+    gr->card_set()->reset_table_scanner();
   }
 }
 
@@ -203,10 +198,9 @@ void G1CSetCandidateGroupList::remove(G1CSetCandidateGroupList* other) {
   GrowableArray<G1CSetCandidateGroup*> new_list(new_length, mtGC);
 
   uint other_idx = 0;
-
-  for (uint gr_idx = 0; gr_idx < (uint)_groups.length(); gr_idx++) {
-    if ((other_idx == other->length()) || _groups.at(gr_idx) != other->at(other_idx)) {
-      new_list.append(_groups.at(gr_idx));
+  for (G1CSetCandidateGroup* gr : _groups) {
+    if (other_idx == other->length() || gr != other->at(other_idx)) {
+      new_list.append(gr);
     } else {
       other_idx++;
     }
@@ -214,21 +208,7 @@ void G1CSetCandidateGroupList::remove(G1CSetCandidateGroupList* other) {
   _groups.swap(&new_list);
 
   verify();
-  assert(_groups.length() == new_length, "must be %u %u", _groups.length(), new_length);
-}
-
-int G1CSetCandidateGroupList::compare_gc_efficiency(G1CSetCandidateGroup** gr1, G1CSetCandidateGroup** gr2) {
-
-  double gc_eff1 = (*gr1)->gc_efficiency();
-  double gc_eff2 = (*gr2)->gc_efficiency();
-
-  if (gc_eff1 > gc_eff2) {
-    return -1;
-  } else if (gc_eff1 < gc_eff2) {
-    return 1;
-  } else {
-    return 0;
-  }
+  assert(_groups.length() == new_length, "must be");
 }
 
 void G1CSetCandidateGroupList::sort_by_efficiency() {
@@ -239,8 +219,7 @@ void G1CSetCandidateGroupList::sort_by_efficiency() {
 void G1CSetCandidateGroupList::verify() const {
   G1CSetCandidateGroup* prev = nullptr;
 
-  for (uint i = 0; i < (uint)_groups.length(); i++) {
-    G1CSetCandidateGroup* gr = _groups.at(i);
+  for (G1CSetCandidateGroup* gr : _groups) {
     assert(prev == nullptr || prev->gc_efficiency() >= gr->gc_efficiency(),
            "Stored gc efficiency must be descending");
     prev = gr;
