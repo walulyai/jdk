@@ -161,12 +161,10 @@ void G1CollectionSet::par_iterate(G1HeapRegionClosure* cl,
 void G1CollectionSet::iterate_optional(G1HeapRegionClosure* cl) const {
   assert_at_safepoint();
 
-  for (G1CSetCandidateGroup* gr : _optional_groups) {
-    for (G1CollectionSetCandidateInfo ci : *gr) {
-      bool result = cl->do_heap_region(ci._r);
-      guarantee(!result, "Must not cancel iteration");
-    }
-  }
+  _optional_groups.iterate([&] (G1HeapRegion* r) {
+                              bool result = cl->do_heap_region(r);
+                              guarantee(!result, "Must not cancel iteration");
+                          });
 }
 
 void G1CollectionSet::iterate_incremental_part_from(G1HeapRegionClosure* cl,
@@ -412,7 +410,7 @@ double G1CollectionSet::select_candidates_from_groups(double time_remaining_ms) 
                             "time remaining %1.2fms, optional threshold %1.2fms",
                             min_old_cset_length, max_old_cset_length, from_marking_groups->num_regions(), time_remaining_ms, optional_threshold_ms);
 
-  for (G1CSetCandidateGroup* group: *from_marking_groups) {
+  for (G1CSetCandidateGroup* group : *from_marking_groups) {
     if (num_inital_regions + num_optional_regions >= max_old_cset_length) {
       // Added maximum number of old regions to the CSet.
       print_finish_message("Maximum number of regions reached", true);
@@ -520,7 +518,7 @@ void G1CollectionSet::select_candidates_from_retained(double time_remaining_ms) 
                             "time remaining %1.2fms, optional remaining %1.2fms",
                             min_regions, retained_groups->length(), time_remaining_ms, optional_time_remaining_ms);
 
-  for (G1CSetCandidateGroup* group: *retained_groups) {
+  for (G1CSetCandidateGroup* group : *retained_groups) {
     assert(group->length() == 1, "Retained groups should have only 1 region");
 
     double predicted_time_ms = group->predict_group_total_time_ms();
@@ -695,17 +693,14 @@ bool G1CollectionSet::finalize_optional_for_evacuation(double remaining_pause_ti
 
 void G1CollectionSet::abandon_optional_collection_set(G1ParScanThreadStateSet* pss) {
   if (_optional_groups.length() > 0) {
-    for (G1CSetCandidateGroup* gr: _optional_groups) {
-      for (G1CollectionSetCandidateInfo ci : *gr) {
-        G1HeapRegion* r = ci._r;
-        pss->record_unused_optional_region(r);
-        // Clear collection set marker and make sure that the remembered set information
-        // is correct as we still need it later.
-        _g1h->clear_region_attr(r);
-        _g1h->register_region_with_region_attr(r);
-        r->clear_index_in_opt_cset();
-      }
-    }
+    _optional_groups.iterate([&] (G1HeapRegion* r) {
+                                pss->record_unused_optional_region(r);
+                                // Clear collection set marker and make sure that the remembered set information
+                                // is correct as we still need it later.
+                                _g1h->clear_region_attr(r);
+                                _g1h->register_region_with_region_attr(r);
+                                r->clear_index_in_opt_cset();
+                              });
     // Remove groups from list without deleting the groups or clearing the associated cardsets.
     _optional_groups.remove_selected(_optional_groups.length(), _optional_groups.num_regions());
   }

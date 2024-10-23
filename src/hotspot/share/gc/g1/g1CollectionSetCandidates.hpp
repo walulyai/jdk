@@ -77,10 +77,6 @@ public:
 
   uint length() const { return (uint)_candidates.length(); }
 
-  const GrowableArray<G1CollectionSetCandidateInfo>* regions() const {
-    return &_candidates;
-  }
-
   G1CardSet* card_set() { return &_card_set; }
 
   void calculate_efficiency();
@@ -88,7 +84,7 @@ public:
   // Comparison function to order regions in decreasing GC efficiency order. This
   // will cause regions with a lot of live objects and large remembered sets to end
   // up at the end of the list.
-  static int compare_gc_efficiency(G1CollectionSetCandidateInfo* ci1, G1CollectionSetCandidateInfo* ci2);
+  static int compare_gc_efficiency(G1CSetCandidateGroup** gr1, G1CSetCandidateGroup** gr2);
 
   static int compare_reclaimble_bytes(G1CollectionSetCandidateInfo* ci1, G1CollectionSetCandidateInfo* ci2);
 
@@ -170,6 +166,9 @@ public:
   G1CSetCandidateGroupListIterator end() const {
     return _groups.end();
   }
+
+  template<typename Func>
+  void iterate(Func&& f) const;
 };
 
 // Tracks all collection set candidates, i.e. regions that could/should be evacuated soon.
@@ -255,7 +254,7 @@ public:
   uint length() const { return marking_regions_length() + retained_regions_length(); }
 
   template<typename Func>
-  void iterate_regions(Func&& f);
+  void iterate_regions(Func&& f) const;
 };
 
 #endif /* SHARE_GC_G1_G1COLLECTIONSETCANDIDATES_HPP */

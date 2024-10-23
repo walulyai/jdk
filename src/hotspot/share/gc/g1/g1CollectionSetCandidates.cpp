@@ -106,12 +106,10 @@ double G1CSetCandidateGroup::predict_group_total_time_ms() const {
   return predicted_region_evac_time_ms;
 }
 
+int G1CSetCandidateGroup::compare_gc_efficiency(G1CSetCandidateGroup** gr1, G1CSetCandidateGroup** gr2) {
 
-int G1CSetCandidateGroup::compare_gc_efficiency(G1CollectionSetCandidateInfo* ci1, G1CollectionSetCandidateInfo* ci2) {
-  assert(ci1->_r != nullptr && ci2->_r != nullptr, "Should not be!");
-
-  double gc_eff1 = ci1->_gc_efficiency;
-  double gc_eff2 = ci2->_gc_efficiency;
+  double gc_eff1 = (*gr1)->gc_efficiency();
+  double gc_eff2 = (*gr2)->gc_efficiency();
 
   if (gc_eff1 > gc_eff2) {
     return -1;
@@ -234,7 +232,7 @@ int G1CSetCandidateGroupList::compare_gc_efficiency(G1CSetCandidateGroup** gr1, 
 }
 
 void G1CSetCandidateGroupList::sort_by_efficiency() {
-  _groups.sort(compare_gc_efficiency);
+  _groups.sort(G1CSetCandidateGroup::compare_gc_efficiency);
 }
 
 #ifndef PRODUCT
@@ -377,13 +375,10 @@ void G1CollectionSetCandidates::remove(G1CSetCandidateGroupList* other) {
   _from_marking_groups.remove(&other_marking_groups);
   _retained_groups.remove(&other_retained_groups);
 
-  for (G1CSetCandidateGroup* group : *other) {
-    for (G1CollectionSetCandidateInfo ci : *group) {
-      G1HeapRegion* r = ci._r;
-      assert(contains(r), "must contain region %u", r->hrm_index());
-      _contains_map[r->hrm_index()] = CandidateOrigin::Invalid;
-    }
-  }
+  other->iterate([&] (G1HeapRegion* r) {
+    assert(contains(r), "must contain region %u", r->hrm_index());
+    _contains_map[r->hrm_index()] = CandidateOrigin::Invalid;
+  });
 
   verify();
 }
@@ -418,11 +413,9 @@ uint G1CollectionSetCandidates::retained_regions_length() const {
 void G1CollectionSetCandidates::verify_helper(G1CSetCandidateGroupList* list, uint& from_marking, CandidateOrigin* verify_map) {
   list->verify();
 
-  for (G1CSetCandidateGroup* group : *list) {
-    const GrowableArray<G1CollectionSetCandidateInfo>* regions = group->regions();
-
-    for (int i = 0; i < regions->length(); i++) {
-      G1HeapRegion* r = regions->at(i)._r;
+  for (G1CSetCandidateGroup* gr : *list) {
+    for (G1CollectionSetCandidateInfo ci : *gr) {
+      G1HeapRegion* r = ci._r;
 
       if (is_from_marking(r)) {
         from_marking++;

@@ -526,8 +526,8 @@ double G1Policy::predict_retained_regions_evac_time() const {
   uint min_regions_left = MIN2(min_retained_old_cset_length(),
                                retained_groups->num_regions());
 
-  for (G1CSetCandidateGroup* group: *retained_groups) {
-    // FIXME: assert that we only have one region
+  for (G1CSetCandidateGroup* group : *retained_groups) {
+    assert(group->length() == 1, "We should only have one region in group");
     G1HeapRegion* r = group->region_at(0); // We only have one region per group.
     // We optimistically assume that any of these marking candidate regions will
     // be reclaimable the next gc, so just consider them as normal.
