@@ -3068,7 +3068,7 @@ bool G1PrintRegionLivenessInfoClosure::do_heap_region(G1HeapRegion* r) {
   size_t remset_bytes    = r->rem_set()->mem_size();
   size_t code_roots_bytes = r->rem_set()->code_roots_mem_size();
   const char* remset_type = r->rem_set()->get_short_state_str();
-  uint cset_groud_gid     = r->rem_set()->cset_group()->group_id();
+  uint cset_groud_gid     = r->rem_set()->cset_group_id();
   FormatBuffer<16> gc_efficiency("");
 
   if (r->is_young()) {

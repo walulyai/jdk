@@ -217,23 +217,22 @@ public:
 
   bool do_heap_region(G1HeapRegion* r) {
     G1HeapRegionRemSet* hrrs = r->rem_set();
+    size_t rs_mem_sz = 0;
+    size_t rs_unused_mem_sz = 0;
+    size_t occupied_cards = 0;
 
-    size_t occupied_cards = hrrs->occupied();
+    // We shall get details about other regions from the collection
+    // set groups that they have been assigned to.
     // G1HeapRegionRemSet::mem_size() includes the
     // size of the code roots
-    size_t rs_unused_mem_sz = hrrs->unused_mem_size();
-    size_t rs_mem_sz = hrrs->mem_size();
-
-    if (r->is_young()) {
-      uint num_young  =  G1CollectedHeap::heap()->young_regions_count();
-      occupied_cards /= num_young;
-      rs_unused_mem_sz /= num_young;
-      rs_mem_sz /= num_young;
-    }
-
-    if (rs_mem_sz > _max_rs_mem_sz) {
-      _max_rs_mem_sz = rs_mem_sz;
-      _max_rs_mem_sz_region = r;
+    if (r->is_starts_humongous()) {
+      rs_mem_sz = hrrs->mem_size();
+      rs_unused_mem_sz = hrrs->unused_mem_size();
+      occupied_cards = hrrs->occupied();
+      if (rs_mem_sz > _max_rs_mem_sz) {
+        _max_rs_mem_sz = rs_mem_sz;
+        _max_rs_mem_sz_region = r;
+      }
     }
 
     size_t code_root_mem_sz = hrrs->code_roots_mem_size();

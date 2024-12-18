@@ -67,12 +67,12 @@ public:
   ~G1HeapRegionRemSet();
 
   bool cardset_is_empty() const {
-    return card_set()->is_empty();
+    return !is_added_to_cset_group() || card_set()->is_empty();
   }
 
   void install_cset_group(G1CSetCandidateGroup* cset_group) {
     assert(cset_group != nullptr, "pre-condition");
-    assert(_cset_group == _default_cset_group, "pre-condition");
+    assert(_cset_group == nullptr, "pre-condition");
 
     _cset_group = cset_group;
   }
@@ -80,11 +80,19 @@ public:
   void uninstall_cset_group();
 
   bool is_added_to_cset_group() const {
-    return _cset_group != _default_cset_group;
+    return _cset_group != nullptr;
   }
 
   G1CSetCandidateGroup* cset_group() {
     return _cset_group;
+  }
+
+  const G1CSetCandidateGroup* cset_group() const {
+    return _cset_group;
+  }
+
+  uint cset_group_id() const {
+    return is_added_to_cset_group() ? cset_group()->group_id() : 0u;
   }
 
   bool is_empty() const {
@@ -105,7 +113,7 @@ public:
   inline static void iterate_for_merge(G1CardSet* card_set, CardOrRangeVisitor& cl);
 
   size_t occupied() {
-    return card_set()->occupied();
+    return is_added_to_cset_group() ? card_set()->occupied() : size_t(0);
   }
 
   G1CardSet* card_set() const { return _cset_group->card_set(); }
@@ -153,17 +161,17 @@ public:
 
   // The actual # of bytes this hr_remset takes up. Also includes the code
   // root set.
+  // TODO: how about for humoungous objects?
   size_t mem_size() {
     if (is_added_to_cset_group()) {
       return sizeof(G1HeapRegionRemSet) + code_roots_mem_size();
     }
-    return card_set()->mem_size()
-           + (sizeof(G1HeapRegionRemSet) - sizeof(G1CardSet)) // Avoid double-counting G1CardSet.
+    return sizeof(G1HeapRegionRemSet)
            + code_roots_mem_size();
   }
 
   size_t unused_mem_size() {
-    return card_set()->unused_mem_size();
+    return is_added_to_cset_group() ? card_set()->unused_mem_size() : size_t(0);
   }
 
   // Returns the memory occupancy of all static data structures associated

@@ -139,24 +139,19 @@ void G1HeapRegion::clear_cardtable() {
 }
 
 double G1HeapRegion::calc_gc_efficiency() {
-  if (is_young() || is_free()) {
-    return -1.0;
-  }
   // GC efficiency is the ratio of how much space would be
   // reclaimed over how long we predict it would take to reclaim it.
-  G1Policy* policy = G1CollectedHeap::heap()->policy();
 
   // Retrieve a prediction of the elapsed time for this region for
   // a mixed gc because the region will only be evacuated during a
   // mixed gc.
-  // If the region will be collected as part of a group, then we cannot
-  // rely on the predition for this region.
-  if (_rem_set->is_added_to_cset_group() && _rem_set->cset_group()->length() > 1) {
-    return -1.0;
-  } else {
-    double region_elapsed_time_ms = policy->predict_region_total_time_ms(this, false /* for_young_only_phase */);
+  // If the region will be collected as part of a group with other regions,
+  // then we cannot rely on the predition for this region.
+  if (_rem_set->is_added_to_cset_group() && _rem_set->cset_group()->length() == 1) {
+    double region_elapsed_time_ms = _rem_set->cset_group()->predict_group_total_time_ms();
     return (double)reclaimable_bytes() / region_elapsed_time_ms;
   }
+  return -1.0;
 }
 
 void G1HeapRegion::set_free() {
@@ -201,6 +196,11 @@ void G1HeapRegion::set_starts_humongous(HeapWord* obj_top, size_t fill_size) {
   _type.set_starts_humongous();
   _humongous_start_region = this;
 
+  G1CSetCandidateGroup* cset_group = new G1CSetCandidateGroup(G1CollectedHeap::heap()->card_set_config());
+  cset_group->add(this);
+
+  log_error(gc) ("Region %d installed cardset %d", hrm_index(), _rem_set->cset_group() != nullptr);
+
   _bot->update_for_block(bottom(), obj_top);
   if (fill_size > 0) {
     _bot->update_for_block(obj_top, obj_top + fill_size);
@@ -221,6 +221,14 @@ void G1HeapRegion::clear_humongous() {
   assert(is_humongous(), "pre-condition");
 
   assert(capacity() == G1HeapRegion::GrainBytes, "pre-condition");
+  // TODO: maybe free the CSet group here if it exists.
+  if (is_starts_humongous()) {
+    G1CSetCandidateGroup* cset_group = _rem_set->cset_group();
+    assert(cset_group != nullptr, "pre-condition %u missing cardset", hrm_index());
+    uninstall_cset_group();
+    cset_group->clear();
+    delete cset_group;
+  }
   _humongous_start_region = nullptr;
 }
 

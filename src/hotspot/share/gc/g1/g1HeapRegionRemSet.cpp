@@ -54,7 +54,7 @@ void G1HeapRegionRemSet::initialize(MemRegion reserved) {
 }
 
 void G1HeapRegionRemSet::uninstall_cset_group() {
-  _cset_group = _default_cset_group;
+  _cset_group = nullptr;
 }
 
 G1HeapRegionRemSet::G1HeapRegionRemSet(G1HeapRegion* hr,
@@ -62,37 +62,42 @@ G1HeapRegionRemSet::G1HeapRegionRemSet(G1HeapRegion* hr,
   _code_roots(),
   _card_set_mm(config, G1CollectedHeap::heap()->card_set_freelist_pool()),
   _default_cset_group(new G1CSetCandidateGroup(config)),
-  _cset_group(_default_cset_group),
+  _cset_group(nullptr),
   _hr(hr),
   _state(Untracked) { }
 
 G1HeapRegionRemSet::~G1HeapRegionRemSet() {
   assert(!is_added_to_cset_group(), "Still assigned to a CSet group");
-  delete _default_cset_group;
 }
 
 void G1HeapRegionRemSet::clear_fcc() {
   G1FromCardCache::clear(_hr->hrm_index());
 }
 
+// TODO: probably change the "only_cardset" details
 void G1HeapRegionRemSet::clear(bool only_cardset, bool keep_tracked) {
-  assert(!is_added_to_cset_group(), "pre-condition");
   if (!only_cardset) {
     _code_roots.clear();
   }
   clear_fcc();
-  card_set()->clear();
+
+  if (is_added_to_cset_group()) {
+    card_set()->clear();
+    assert(card_set()->occupied() == 0, "Should be clear.");
+  }
+
   if (!keep_tracked) {
     set_state_untracked();
   } else {
     assert(is_tracked(), "must be");
   }
-  assert(occupied() == 0, "Should be clear.");
 }
 
 void G1HeapRegionRemSet::reset_table_scanner() {
   _code_roots.reset_table_scanner();
-  card_set()->reset_table_scanner();
+  if (is_added_to_cset_group()) {
+    card_set()->reset_table_scanner();
+  }
 }
 
 G1MonotonicArenaMemoryStats G1HeapRegionRemSet::card_set_memory_stats() const {

@@ -516,6 +516,9 @@ inline void G1HeapRegion::install_cset_group(G1CSetCandidateGroup* cset_group) {
 }
 
 inline void G1HeapRegion::uninstall_cset_group() {
+  if (UseNewCode && is_starts_humongous()) {
+    log_error(gc) ("Region %u uninstalled cardset %u", hrm_index(), UseNewCode);
+  }
   _rem_set->uninstall_cset_group();
 }
 
