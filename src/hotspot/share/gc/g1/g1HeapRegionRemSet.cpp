@@ -57,11 +57,8 @@ void G1HeapRegionRemSet::uninstall_cset_group() {
   _cset_group = nullptr;
 }
 
-G1HeapRegionRemSet::G1HeapRegionRemSet(G1HeapRegion* hr,
-                                   G1CardSetConfiguration* config) :
+G1HeapRegionRemSet::G1HeapRegionRemSet(G1HeapRegion* hr) :
   _code_roots(),
-  _card_set_mm(config, G1CollectedHeap::heap()->card_set_freelist_pool()),
-  _default_cset_group(new G1CSetCandidateGroup(config)),
   _cset_group(nullptr),
   _hr(hr),
   _state(Untracked) { }
@@ -74,7 +71,6 @@ void G1HeapRegionRemSet::clear_fcc() {
   G1FromCardCache::clear(_hr->hrm_index());
 }
 
-// TODO: probably change the "only_cardset" details
 void G1HeapRegionRemSet::clear(bool only_cardset, bool keep_tracked) {
   if (!only_cardset) {
     _code_roots.clear();
@@ -101,7 +97,8 @@ void G1HeapRegionRemSet::reset_table_scanner() {
 }
 
 G1MonotonicArenaMemoryStats G1HeapRegionRemSet::card_set_memory_stats() const {
-  return _card_set_mm.memory_stats();
+  assert(is_added_to_cset_group(), "pre-condition");
+  return cset_group()->card_set_memory_stats();
 }
 
 void G1HeapRegionRemSet::print_static_mem_size(outputStream* out) {

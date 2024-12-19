@@ -46,13 +46,7 @@ class G1HeapRegionRemSet : public CHeapObj<mtGC> {
   // the region that owns this RSet.
   G1CodeRootSet _code_roots;
 
-  G1CardSetMemoryManager _card_set_mm;
-
   // The collection set groups to which the region owning this RSet is assigned.
-  // We maintain a _default_cset_group to handle special cases, such as humongous regions,
-  // which are never added to collection set groups. This approach allows us to avoid using
-  // nullptr guards before every use of _cset_group.
-  G1CSetCandidateGroup* _default_cset_group;
   G1CSetCandidateGroup* _cset_group;
 
   G1HeapRegion* _hr;
@@ -62,8 +56,18 @@ class G1HeapRegionRemSet : public CHeapObj<mtGC> {
 
   void clear_fcc();
 
+  G1CardSet* card_set()  {
+    assert(is_added_to_cset_group(), "pre-condition");
+    return cset_group()->card_set();
+  }
+
+  const G1CardSet* card_set() const {
+    assert(is_added_to_cset_group(), "pre-condition");
+    return cset_group()->card_set();
+  }
+
 public:
-  G1HeapRegionRemSet(G1HeapRegion* hr, G1CardSetConfiguration* config);
+  G1HeapRegionRemSet(G1HeapRegion* hr);
   ~G1HeapRegionRemSet();
 
   bool cardset_is_empty() const {
@@ -92,7 +96,8 @@ public:
   }
 
   uint cset_group_id() const {
-    return is_added_to_cset_group() ? cset_group()->group_id() : 0u;
+    assert(is_added_to_cset_group(), "pre-condition");
+    return cset_group()->group_id();
   }
 
   bool is_empty() const {
@@ -113,10 +118,10 @@ public:
   inline static void iterate_for_merge(G1CardSet* card_set, CardOrRangeVisitor& cl);
 
   size_t occupied() {
-    return is_added_to_cset_group() ? card_set()->occupied() : size_t(0);
+    assert(is_added_to_cset_group(), "pre-condition");
+    return card_set()->occupied();
   }
 
-  G1CardSet* card_set() const { return _cset_group->card_set(); }
 
   static void initialize(MemRegion reserved);
 
@@ -161,17 +166,8 @@ public:
 
   // The actual # of bytes this hr_remset takes up. Also includes the code
   // root set.
-  // TODO: how about for humoungous objects?
   size_t mem_size() {
-    if (is_added_to_cset_group()) {
-      return sizeof(G1HeapRegionRemSet) + code_roots_mem_size();
-    }
-    return sizeof(G1HeapRegionRemSet)
-           + code_roots_mem_size();
-  }
-
-  size_t unused_mem_size() {
-    return is_added_to_cset_group() ? card_set()->unused_mem_size() : size_t(0);
+    return sizeof(G1HeapRegionRemSet) + code_roots_mem_size();
   }
 
   // Returns the memory occupancy of all static data structures associated

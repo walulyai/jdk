@@ -231,9 +231,12 @@ public:
     // Accumulate card set details for regions that are assigned to single region
     // groups. G1HeapRegionRemSet::mem_size() includes the size of the code roots
     if (hrrs->is_added_to_cset_group() && hrrs->cset_group()->length() == 1) {
-      rs_mem_sz = hrrs->mem_size();
-      rs_unused_mem_sz = hrrs->unused_mem_size();
+      G1CardSet* card_set = hrrs->cset_group()->card_set();
+
+      rs_mem_sz = hrrs->mem_size() + card_set->mem_size();
+      rs_unused_mem_sz = card_set->unused_mem_size();
       occupied_cards = hrrs->occupied();
+
       if (rs_mem_sz > _max_rs_mem_sz) {
         _max_rs_mem_sz = rs_mem_sz;
         _max_rs_mem_sz_region = r;
@@ -298,7 +301,7 @@ public:
 
         if (rs_mem_sz > _max_group_cardset_mem_sz) {
           _max_group_cardset_mem_sz = rs_mem_sz;
-          _max_cardset_mem_sz_group = young_only_cset_group;
+          _max_cardset_mem_sz_group = group;
         }
 
         // Only update cardset details
@@ -390,5 +393,6 @@ void G1RemSetSummary::print_on(outputStream* out, bool show_thread_times) {
 
   HRRSStatsIter blk;
   G1CollectedHeap::heap()->heap_region_iterate(&blk);
+  blk.do_cset_groups();
   blk.print_summary_on(out);
 }

@@ -138,22 +138,6 @@ void G1HeapRegion::clear_cardtable() {
   ct->clear_MemRegion(MemRegion(bottom(), end()));
 }
 
-double G1HeapRegion::calc_gc_efficiency() {
-  // GC efficiency is the ratio of how much space would be
-  // reclaimed over how long we predict it would take to reclaim it.
-
-  // Retrieve a prediction of the elapsed time for this region for
-  // a mixed gc because the region will only be evacuated during a
-  // mixed gc.
-  // If the region will be collected as part of a group with other regions,
-  // then we cannot rely on the predition for this region.
-  if (_rem_set->is_added_to_cset_group() && _rem_set->cset_group()->length() == 1) {
-    double region_elapsed_time_ms = _rem_set->cset_group()->predict_group_total_time_ms();
-    return (double)reclaimable_bytes() / region_elapsed_time_ms;
-  }
-  return -1.0;
-}
-
 void G1HeapRegion::set_free() {
   if (!is_free()) {
     report_region_type_change(G1HeapRegionTraceType::Free);
@@ -219,7 +203,6 @@ void G1HeapRegion::clear_humongous() {
   assert(is_humongous(), "pre-condition");
 
   assert(capacity() == G1HeapRegion::GrainBytes, "pre-condition");
-  // TODO: maybe free the CSet group here if it exists.
   if (is_starts_humongous()) {
     G1CSetCandidateGroup* cset_group = _rem_set->cset_group();
     assert(cset_group != nullptr, "pre-condition %u missing cardset", hrm_index());
@@ -266,7 +249,7 @@ G1HeapRegion::G1HeapRegion(uint hrm_index,
   assert(Universe::on_page_boundary(mr.start()) && Universe::on_page_boundary(mr.end()),
          "invalid space boundaries");
 
-  _rem_set = new G1HeapRegionRemSet(this, config);
+  _rem_set = new G1HeapRegionRemSet(this);
   initialize();
 }
 
@@ -618,7 +601,7 @@ class G1VerifyLiveAndRemSetClosure : public BasicOopIterateClosure {
     bool failed() const {
       if (_from != _to && !_from->is_young() &&
           _to->rem_set()->is_complete() &&
-          _from->rem_set()->card_set() != _to->rem_set()->card_set()) {
+          _from->rem_set()->cset_group() != _to->rem_set()->cset_group()) {
         const CardValue dirty = G1CardTable::dirty_card_val();
         return !(_to->rem_set()->contains_reference(this->_p) ||
                  (this->_containing_obj->is_objArray() ?
