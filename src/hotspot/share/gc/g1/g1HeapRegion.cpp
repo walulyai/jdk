@@ -199,8 +199,6 @@ void G1HeapRegion::set_starts_humongous(HeapWord* obj_top, size_t fill_size) {
   G1CSetCandidateGroup* cset_group = new G1CSetCandidateGroup(G1CollectedHeap::heap()->card_set_config());
   cset_group->add(this);
 
-  log_error(gc) ("Region %d installed cardset %d", hrm_index(), _rem_set->cset_group() != nullptr);
-
   _bot->update_for_block(bottom(), obj_top);
   if (fill_size > 0) {
     _bot->update_for_block(obj_top, obj_top + fill_size);
