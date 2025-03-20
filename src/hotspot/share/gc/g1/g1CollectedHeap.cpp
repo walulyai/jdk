@@ -704,17 +704,20 @@ HeapWord* G1CollectedHeap::attempt_allocation_at_safepoint(size_t word_size,
   // Fix NUMA node association for the duration of this allocation
   const uint node_index = _allocator->current_node_index();
 
+  HeapWord* result = nullptr;
   if (!is_humongous(word_size)) {
-    return _allocator->attempt_allocation_locked(node_index, word_size);
+    result = _allocator->attempt_allocation_locked(node_index, word_size);
   } else {
     HeapWord* result = humongous_obj_allocate(word_size);
     if (result != nullptr && policy()->need_to_start_conc_mark("STW humongous allocation")) {
       collector_state()->set_initiate_conc_mark_if_possible(true);
     }
-    return result;
   }
 
-  ShouldNotReachHere();
+  log_debug(gc, ergo, heap)("allocation-at-safepoint result " PTR_FORMAT " humongous %d",
+                            p2i(result), is_humongous(word_size));
+
+  return result;
 }
 
 class PostCompactionPrinterClosure: public G1HeapRegionClosure {
@@ -882,6 +885,7 @@ void G1CollectedHeap::resize_heap_if_necessary() {
   } else {
     shrink(resize_amount);
   }
+  uncommit_regions_if_necessary();
 }
 
 HeapWord* G1CollectedHeap::satisfy_failed_allocation_helper(size_t word_size,
@@ -987,35 +991,39 @@ HeapWord* G1CollectedHeap::expand_and_allocate(size_t word_size) {
                             word_size * HeapWordSize);
 
 
+  HeapWord* result = nullptr;
   if (expand(expand_bytes, _workers)) {
     _hrm.verify_optional();
     _verifier->verify_region_sets_optional();
-    return attempt_allocation_at_safepoint(word_size,
-                                           false /* expect_null_mutator_alloc_region */);
+    result = attempt_allocation_at_safepoint(word_size,
+                                             false /* expect_null_mutator_alloc_region */);
+
+    if (result == nullptr) {
+      log_debug(gc, ergo, heap)("Allocation failed after expanding heap");
+    }
+  } else {
+    log_debug(gc, ergo, heap)("Heap resize. Failure.");
   }
-  return nullptr;
+  return result;
 }
 
-bool G1CollectedHeap::expand(size_t expand_bytes, WorkerThreads* pretouch_workers, double* expand_time_ms) {
+bool G1CollectedHeap::expand(size_t expand_bytes, WorkerThreads* pretouch_workers) {
   size_t aligned_expand_bytes = os::align_up_vm_page_size(expand_bytes);
   aligned_expand_bytes = align_up(aligned_expand_bytes, G1HeapRegion::GrainBytes);
 
-  log_debug(gc, ergo, heap)("Expand the heap. requested expansion amount: %zuB expansion amount: %zuB",
-                            expand_bytes, aligned_expand_bytes);
-
-  if (is_maximal_no_gc()) {
-    log_debug(gc, ergo, heap)("Did not expand the heap (heap already fully expanded)");
-    return false;
-  }
-
-  double expand_heap_start_time_sec = os::elapsedTime();
   uint regions_to_expand = (uint)(aligned_expand_bytes / G1HeapRegion::GrainBytes);
   assert(regions_to_expand > 0, "Must expand by at least one region");
 
-  uint expanded_by = _hrm.expand_by(regions_to_expand, pretouch_workers);
-  if (expand_time_ms != nullptr) {
-    *expand_time_ms = (os::elapsedTime() - expand_heap_start_time_sec) * MILLIUNITS;
+  log_debug(gc, ergo, heap)("Heap resize. Requested expansion amount: %zuM aligned expansion amount: %zuM (%u regions)",
+                            expand_bytes / M, aligned_expand_bytes / M, regions_to_expand);
+
+  if (capacity() == max_capacity()) {
+    log_debug(gc, ergo, heap)("Heap resize. Did not expand the heap (heap already fully expanded)");
+    return false;
   }
+
+
+  uint expanded_by = _hrm.expand_by(regions_to_expand, pretouch_workers);
 
   assert(expanded_by > 0, "must have failed during commit.");
 
@@ -1040,26 +1048,46 @@ bool G1CollectedHeap::expand_single_region(uint node_index) {
 }
 
 void G1CollectedHeap::shrink_helper(size_t shrink_bytes) {
-  size_t aligned_shrink_bytes = os::align_down_vm_page_size(shrink_bytes);
-  aligned_shrink_bytes = align_down(aligned_shrink_bytes, G1HeapRegion::GrainBytes);
+  assert(shrink_bytes > 0, "must be");
+  assert(is_aligned(shrink_bytes, G1HeapRegion::GrainBytes),
+         "Shrink request for %zuM not aligned to heap region size %zuM",
+         shrink_bytes / M, G1HeapRegion::GrainBytes / M);
+
   uint num_regions_to_remove = (uint)(shrink_bytes / G1HeapRegion::GrainBytes);
 
   uint num_regions_removed = _hrm.shrink_by(num_regions_to_remove);
   size_t shrunk_bytes = num_regions_removed * G1HeapRegion::GrainBytes;
 
-  log_debug(gc, ergo, heap)("Shrink the heap. requested shrinking amount: %zuB aligned shrinking amount: %zuB actual amount shrunk: %zuB",
-                            shrink_bytes, aligned_shrink_bytes, shrunk_bytes);
+  log_debug(gc, ergo, heap)("Heap resize. Requested shrinking amount: %zuM actual shrinking amount: %zuM (%u regions)",
+                            shrink_bytes / M, shrunk_bytes / M, num_regions_removed);
   if (num_regions_removed > 0) {
-    log_debug(gc, heap)("Uncommittable regions after shrink: %u", num_regions_removed);
     policy()->record_new_heap_size(num_regions());
   } else {
-    log_debug(gc, ergo, heap)("Did not shrink the heap (heap shrinking operation failed)");
+    log_debug(gc, ergo, heap)("Heap resize. Did not shrink the heap (heap shrinking operation failed)");
   }
 }
 
 void G1CollectedHeap::shrink(size_t shrink_bytes) {
-  _verifier->verify_region_sets_optional();
+  size_t aligned_shrink_bytes = os::align_down_vm_page_size(shrink_bytes);
+  aligned_shrink_bytes = align_down(aligned_shrink_bytes, G1HeapRegion::GrainBytes);
 
+  aligned_shrink_bytes = capacity() - MAX2(capacity() - aligned_shrink_bytes, min_capacity());
+  assert(is_aligned(aligned_shrink_bytes, G1HeapRegion::GrainBytes), "Bytes to shrink %zuB not aligned", aligned_shrink_bytes);
+
+  log_debug(gc, ergo, heap)("Heap resize. Requested shrink amount: %zuB aligned shrink amount: %zuB",
+                            shrink_bytes, aligned_shrink_bytes);
+
+  if (aligned_shrink_bytes == 0) {
+    log_debug(gc, ergo, heap)("Heap resize. Did not shrink the heap (shrink request too small)");
+    return;
+  }
+  if (capacity() == min_capacity()) {
+    log_debug(gc, ergo, heap)("Heap resize. Did not shrink the heap (heap already at minimum)");
+    return;
+  }
+  assert(aligned_shrink_bytes > 0, "capacity %zu min_capacity %zu", capacity(), min_capacity());
+
+  _verifier->verify_region_sets_optional();
   // We should only reach here at the end of a Full GC or during Remark which
   // means we should not not be holding to any GC alloc regions. The method
   // below will make sure of that and do any remaining clean up.
@@ -1069,7 +1097,7 @@ void G1CollectedHeap::shrink(size_t shrink_bytes) {
   // could instead use the remove_all_pending() method on free_list to
   // remove only the ones that we need to remove.
   _hrm.remove_all_free_regions();
-  shrink_helper(shrink_bytes);
+  shrink_helper(aligned_shrink_bytes);
   rebuild_region_sets(true /* free_list_only */);
 
   _hrm.verify_optional();
@@ -1334,7 +1362,7 @@ jint G1CollectedHeap::initialize() {
   }
 
   os::trace_page_sizes("Heap",
-                       MinHeapSize,
+                       min_capacity(),
                        reserved_byte_size,
                        heap_rs.base(),
                        heap_rs.size(),
@@ -2040,7 +2068,7 @@ bool G1CollectedHeap::block_is_obj(const HeapWord* addr) const {
 }
 
 size_t G1CollectedHeap::tlab_capacity(Thread* ignored) const {
-  return (_policy->young_list_target_length() - _survivor.length()) * G1HeapRegion::GrainBytes;
+  return eden_target_length() * G1HeapRegion::GrainBytes;
 }
 
 size_t G1CollectedHeap::tlab_used(Thread* ignored) const {
@@ -2059,6 +2087,10 @@ size_t G1CollectedHeap::unsafe_max_tlab_alloc(Thread* ignored) const {
 
 size_t G1CollectedHeap::max_capacity() const {
   return max_regions() * G1HeapRegion::GrainBytes;
+}
+
+size_t G1CollectedHeap::min_capacity() const {
+  return MinHeapSize;
 }
 
 void G1CollectedHeap::prepare_for_verify() {
@@ -2399,24 +2431,29 @@ void G1CollectedHeap::verify_after_young_collection(G1HeapVerifier::G1VerifyType
   phase_times()->record_verify_after_time_ms((Ticks::now() - start).seconds() * MILLIUNITS);
 }
 
-void G1CollectedHeap::expand_heap_after_young_collection(){
-  size_t expand_bytes = _heap_sizing_policy->young_collection_expansion_amount();
-  if (expand_bytes > 0) {
-    // No need for an ergo logging here,
-    // expansion_amount() does this when it returns a value > 0.
-    double expand_ms = 0.0;
-    if (!expand(expand_bytes, _workers, &expand_ms)) {
-      // We failed to expand the heap. Cannot do anything about it.
+void G1CollectedHeap::resize_heap_after_young_collection(size_t allocation_word_size) {
+  Ticks start = Ticks::now();
+
+  bool should_expand;
+
+  size_t resize_bytes = _heap_sizing_policy->young_collection_resize_amount(should_expand, allocation_word_size);
+
+  if (resize_bytes != 0) {
+    if (should_expand) {
+      expand(resize_bytes, _workers);
+    } else {
+      shrink(resize_bytes);
     }
-    phase_times()->record_expand_heap_time(expand_ms);
   }
+
+  phase_times()->record_resize_heap_time((Ticks::now() - start).seconds() * 1000.0);
 }
 
-bool G1CollectedHeap::do_collection_pause_at_safepoint() {
+bool G1CollectedHeap::do_collection_pause_at_safepoint(size_t allocation_word_size) {
   assert_at_safepoint_on_vm_thread();
   guarantee(!is_stw_gc_active(), "collection is not reentrant");
 
-  do_collection_pause_at_safepoint_helper();
+  do_collection_pause_at_safepoint_helper(allocation_word_size);
   return true;
 }
 
@@ -2481,7 +2518,7 @@ void G1CollectedHeap::flush_region_pin_cache() {
   }
 }
 
-void G1CollectedHeap::do_collection_pause_at_safepoint_helper() {
+void G1CollectedHeap::do_collection_pause_at_safepoint_helper(size_t allocation_word_size) {
   ResourceMark rm;
 
   IsSTWGCActiveMark active_gc_mark;
@@ -2499,7 +2536,7 @@ void G1CollectedHeap::do_collection_pause_at_safepoint_helper() {
   bool should_start_concurrent_mark_operation = collector_state()->in_concurrent_start_gc();
 
   // Perform the collection.
-  G1YoungCollector collector(gc_cause());
+  G1YoungCollector collector(gc_cause(), allocation_word_size);
   collector.collect();
 
   // It should now be safe to tell the concurrent mark thread to start
@@ -2621,6 +2658,11 @@ void G1CollectedHeap::set_young_gen_card_set_stats(const G1MonotonicArenaMemoryS
 
 void G1CollectedHeap::record_obj_copy_mem_stats() {
   size_t total_old_allocated = _old_evac_stats.allocated() + _old_evac_stats.direct_allocated();
+  uint sum = _survivor_evac_stats.regions_filled() + _old_evac_stats.regions_filled();
+  log_debug(gc)("Allocated %u survivor %u old percent total %1.2f%% (%u%%)",
+                _survivor_evac_stats.regions_filled(), _old_evac_stats.regions_filled(),
+                percent_of(sum, num_regions() - sum),
+                G1ReservePercent);
   policy()->old_gen_alloc_tracker()->
     add_allocated_bytes_since_last_gc(total_old_allocated * HeapWordSize);
 

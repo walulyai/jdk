@@ -161,6 +161,18 @@
           "When expanding, % of uncommitted space to claim.")               \
           range(0, 100)                                                     \
                                                                             \
+  product(size_t, G1ShrinkByPercentOfAvailable, 50, EXPERIMENTAL,           \
+          "When shrinking, maximum % of free space to claim.")              \
+          range(0, 100)                                                     \
+                                                                            \
+  product(size_t, G1MinimumPercentOfGCTimeRatio, 50, EXPERIMENTAL,          \
+          "Percentage of GCTimeRatio G1 will try to avoid going below.")    \
+          range(0, 100)                                                     \
+                                                                            \
+  product(int, G1ShortTermShrinkThreshold, 4, EXPERIMENTAL,                 \
+          "Number of short term shrink attempts until actual shrink.")      \
+          range(0, 10)                                                      \
+                                                                            \
   product(size_t, G1UpdateBufferSize, 256,                                  \
           "Size of an update buffer")                                       \
           constraint(G1UpdateBufferSizeConstraintFunc, AtParse)             \

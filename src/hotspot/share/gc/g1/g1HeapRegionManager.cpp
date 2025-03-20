@@ -584,7 +584,7 @@ uint G1HeapRegionManager::shrink_by(uint num_regions_to_remove) {
   assert(length() > 0, "the region sequence should not be empty");
   assert(length() <= _next_highest_used_hrm_index, "invariant");
   assert(_next_highest_used_hrm_index > 0, "we should have at least one region committed");
-  assert(num_regions_to_remove < length(), "We should never remove all regions");
+  assert(num_regions_to_remove < length(), "We should never remove all regions %u %u", num_regions_to_remove, length());
 
   if (num_regions_to_remove == 0) {
     return 0;
