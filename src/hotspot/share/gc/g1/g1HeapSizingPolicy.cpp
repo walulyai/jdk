@@ -241,6 +241,7 @@ size_t G1HeapSizingPolicy::young_collection_resize_amount(bool& expand, size_t a
   const double mid_threshold = (upper_threshold + lower_threshold) / 2;
 
   const double long_term_delta = rel_ratio(long_term_pause_time_ratio, mid_threshold);
+  double short_term_ratio_delta = rel_ratio(short_term_pause_time_ratio, mid_threshold);
 
   // If the short term GC time ratio exceeds a threshold, increment the occurrence
   // counter.
@@ -249,7 +250,6 @@ size_t G1HeapSizingPolicy::young_collection_resize_amount(bool& expand, size_t a
   } else if (short_term_pause_time_ratio < lower_threshold) {
     _ratio_exceeds_threshold--;
   }
-  double short_term_ratio_delta = rel_ratio(short_term_pause_time_ratio, mid_threshold);
   // Ignore very first sample as it is garbage.
   if (_long_term_count != 0 || _recent_pause_ratios.num() != 0) {
     _recent_pause_ratios.add(short_term_ratio_delta);
@@ -316,6 +316,7 @@ size_t G1HeapSizingPolicy::young_collection_resize_amount(bool& expand, size_t a
     log_trace(gc, ergo, heap)("expand deltas long %1.2f short %1.2f use long term %u delta %1.2f",
                               long_term_delta, short_term_delta, use_long_term_delta, delta);
 
+    // TODO: why don't we consider the allocation_word_size here?
     resize_bytes = young_collection_expand_amount(delta);
     expand = true;
 
