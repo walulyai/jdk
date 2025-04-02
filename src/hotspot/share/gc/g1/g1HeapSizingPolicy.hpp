@@ -43,7 +43,7 @@ class G1CollectedHeap;
 //
 // Short term tracking is based on short-term gc time ratio behavior: for this we
 // record events for when actual gc time ratio is outside the range of
-// [GCTimeRatio * G1MinimumPercentOfGCTimeRatio, GCTimeRatio] or not in a counter.
+// [GCTimeRatio * (1 - G1MinimumPercentOfGCTimeRatio / 200), GCTimeRatio * (1 + G1MinimumPercentOfGCTimeRatio / 200)] or not in a counter.
 // If below that range, we decrement that counter, if above, we increment it.
 //
 // The intent of this mechanism is to filter short term events as heap sizing has

@@ -200,7 +200,7 @@ public class TestGCLogMessages {
         new LogMessageWithLevel("Serial Rebuild Free List:", Level.TRACE),
         new LogMessageWithLevel("Parallel Rebuild Free List \\(ms\\):", Level.TRACE),
         new LogMessageWithLevel("Prepare For Mutator:", Level.DEBUG),
-        new LogMessageWithLevel("Expand Heap After Collection:", Level.DEBUG),
+        new LogMessageWithLevel("Resize Heap After Collection:", Level.DEBUG),
     };
 
     void checkMessagesAtLevel(OutputAnalyzer output, LogMessageWithLevel messages[], Level level) throws Exception {

@@ -536,7 +536,7 @@ double G1GCPhaseTimes::print_post_evacuate_collection_set(bool evacuation_failed
   trace_phase(_gc_par_phases[RebuildFreeList]);
 
   // TODO: verify why the below is removed.
-  // debug_time("Prepare For Mutator", _recorded_prepare_for_mutator_time_ms);
+  debug_time("Prepare For Mutator", _recorded_prepare_for_mutator_time_ms);
   debug_time("Resize Heap After Collection", _cur_resize_heap_time_ms);
 
   return sum_ms;

@@ -123,19 +123,21 @@ static void log_resize(double short_term_pause_time_ratio,
                        double upper_threshold,
                        double pause_time_ratio,
                        bool at_limit,
-                       size_t resize_bytes) {
+                       size_t resize_bytes,
+                      bool expand) {
 
   log_debug(gc, ergo, heap)("Heap resize: "
                             "short term pause time ratio %1.2f%% long term pause time ratio %1.2f%% "
                             "lower threshold %1.2f%% upper threshold %1.2f%% pause time ratio %1.2f%% "
-                            "at limit %s resize by %zuB",
+                            "at limit %s resize by %zuM expand %s",
                             short_term_pause_time_ratio * 100.0,
                             long_term_pause_time_ratio * 100.0,
                             lower_threshold * 100.0,
                             upper_threshold * 100.0,
                             pause_time_ratio * 100.0,
                             BOOL_TO_STR(at_limit),
-                            resize_bytes);
+                            resize_bytes / M,
+                            BOOL_TO_STR(expand));
 }
 
 size_t G1HeapSizingPolicy::young_collection_expand_amount(double delta) const {
@@ -221,6 +223,7 @@ size_t G1HeapSizingPolicy::young_collection_shrink_amount(double delta, size_t a
 
 size_t G1HeapSizingPolicy::young_collection_resize_amount(bool& expand, size_t allocation_word_size) {
   assert(GCTimeRatio > 0, "must be");
+  expand = false;
 
   const double long_term_pause_time_ratio = _analytics->long_term_pause_time_ratio();
   const double short_term_pause_time_ratio = _analytics->short_term_pause_time_ratio();
@@ -233,8 +236,8 @@ size_t G1HeapSizingPolicy::young_collection_resize_amount(bool& expand, size_t a
   // actual target when resizing the heap.
   const double pause_time_threshold = 1.0 / (1.0 + GCTimeRatio);
   const double min_gc_time_ratio_ratio = G1MinimumPercentOfGCTimeRatio / 100.0;
-  double upper_threshold = scale_with_heap(pause_time_threshold);
-  double lower_threshold = upper_threshold * min_gc_time_ratio_ratio;
+  double upper_threshold = scale_with_heap(pause_time_threshold) * (1 + min_gc_time_ratio_ratio);
+  double lower_threshold = scale_with_heap(pause_time_threshold) * (1 - min_gc_time_ratio_ratio);
 
   // Use threshold based relative to current GCTimeRatio to more quickly expand
   // and shrink at smaller heap sizes (relative to maximum).
@@ -265,7 +268,7 @@ size_t G1HeapSizingPolicy::young_collection_resize_amount(bool& expand, size_t a
                             long_term_interval(),
                             short_term_ratio_delta,
                             _ratio_exceeds_threshold);
-
+  log_debug(gc, ergo, heap)("Hysterisis: %.3f < %0.3f < %0.3f | pause_time_threshold %0.3f", lower_threshold, mid_threshold, upper_threshold, pause_time_threshold);
   log_debug(gc, ergo, heap)("Heap triggers: pauses-since-start: %u num-prev-pauses-for-heuristics: %u ratio-exceeds-threshold-count: %d",
                             _recent_pause_ratios.num(), long_term_interval(), _ratio_exceeds_threshold);
 
@@ -308,7 +311,7 @@ size_t G1HeapSizingPolicy::young_collection_resize_amount(bool& expand, size_t a
     // Short-cut calculation if already at maximum capacity.
     if (_g1h->capacity() == _g1h->max_capacity()) {
       log_resize(short_term_pause_time_ratio, long_term_pause_time_ratio,
-                 lower_threshold, upper_threshold, pause_time_threshold, true, 0);
+                 lower_threshold, upper_threshold, pause_time_threshold, true, 0, expand);
       reset_ratio_tracking_data();
       return resize_bytes;
     }
@@ -327,7 +330,7 @@ size_t G1HeapSizingPolicy::young_collection_resize_amount(bool& expand, size_t a
     // Short-cut calculation if already at minimum capacity.
     if (_g1h->capacity() == _g1h->min_capacity()) {
       log_resize(short_term_pause_time_ratio, long_term_pause_time_ratio,
-                 lower_threshold, upper_threshold, pause_time_threshold, true, 0);
+                 lower_threshold, upper_threshold, pause_time_threshold, true, 0, expand);
       reset_ratio_tracking_data();
       return resize_bytes;
     }
@@ -347,7 +350,7 @@ size_t G1HeapSizingPolicy::young_collection_resize_amount(bool& expand, size_t a
 
   log_resize(short_term_pause_time_ratio, long_term_pause_time_ratio,
              lower_threshold, upper_threshold, pause_time_threshold,
-             false, resize_bytes);
+             false, resize_bytes, expand);
 
   return resize_bytes;
 }

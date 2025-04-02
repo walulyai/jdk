@@ -165,7 +165,7 @@
           "When shrinking, maximum % of free space to claim.")              \
           range(0, 100)                                                     \
                                                                             \
-  product(size_t, G1MinimumPercentOfGCTimeRatio, 50, EXPERIMENTAL,          \
+  product(size_t, G1MinimumPercentOfGCTimeRatio, 25, EXPERIMENTAL,          \
           "Percentage of GCTimeRatio G1 will try to avoid going below.")    \
           range(0, 100)                                                     \
                                                                             \
