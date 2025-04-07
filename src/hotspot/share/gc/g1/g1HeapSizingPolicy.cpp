@@ -192,7 +192,7 @@ size_t G1HeapSizingPolicy::young_collection_shrink_amount(double delta, size_t a
   uint reserve_regions = ceil(_g1h->num_free_regions() * G1ReservePercent / 100.0);
   uint needed_for_allocation = _g1h->eden_target_length();
   if (_g1h->is_humongous(allocation_word_size)) {
-    needed_for_allocation += _g1h->humongous_obj_size_in_regions(allocation_word_size);
+    needed_for_allocation += (uint) _g1h->humongous_obj_size_in_regions(allocation_word_size);
   }
   uint should_be_kept_free = MAX2(needed_for_allocation, reserve_regions);
 
