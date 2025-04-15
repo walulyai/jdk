@@ -190,6 +190,7 @@ G1HeapRegion* G1CollectedHeap::new_region(size_t word_size,
       // region size, the free list should in theory not be empty.
       // In either case allocate_free_region() will check for null.
       res = _hrm.allocate_free_region(type, node_index);
+      log_debug(gc, ergo, heap)("Heap Expansion successful. Allocatio is successful: %s", BOOL_TO_STR(res!=nullptr));
     }
   }
   return res;
@@ -547,7 +548,6 @@ void G1CollectedHeap::dealloc_archive_regions(MemRegion range) {
   assert(!is_init_completed(), "Expect to be called at JVM init time");
   MemRegion reserved = _hrm.reserved();
   size_t size_used = 0;
-  uint shrink_count = 0;
 
   // Free the G1 regions that are within the specified range.
   MutexLocker x(Heap_lock);
@@ -559,14 +559,25 @@ void G1CollectedHeap::dealloc_archive_regions(MemRegion range) {
          p2i(start_address), p2i(last_address));
   size_used += range.byte_size();
 
+  uint max_shrink_count = 0;
+  if (capacity() > min_capacity()) {
+    size_t max_shrink_bytes = capacity() - min_capacity();
+    max_shrink_count = (uint)(max_shrink_bytes / G1HeapRegion::GrainBytes);
+  }
+
+  uint shrink_count = 0;
   // Free, empty and uncommit regions with CDS archive content.
   auto dealloc_archive_region = [&] (G1HeapRegion* r, bool is_last) {
     guarantee(r->is_old(), "Expected old region at index %u", r->hrm_index());
     _old_set.remove(r);
     r->set_free();
     r->set_top(r->bottom());
-    _hrm.shrink_at(r->hrm_index(), 1);
-    shrink_count++;
+    if (shrink_count < max_shrink_count) {
+      _hrm.shrink_at(r->hrm_index(), 1);
+      shrink_count++;
+    } else {
+      _hrm.insert_into_free_list(r);
+    }
   };
 
   iterate_regions_in_range(range, dealloc_archive_region);
@@ -1070,6 +1081,8 @@ void G1CollectedHeap::shrink_helper(size_t shrink_bytes) {
 void G1CollectedHeap::shrink(size_t shrink_bytes) {
   size_t aligned_shrink_bytes = os::align_down_vm_page_size(shrink_bytes);
   aligned_shrink_bytes = align_down(aligned_shrink_bytes, G1HeapRegion::GrainBytes);
+
+  guarantee(min_capacity() <= capacity(), "Ghosts");
 
   aligned_shrink_bytes = capacity() - MAX2(capacity() - aligned_shrink_bytes, min_capacity());
   assert(is_aligned(aligned_shrink_bytes, G1HeapRegion::GrainBytes), "Bytes to shrink %zuB not aligned", aligned_shrink_bytes);

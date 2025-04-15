@@ -66,6 +66,7 @@ void G1HeapSizingPolicy::reset_ratio_tracking_data() {
   _long_term_count = 0;
   _ratio_exceeds_threshold = 0;
   // Keep the recent gc time ratio data.
+  // TODO: wont keeping the gc time ratio data create confusion in the logs?
 }
 
 void G1HeapSizingPolicy::decay_ratio_tracking_data() {
@@ -90,25 +91,18 @@ double G1HeapSizingPolicy::scale_with_heap(double pause_time_threshold) {
 double G1HeapSizingPolicy::scale_resize_ratio_delta(double ratio_delta,
                                                     double min_scale_down_factor,
                                                     double max_scale_up_factor) const {
-  // If the delta is small (less than the StartScaleDownAt value), scale the size
-  // down linearly, but not by less than min_scale_down_factor. If the delta is large
-  // (greater than the StartScaleUpAt value), scale up, but adding no more than
-  // max_scale_up_factor times the base size. The scaling will be linear in the range
-  // from StartScaleUpAt to (StartScaleUpAt + ScaleUpRange). In other words,
-  // ScaleUpRange sets the rate of scaling up.
-  double const StartScaleDownAt = 1.0;
-  double const StartScaleUpAt = 1.5;
-  double const ScaleUpRange = 4.0;
+   // We use a sigmoid function for scaling smoothly as we transition from a slow start to a fast growth
+   // function with increasing ratio_delta. The sigmoid outputs a value in the range [0,1] which scale to
+   // the range [min_scale_down_factor, max_scale_up_factor]
+  // Sigmoid Parameters:
+  double inflection_point = 1.0; // Inflection point where acceleration begins.
+  double steepness = 6.0;
 
-  double scale_factor;
-  if (ratio_delta < StartScaleDownAt) {
-    scale_factor = ratio_delta / StartScaleDownAt;
-    scale_factor = MAX2(scale_factor, min_scale_down_factor);
-  } else if (ratio_delta > StartScaleUpAt) {
-    scale_factor = 1 + ((ratio_delta - StartScaleUpAt) / ScaleUpRange);
-    scale_factor = MIN2(scale_factor, max_scale_up_factor);
-  }
-  log_debug(gc)("scaling ratio %1.2f scale %1.2f", ratio_delta, scale_factor);
+  double sigmoid = 1.0 / (1.0 + pow(M_E, -steepness * (ratio_delta - inflection_point)));
+
+  double scale_factor = min_scale_down_factor + (max_scale_up_factor - min_scale_down_factor) * sigmoid;
+
+  log_debug(gc)("scaling ratio %1.2f scale %1.2f ", ratio_delta, scale_factor);
   return scale_factor;
 }
 
@@ -190,6 +184,8 @@ size_t G1HeapSizingPolicy::young_collection_shrink_amount(double delta, size_t a
   uint free_regions = _g1h->num_free_regions();
 
   uint reserve_regions = ceil(_g1h->num_free_regions() * G1ReservePercent / 100.0);
+  // TODO: but at this point we already allocated the Survivors, so needed_for_allocation is less.
+  // TODO: Just check that at least one eden region is allocated.
   uint needed_for_allocation = _g1h->eden_target_length();
   if (_g1h->is_humongous(allocation_word_size)) {
     needed_for_allocation += (uint) _g1h->humongous_obj_size_in_regions(allocation_word_size);
@@ -292,7 +288,7 @@ size_t G1HeapSizingPolicy::young_collection_resize_amount(bool& expand, size_t a
 
   double delta;
   if (use_long_term_delta) {
-    // For expansion, deltas are positive, and we want to be expand aggressively.
+    // For expansion, deltas are positive, and we want to expand aggressively.
     // For shrinking, deltas are negative, so the MAX2 below selects the least
     // aggressive one as we are using the absolute value for scaling.
     delta = MAX2(short_term_delta, long_term_delta);
