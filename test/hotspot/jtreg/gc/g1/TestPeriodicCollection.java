@@ -31,8 +31,8 @@ package gc.g1;
  * @library /test/lib /
  * @modules java.base/jdk.internal.misc
  * @modules java.management/sun.management
- * @run main/othervm -XX:MaxNewSize=32M -XX:InitialHeapSize=48M -Xmx128M -XX:MinHeapFreeRatio=5 -XX:MaxHeapFreeRatio=25 -XX:+UseG1GC -XX:G1PeriodicGCInterval=3000 -XX:+G1PeriodicGCInvokesConcurrent -Xlog:gc*,gc+periodic=debug,gc+ergo+heap=debug gc.g1.TestPeriodicCollection
- * @run main/othervm -XX:MaxNewSize=32M -XX:InitialHeapSize=48M -Xmx128M -XX:MinHeapFreeRatio=5 -XX:MaxHeapFreeRatio=25 -XX:+UseG1GC -XX:G1PeriodicGCInterval=3000 -XX:-G1PeriodicGCInvokesConcurrent -Xlog:gc*,gc+periodic=debug,gc+ergo+heap=debug gc.g1.TestPeriodicCollection
+ * @run main/othervm -XX:MaxNewSize=32M -XX:InitialHeapSize=96M -Xmx128M -XX:+UnlockExperimentalVMOptions -XX:G1ShortTermShrinkThreshold=1 -XX:GCTimeRatio=8 -XX:+UseG1GC -XX:G1PeriodicGCInterval=3000 -XX:+G1PeriodicGCInvokesConcurrent -Xlog:gc*,gc+periodic=debug,gc+ergo+heap=debug gc.g1.TestPeriodicCollection
+ * @run main/othervm -XX:MaxNewSize=32M -XX:InitialHeapSize=96M -Xmx128M -XX:+UnlockExperimentalVMOptions -XX:G1ShortTermShrinkThreshold=1 -XX:GCTimeRatio=8 -XX:+UseG1GC -XX:G1PeriodicGCInterval=3000 -XX:-G1PeriodicGCInvokesConcurrent -Xlog:gc*,gc+periodic=debug,gc+ergo+heap=debug gc.g1.TestPeriodicCollection
  */
 
 import com.sun.management.HotSpotDiagnosticMXBean;
@@ -50,7 +50,7 @@ public class TestPeriodicCollection {
     public static final String MIN_FREE_RATIO_FLAG_NAME = "MinHeapFreeRatio";
     public static final String MAX_FREE_RATIO_FLAG_NAME = "MaxHeapFreeRatio";
 
-    private static final int IDLE_TIME = 7 * 1000;
+    private static final int IDLE_TIME = 7 * 3000;
 
     private static boolean gcOccurred() {
         for (GarbageCollectorMXBean b : ManagementFactory.getGarbageCollectorMXBeans()) {
@@ -79,16 +79,9 @@ public class TestPeriodicCollection {
         MemoryUsage muAfter = ManagementFactory.getMemoryMXBean().getHeapMemoryUsage();
         printMemoryUsage("after", muAfter);
 
-        assertLessThan(muAfter.getCommitted(), muInitial.getCommitted(), String.format(
-                "committed free heap size is not less than committed full heap size, heap hasn't been shrunk?%n"
-                + "%s = %s%n%s = %s",
-                MIN_FREE_RATIO_FLAG_NAME,
-                ManagementFactory.getPlatformMXBean(HotSpotDiagnosticMXBean.class)
-                    .getVMOption(MIN_FREE_RATIO_FLAG_NAME).getValue(),
-                MAX_FREE_RATIO_FLAG_NAME,
-                ManagementFactory.getPlatformMXBean(HotSpotDiagnosticMXBean.class)
-                    .getVMOption(MAX_FREE_RATIO_FLAG_NAME).getValue()
-        ));
+        assertLessThan(muAfter.getCommitted(), muInitial.getCommitted(),
+                       "committed free heap size is not less than committed full heap size, heap hasn't been shrunk?"
+                        );
     }
 
     public static final NumberFormat NF = Helpers.numberFormatter();

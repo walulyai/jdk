@@ -169,7 +169,7 @@
           "Percentage of GCTimeRatio G1 will try to avoid going below.")    \
           range(0, 100)                                                     \
                                                                             \
-  product(int, G1ShortTermShrinkThreshold, 4, EXPERIMENTAL,                 \
+  product(uint, G1ShortTermShrinkThreshold, 4, EXPERIMENTAL,                 \
           "Number of short term shrink attempts until actual shrink.")      \
           range(0, 10)                                                      \
                                                                             \

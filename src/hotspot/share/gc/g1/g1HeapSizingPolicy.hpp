@@ -50,7 +50,7 @@ class G1CollectedHeap;
 // some overhead.
 //
 // If that counter reaches the MinOverThresholdForExpansion we consider expansion,
-// if that counter reaches -MinOverThresholdForShrink we consider heap shrinking.
+// if that counter reaches -G1ShortTermShrinkThreshold we consider heap shrinking.
 //
 // While doing so, we accumulate the difference to the midpoint of this range to
 // guide the expansion/shrinking amount.
@@ -71,7 +71,6 @@ class G1HeapSizingPolicy: public CHeapObj<mtGC> {
   // MinOverThresholdForExpansion/Shrink define the number of actual gc time
   // ratios over the upper and lower thresholds respectively.
   const static int MinOverThresholdForExpansion = 4;
-  const static int MinOverThresholdForShrink = 10;
 
   const G1CollectedHeap* _g1h;
   const G1Analytics* _analytics;
