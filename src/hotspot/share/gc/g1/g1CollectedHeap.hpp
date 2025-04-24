@@ -560,7 +560,8 @@ public:
   void pin_object(JavaThread* thread, oop obj) override;
   void unpin_object(JavaThread* thread, oop obj) override;
 
-  void resize_heap_if_necessary();
+  void resize_heap_after_full_collection();
+  void resize_heap(size_t resize_bytes, bool should_expand);
 
   // Check if there is memory to uncommit and if so schedule a task to do it.
   void uncommit_regions_if_necessary();

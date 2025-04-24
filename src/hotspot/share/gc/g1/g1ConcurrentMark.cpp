@@ -1461,10 +1461,6 @@ void G1ConcurrentMark::remark() {
     // GC pause.
     _g1h->increment_total_collections();
 
-    // TODO: no need to resize here, let the resize happen in the young gcs or full gcs
-    // _g1h->resize_heap_if_necessary();
-    // _g1h->uncommit_regions_if_necessary();
-
     compute_new_sizes();
 
     verify_during_pause(G1HeapVerifier::G1VerifyRemark, VerifyLocation::RemarkAfter);

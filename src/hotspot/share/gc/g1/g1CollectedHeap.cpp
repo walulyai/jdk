@@ -795,8 +795,7 @@ void G1CollectedHeap::prepare_for_mutator_after_full_collection() {
   assert(num_free_regions() == 0, "we should not have added any free regions");
   rebuild_region_sets(false /* free_list_only */);
   abort_refinement();
-  resize_heap_if_necessary();
-  uncommit_regions_if_necessary();
+  resize_heap_after_full_collection();
 
   // Rebuild the code root lists for each region
   rebuild_code_roots();
@@ -883,20 +882,39 @@ bool G1CollectedHeap::upgrade_to_full_collection() {
   return success;
 }
 
-void G1CollectedHeap::resize_heap_if_necessary() {
+
+void G1CollectedHeap::resize_heap(size_t resize_bytes, bool should_expand) {
+  if (should_expand) {
+    expand(resize_bytes, _workers);
+  } else {
+    shrink(resize_bytes);
+    uncommit_regions_if_necessary();
+  }
+}
+
+void G1CollectedHeap::resize_heap_after_full_collection() {
   assert_at_safepoint_on_vm_thread();
 
   bool should_expand;
-  size_t resize_amount = _heap_sizing_policy->full_collection_resize_amount(should_expand);
+  size_t resize_bytes = _heap_sizing_policy->full_collection_resize_amount(should_expand);
 
-  if (resize_amount == 0) {
-    return;
-  } else if (should_expand) {
-    expand(resize_amount, _workers);
-  } else {
-    shrink(resize_amount);
+  if (resize_bytes != 0) {
+    resize_heap(resize_bytes, should_expand);
   }
-  uncommit_regions_if_necessary();
+}
+
+void G1CollectedHeap::resize_heap_after_young_collection(size_t allocation_word_size) {
+  Ticks start = Ticks::now();
+
+  bool should_expand;
+
+  size_t resize_bytes = _heap_sizing_policy->young_collection_resize_amount(should_expand, allocation_word_size);
+
+  if (resize_bytes != 0) {
+    resize_heap(resize_bytes, should_expand);
+  }
+
+  phase_times()->record_resize_heap_time((Ticks::now() - start).seconds() * 1000.0);
 }
 
 HeapWord* G1CollectedHeap::satisfy_failed_allocation_helper(size_t word_size,
@@ -919,6 +937,7 @@ HeapWord* G1CollectedHeap::satisfy_failed_allocation_helper(size_t word_size,
   // do something smarter than full collection to satisfy a failed alloc.)
   result = expand_and_allocate(word_size);
   if (result != nullptr) {
+    guarantee(!is_humongous(word_size), "attempt_allocation_at_safepoint attempts to expand the heap already");
     return result;
   }
 
@@ -2450,23 +2469,7 @@ void G1CollectedHeap::verify_after_young_collection(G1HeapVerifier::G1VerifyType
   phase_times()->record_verify_after_time_ms((Ticks::now() - start).seconds() * MILLIUNITS);
 }
 
-void G1CollectedHeap::resize_heap_after_young_collection(size_t allocation_word_size) {
-  Ticks start = Ticks::now();
 
-  bool should_expand;
-
-  size_t resize_bytes = _heap_sizing_policy->young_collection_resize_amount(should_expand, allocation_word_size);
-
-  if (resize_bytes != 0) {
-    if (should_expand) {
-      expand(resize_bytes, _workers);
-    } else {
-      shrink(resize_bytes);
-    }
-  }
-
-  phase_times()->record_resize_heap_time((Ticks::now() - start).seconds() * 1000.0);
-}
 
 bool G1CollectedHeap::do_collection_pause_at_safepoint(size_t allocation_word_size) {
   assert_at_safepoint_on_vm_thread();

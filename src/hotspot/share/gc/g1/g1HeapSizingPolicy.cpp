@@ -92,7 +92,7 @@ double G1HeapSizingPolicy::scale_resize_ratio_delta(double ratio_delta,
                                                     double min_scale_down_factor,
                                                     double max_scale_up_factor) const {
    // We use a sigmoid function for scaling smoothly as we transition from a slow start to a fast growth
-   // function with increasing ratio_delta. The sigmoid outputs a value in the range [0,1] which scale to
+   // function with increasing ratio_delta. The sigmoid outputs a value in the range [0,1] which we scale to
    // the range [min_scale_down_factor, max_scale_up_factor]
   // Sigmoid Parameters:
   double inflection_point = 1.0; // Inflection point where acceleration begins.
@@ -181,37 +181,36 @@ size_t G1HeapSizingPolicy::young_collection_shrink_amount(double delta, size_t a
   // We are at the end of GC, so free regions are at maximum. Do not try to shrink
   // to have less than the reserve or the number of regions we are most certainly
   // going to use during this mutator phase.
-  uint free_regions = _g1h->num_free_regions();
+  uint target_regions_to_shrink = _g1h->num_free_regions();
 
-  uint reserve_regions = ceil(_g1h->num_free_regions() * G1ReservePercent / 100.0);
-  // TODO: but at this point we already allocated the Survivors, so needed_for_allocation is less.
-  // TODO: Just check that at least one eden region is allocated.
+  uint reserve_regions = ceil(_g1h->num_regions() * G1ReservePercent / 100.0);
+
   uint needed_for_allocation = _g1h->eden_target_length();
   if (_g1h->is_humongous(allocation_word_size)) {
     needed_for_allocation += (uint) _g1h->humongous_obj_size_in_regions(allocation_word_size);
   }
-  uint should_be_kept_free = MAX2(needed_for_allocation, reserve_regions);
+  uint should_be_kept_committed = needed_for_allocation; // MAX2(needed_for_allocation, reserve_regions);
 
-  if (free_regions >= should_be_kept_free) {
-    free_regions -= should_be_kept_free;
+  if (target_regions_to_shrink >= should_be_kept_committed) {
+    target_regions_to_shrink -= should_be_kept_committed;
   } else {
-    free_regions = 0;
+    target_regions_to_shrink = 0;
   }
 
   // We limit the scale factor as the free regions are already the maximum number of regions.
-  size_t resize_bytes = (double)G1HeapRegion::GrainBytes * MIN2(scale_factor, 1.0) * free_regions;
+  size_t resize_bytes = (double)G1HeapRegion::GrainBytes * MIN2(scale_factor, 1.0) * target_regions_to_shrink;
 
-  log_trace(gc, ergo, heap)("shrink log: scale factor %1.2f%% "
-                            "total free_regions %u "
+  log_debug(gc, ergo, heap)("shrink log: scale factor %1.2f%% "
+                            "total free regions %u "
                             "reserve regions %u "
                             "needed for alloc %u "
-                            "base free regions %u "
+                            "base targeted for shrinking %u "
                             "resize_bytes %zd",
                             scale_factor * 100.0,
                             _g1h->num_free_regions(),
                             reserve_regions,
                             needed_for_allocation,
-                            free_regions,
+                            target_regions_to_shrink,
                             resize_bytes);
 
   return resize_bytes;
