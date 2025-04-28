@@ -35,25 +35,25 @@ class G1CollectedHeap;
 // Contains heuristics to resize the heap, i.e. expand or shrink, during operation.
 //
 // For young collections, this heuristics is based on gc time ratio, i.e. trying to
-// change the heap so that current gc time ratio stays approximately the one
-// selected by the user.
+// change the heap so that current gc time ratio stays approximately as selected
+// by the user.
 //
-// The heuristics tracks both short term and long term behavior to effect heap
+// The heuristics tracks both short and long term GC behavior to effect heap
 // size change.
 //
-// Short term tracking is based on short-term gc time ratio behavior: for this we
-// record events for when actual gc time ratio is outside the range of
-// [GCTimeRatio * (1 - G1MinimumPercentOfGCTimeRatio / 200), GCTimeRatio * (1 + G1MinimumPercentOfGCTimeRatio / 200)] or not in a counter.
+// Short term tracking is based on the short-term gc time ratio i.e we
+// record events for which actual gc time ratio is outside the range of
+// [GCTimeRatio * (1 - G1MinimumPercentOfGCTimeRatio / 100), GCTimeRatio * (1 + G1MinimumPercentOfGCTimeRatio / 100)]
 // If below that range, we decrement that counter, if above, we increment it.
 //
-// The intent of this mechanism is to filter short term events as heap sizing has
+// The intent of this mechanism is to filter short term events because heap sizing has
 // some overhead.
 //
 // If that counter reaches the MinOverThresholdForExpansion we consider expansion,
 // if that counter reaches -G1ShortTermShrinkThreshold we consider heap shrinking.
 //
-// While doing so, we accumulate the difference to the midpoint of this range to
-// guide the expansion/shrinking amount.
+// While doing so, we accumulate the relative difference to the midpoint of this range
+// (GCTimeRatio) to guide the expansion/shrinking amount.
 //
 // Further, if there is no short-term based resizing event for a "long" time, we
 // decay that counter, i.e. drop it towards zero again to avoid that previous
@@ -61,22 +61,22 @@ class G1CollectedHeap;
 // short term event causes unnecessary resizes.
 //
 // Long term behavior is solely managed by regularly comparing actual long term
-// gc time ratio with the boundaries of above range in  regular long term
+// gc time ratio with the boundaries of above range in regular long term
 // intervals. If current long term gc time ratio is outside, expand or shrink
 // respectively.
 //
-// For full collections, we base decisions only on Min/MaxHeapFreeRatio.
+// For full collections, we base resize decisions only on Min/MaxHeapFreeRatio.
 //
 class G1HeapSizingPolicy: public CHeapObj<mtGC> {
-  // MinOverThresholdForExpansion/Shrink define the number of actual gc time
+  // MinOverThresholdForExpansion defines the number of actual gc time
   // ratios over the upper and lower thresholds respectively.
   const static int MinOverThresholdForExpansion = 4;
 
   const G1CollectedHeap* _g1h;
   const G1Analytics* _analytics;
 
-  uint long_term_interval() const;
-  // Number of times actual gc time ratio crossed lower and upper threshold
+  uint long_term_count_limit() const;
+  // Number of times actual gc time ratio crossed the lower or upper threshold
   // recently; every time the upper threshold is exceeded, it is incremented,
   // and decremented if the lower threshold is exceeded.
   int _ratio_exceeds_threshold;
@@ -93,8 +93,7 @@ class G1HeapSizingPolicy: public CHeapObj<mtGC> {
   // eagerly at small heap sizes.
   double scale_with_heap(double pause_time_threshold);
 
-  // Scale the ratio delta depending on how far it exceeds the actual target gc time
-  // ratio.
+  // Scale the ratio delta depending on the relative difference from the target gc time ratio.
   double scale_resize_ratio_delta(double ratio_delta, double min_scale_down_factor, double max_scale_up_factor) const;
 
   size_t young_collection_expand_amount(double delta) const;
@@ -110,7 +109,7 @@ public:
 
   // Return the amount of bytes to resize the heap; if expand is set, the heap
   // should by expanded by that amount, shrunk otherwise.
-  size_t full_collection_resize_amount(bool& expand);
+  size_t full_collection_resize_amount(bool& expand, size_t allocation_word_size);
 
   static G1HeapSizingPolicy* create(const G1CollectedHeap* g1h, const G1Analytics* analytics);
 };

@@ -35,7 +35,7 @@ G1HeapSizingPolicy* G1HeapSizingPolicy::create(const G1CollectedHeap* g1h, const
   return new G1HeapSizingPolicy(g1h, analytics);
 }
 
-uint G1HeapSizingPolicy::long_term_interval() const {
+uint G1HeapSizingPolicy::long_term_count_limit() const {
   return _analytics->number_of_recorded_pause_times();
 }
 
@@ -45,7 +45,7 @@ G1HeapSizingPolicy::G1HeapSizingPolicy(const G1CollectedHeap* g1h, const G1Analy
   // Bias for expansion at startup; the +1 is to counter the first sample always
   // being 0.0, i.e. lower than any threshold.
   _ratio_exceeds_threshold((MinOverThresholdForExpansion / 2) + 1),
-  _recent_pause_ratios(analytics->number_of_recorded_pause_times()),
+  _recent_pause_ratios(long_term_count_limit()),
   _long_term_count(0) {
 
 
@@ -55,18 +55,17 @@ G1HeapSizingPolicy::G1HeapSizingPolicy(const G1CollectedHeap* g1h, const G1Analy
   assert(_ratio_exceeds_threshold > -MinOverThresholdForExpansion,
         "Initial ratio counter value too low.");
 
-  assert(MinOverThresholdForExpansion <= long_term_interval(),
-        "Expansion threshold count must be less than %u", long_term_interval());
+  assert(MinOverThresholdForExpansion <= long_term_count_limit(),
+        "Expansion threshold count must be less than %u", long_term_count_limit());
 
-  assert(G1ShortTermShrinkThreshold <= long_term_interval(),
-        "Shrink threshold count must be less than %u", long_term_interval());
+  assert(G1ShortTermShrinkThreshold <= long_term_count_limit(),
+        "Shrink threshold count must be less than %u", long_term_count_limit());
 }
 
 void G1HeapSizingPolicy::reset_ratio_tracking_data() {
   _long_term_count = 0;
   _ratio_exceeds_threshold = 0;
   // Keep the recent gc time ratio data.
-  // TODO: wont keeping the gc time ratio data create confusion in the logs?
 }
 
 void G1HeapSizingPolicy::decay_ratio_tracking_data() {
@@ -260,12 +259,12 @@ size_t G1HeapSizingPolicy::young_collection_resize_amount(bool& expand, size_t a
                             "delta: %1.2f "
                             "ratio exceeds threshold count: %d",
                             _long_term_count,
-                            long_term_interval(),
+                            long_term_count_limit(),
                             short_term_ratio_delta,
                             _ratio_exceeds_threshold);
   log_debug(gc, ergo, heap)("Hysterisis: %.3f < %0.3f < %0.3f | pause_time_threshold %0.3f", lower_threshold, mid_threshold, upper_threshold, pause_time_threshold);
   log_debug(gc, ergo, heap)("Heap triggers: pauses-since-start: %u num-prev-pauses-for-heuristics: %u ratio-exceeds-threshold-count: %d",
-                            _recent_pause_ratios.num(), long_term_interval(), _ratio_exceeds_threshold);
+                            _recent_pause_ratios.num(), long_term_count_limit(), _ratio_exceeds_threshold);
 
   // Check if there is a short- or long-term need for resizing, expansion first.
   //
@@ -282,7 +281,7 @@ size_t G1HeapSizingPolicy::young_collection_resize_amount(bool& expand, size_t a
 
   size_t resize_bytes = 0;
 
-  const bool use_long_term_delta = (_long_term_count == long_term_interval());
+  const bool use_long_term_delta = (_long_term_count == long_term_count_limit());
   const double short_term_delta = _recent_pause_ratios.avg();
 
   double delta;
@@ -298,7 +297,7 @@ size_t G1HeapSizingPolicy::young_collection_resize_amount(bool& expand, size_t a
   // always expects an absolute value. Do that here unconditionally.
   delta = fabsd(delta);
 
-  int ThresholdForShrink = (int)MIN2(G1ShortTermShrinkThreshold, long_term_interval());
+  int ThresholdForShrink = (int)MIN2(G1ShortTermShrinkThreshold, long_term_count_limit());
 
   if ((_ratio_exceeds_threshold == MinOverThresholdForExpansion) ||
       (use_long_term_delta && (long_term_pause_time_ratio > upper_threshold))) {
@@ -314,7 +313,6 @@ size_t G1HeapSizingPolicy::young_collection_resize_amount(bool& expand, size_t a
     log_trace(gc, ergo, heap)("expand deltas long %1.2f short %1.2f use long term %u delta %1.2f",
                               long_term_delta, short_term_delta, use_long_term_delta, delta);
 
-    // TODO: why don't we consider the allocation_word_size here?
     resize_bytes = young_collection_expand_amount(delta);
     expand = true;
 
@@ -374,18 +372,24 @@ static size_t target_heap_capacity(size_t used_bytes, uintx free_ratio) {
   return (size_t) desired_capacity_d;
 }
 
-size_t G1HeapSizingPolicy::full_collection_resize_amount(bool& expand) {
+size_t G1HeapSizingPolicy::full_collection_resize_amount(bool& expand, size_t allocation_word_size) {
   // Capacity, free and used after the GC counted as full regions to
   // include the waste in the following calculations.
   const size_t capacity_after_gc = _g1h->capacity();
-  const size_t used_after_gc = capacity_after_gc -
-                               _g1h->unused_committed_regions_in_bytes() -
-                               // Discount space used by current Eden to establish a
-                               // situation during Remark similar to at the end of full
-                               // GC where eden is empty. During Remark there can be an
-                               // arbitrary number of eden regions which would skew the
-                               // results.
-                               _g1h->eden_regions_count() * G1HeapRegion::GrainBytes;
+  size_t used_after_gc = capacity_after_gc -
+                         _g1h->unused_committed_regions_in_bytes() -
+                         // Discount space used by current Eden to establish a
+                         // situation during Remark similar to at the end of full
+                         // GC where eden is empty. During Remark there can be an
+                         // arbitrary number of eden regions which would skew the
+                         // results.
+                         _g1h->eden_regions_count() * G1HeapRegion::GrainBytes;
+  // If the full collection was triggered by an allocation failure, we should account
+  // for the bytes required for this allocation under used_after_gc. This prevents
+  // unnecessary shrinking that would be followed by an expand call to satisfy the
+  // allocation.
+  size_t allocation_bytes = allocation_word_size * HeapWordSize;
+  used_after_gc += allocation_bytes;
 
   size_t minimum_desired_capacity = target_heap_capacity(used_after_gc, MinHeapFreeRatio);
   size_t maximum_desired_capacity = target_heap_capacity(used_after_gc, MaxHeapFreeRatio);

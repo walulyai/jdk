@@ -190,7 +190,6 @@ G1HeapRegion* G1CollectedHeap::new_region(size_t word_size,
       // region size, the free list should in theory not be empty.
       // In either case allocate_free_region() will check for null.
       res = _hrm.allocate_free_region(type, node_index);
-      log_debug(gc, ergo, heap)("Heap Expansion successful. Allocatio is successful: %s", BOOL_TO_STR(res!=nullptr));
     }
   }
   return res;
@@ -724,10 +723,6 @@ HeapWord* G1CollectedHeap::attempt_allocation_at_safepoint(size_t word_size,
       collector_state()->set_initiate_conc_mark_if_possible(true);
     }
   }
-
-  log_debug(gc, ergo, heap)("allocation-at-safepoint result " PTR_FORMAT " humongous %d",
-                            p2i(result), is_humongous(word_size));
-
   return result;
 }
 
@@ -790,12 +785,12 @@ void G1CollectedHeap::verify_before_full_collection() {
   _verifier->verify_bitmap_clear(true /* above_tams_only */);
 }
 
-void G1CollectedHeap::prepare_for_mutator_after_full_collection() {
+void G1CollectedHeap::prepare_for_mutator_after_full_collection(size_t allocation_word_size) {
   // Prepare heap for normal collections.
   assert(num_free_regions() == 0, "we should not have added any free regions");
   rebuild_region_sets(false /* free_list_only */);
   abort_refinement();
-  resize_heap_after_full_collection();
+  resize_heap_after_full_collection(allocation_word_size);
 
   // Rebuild the code root lists for each region
   rebuild_code_roots();
@@ -844,7 +839,8 @@ void G1CollectedHeap::verify_after_full_collection() {
 }
 
 bool G1CollectedHeap::do_full_collection(bool clear_all_soft_refs,
-                                         bool do_maximal_compaction) {
+                                         bool do_maximal_compaction,
+                                         size_t allocation_word_size) {
   assert_at_safepoint_on_vm_thread();
 
   const bool do_clear_all_soft_refs = clear_all_soft_refs ||
@@ -856,7 +852,7 @@ bool G1CollectedHeap::do_full_collection(bool clear_all_soft_refs,
 
   collector.prepare_collection();
   collector.collect();
-  collector.complete_collection();
+  collector.complete_collection(allocation_word_size);
 
   // Full collection was successfully completed.
   return true;
@@ -868,14 +864,16 @@ void G1CollectedHeap::do_full_collection(bool clear_all_soft_refs) {
   // out by the GC locker). So, right now, we'll ignore the return value.
 
   do_full_collection(clear_all_soft_refs,
-                     false /* do_maximal_compaction */);
+                     false /* do_maximal_compaction */,
+                     size_t(0) /* allocation_word_size*/);
 }
 
 bool G1CollectedHeap::upgrade_to_full_collection() {
   GCCauseSetter compaction(this, GCCause::_g1_compaction_pause);
   log_info(gc, ergo)("Attempting full compaction clearing soft references");
   bool success = do_full_collection(true  /* clear_all_soft_refs */,
-                                    false /* do_maximal_compaction */);
+                                    false /* do_maximal_compaction */,
+                                    size_t(0));
   // do_full_collection only fails if blocked by GC locker and that can't
   // be the case here since we only call this when already completed one gc.
   assert(success, "invariant");
@@ -892,11 +890,11 @@ void G1CollectedHeap::resize_heap(size_t resize_bytes, bool should_expand) {
   }
 }
 
-void G1CollectedHeap::resize_heap_after_full_collection() {
+void G1CollectedHeap::resize_heap_after_full_collection(size_t allocation_word_size) {
   assert_at_safepoint_on_vm_thread();
 
   bool should_expand;
-  size_t resize_bytes = _heap_sizing_policy->full_collection_resize_amount(should_expand);
+  size_t resize_bytes = _heap_sizing_policy->full_collection_resize_amount(should_expand, allocation_word_size);
 
   if (resize_bytes != 0) {
     resize_heap(resize_bytes, should_expand);
@@ -952,7 +950,8 @@ HeapWord* G1CollectedHeap::satisfy_failed_allocation_helper(size_t word_size,
       log_info(gc, ergo)("Attempting full compaction");
     }
     *gc_succeeded = do_full_collection(maximal_compaction /* clear_all_soft_refs */ ,
-                                       maximal_compaction /* do_maximal_compaction */);
+                                       maximal_compaction /* do_maximal_compaction */,
+                                       word_size);
   }
 
   return nullptr;
@@ -1027,10 +1026,6 @@ HeapWord* G1CollectedHeap::expand_and_allocate(size_t word_size) {
     _verifier->verify_region_sets_optional();
     result = attempt_allocation_at_safepoint(word_size,
                                              false /* expect_null_mutator_alloc_region */);
-
-    if (result == nullptr) {
-      log_debug(gc, ergo, heap)("Allocation failed after expanding heap");
-    }
   } else {
     log_debug(gc, ergo, heap)("Heap resize. Failure.");
   }

@@ -483,7 +483,8 @@ private:
   // - it returns false if it is unable to do the collection due to the
   //   GC locker being active, true otherwise.
   bool do_full_collection(bool clear_all_soft_refs,
-                          bool do_maximal_compaction);
+                          bool do_maximal_compaction,
+                          size_t allocation_word_size);
 
   // Callback from VM_G1CollectFull operation, or collect_as_vm_thread.
   void do_full_collection(bool clear_all_soft_refs) override;
@@ -501,7 +502,7 @@ private:
   bool abort_concurrent_cycle();
   void verify_before_full_collection();
   void prepare_heap_for_full_collection();
-  void prepare_for_mutator_after_full_collection();
+  void prepare_for_mutator_after_full_collection(size_t allocation_word_size);
   void abort_refinement();
   void verify_after_full_collection();
   void print_heap_after_full_collection();
@@ -560,7 +561,8 @@ public:
   void pin_object(JavaThread* thread, oop obj) override;
   void unpin_object(JavaThread* thread, oop obj) override;
 
-  void resize_heap_after_full_collection();
+  void resize_heap_after_young_collection(size_t allocation_word_size);
+  void resize_heap_after_full_collection(size_t allocation_word_size);
   void resize_heap(size_t resize_bytes, bool should_expand);
 
   // Check if there is memory to uncommit and if so schedule a task to do it.
@@ -768,8 +770,6 @@ public:
   // Update all region's pin counts from the per-thread caches and resets them.
   // Must be called before any decision based on pin counts.
   void flush_region_pin_cache();
-
-  void resize_heap_after_young_collection(size_t allocation_word_size);
 
   void record_obj_copy_mem_stats();
 

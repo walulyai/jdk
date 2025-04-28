@@ -107,7 +107,7 @@ public:
 
   void prepare_collection();
   void collect();
-  void complete_collection();
+  void complete_collection(size_t allocation_word_size);
 
   G1FullGCScope*           scope() { return &_scope; }
   uint                     workers() { return _num_workers; }

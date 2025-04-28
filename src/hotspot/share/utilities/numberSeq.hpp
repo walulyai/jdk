@@ -113,7 +113,7 @@ private:
   void init();
 protected:
   double *_sequence; // buffers the last L elements in the sequence
-  uint     _length; // this is L
+  uint    _length; // this is L
   int     _next;   // oldest slot in the array, i.e. next to be overwritten
 
 public:

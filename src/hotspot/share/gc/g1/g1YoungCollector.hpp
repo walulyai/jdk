@@ -79,7 +79,6 @@ class G1YoungCollector {
   G1YoungGCAllocationFailureInjector* allocation_failure_injector() const;
 
   GCCause::Cause _gc_cause;
-  double _target_pause_time_ms;
   size_t _allocation_word_size;
 
   bool _concurrent_operation_is_full_mark;
