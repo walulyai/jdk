@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -35,15 +35,13 @@ package gc.g1;
  * @run main/othervm -XX:MaxNewSize=32M -XX:InitialHeapSize=96M -Xmx128M -XX:+UnlockExperimentalVMOptions -XX:G1ShortTermShrinkThreshold=1 -XX:GCTimeRatio=8 -XX:+UseG1GC -XX:G1PeriodicGCInterval=3000 -XX:-G1PeriodicGCInvokesConcurrent -Xlog:gc*,gc+periodic=debug,gc+ergo+heap=debug gc.g1.TestPeriodicCollection
  */
 
-import com.sun.management.HotSpotDiagnosticMXBean;
-
-import gc.testlibrary.Helpers;
-
 import java.lang.management.GarbageCollectorMXBean;
 import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryUsage;
 import java.text.NumberFormat;
-import static jdk.test.lib.Asserts.*;
+
+import gc.testlibrary.Helpers;
+import static jdk.test.lib.Asserts.assertLessThan;
 
 public class TestPeriodicCollection {
 
