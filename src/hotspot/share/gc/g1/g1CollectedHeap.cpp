@@ -559,8 +559,8 @@ void G1CollectedHeap::dealloc_archive_regions(MemRegion range) {
   size_used += range.byte_size();
 
   uint max_shrink_count = 0;
-  if (capacity() > min_capacity()) {
-    size_t max_shrink_bytes = capacity() - min_capacity();
+  if (capacity() > MinHeapSize) {
+    size_t max_shrink_bytes = capacity() - MinHeapSize;
     max_shrink_count = (uint)(max_shrink_bytes / G1HeapRegion::GrainBytes);
   }
 
@@ -582,8 +582,8 @@ void G1CollectedHeap::dealloc_archive_regions(MemRegion range) {
   iterate_regions_in_range(range, dealloc_archive_region);
 
   if (shrink_count != 0) {
-    log_debug(gc, ergo, heap)("Attempt heap shrinking (CDS archive regions). Total size: %zuB",
-                              G1HeapRegion::GrainWords * HeapWordSize * shrink_count);
+    log_debug(gc, ergo, heap)("Attempt heap shrinking (CDS archive regions). Total size: %zuB (%u Regions)",
+                              G1HeapRegion::GrainWords * HeapWordSize * shrink_count, shrink_count);
     // Explicit uncommit.
     uncommit_regions(shrink_count);
   }
@@ -1285,7 +1285,8 @@ G1RegionToSpaceMapper* G1CollectedHeap::create_aux_memory_mapper(const char* des
   // Allocate a new reserved space, preferring to use large pages.
   ReservedSpace rs = MemoryReserver::reserve(size,
                                              alignment,
-                                             preferred_page_size);
+                                             preferred_page_size,
+                                             mtGC);
 
   size_t page_size = rs.page_size();
   G1RegionToSpaceMapper* result  =
@@ -2171,16 +2172,18 @@ void G1CollectedHeap::print_heap_regions() const {
   }
 }
 
-void G1CollectedHeap::print_on(outputStream* st) const {
+void G1CollectedHeap::print_heap_on(outputStream* st) const {
   size_t heap_used = Heap_lock->owned_by_self() ? used() : used_unlocked();
-  st->print(" %-20s", "garbage-first heap");
+  st->print("%-20s", "garbage-first heap");
   st->print(" total reserved %zuK, committed %zuK, used %zuK",
             _hrm.reserved().byte_size()/K, capacity()/K, heap_used/K);
   st->print(" [" PTR_FORMAT ", " PTR_FORMAT ")",
             p2i(_hrm.reserved().start()),
             p2i(_hrm.reserved().end()));
   st->cr();
-  st->print("  region size %zuK, ", G1HeapRegion::GrainBytes / K);
+
+  StreamAutoIndentor indentor(st, 1);
+  st->print("region size %zuK, ", G1HeapRegion::GrainBytes / K);
   uint young_regions = young_regions_count();
   st->print("%u young (%zuK), ", young_regions,
             (size_t) young_regions * G1HeapRegion::GrainBytes / K);
@@ -2190,7 +2193,7 @@ void G1CollectedHeap::print_on(outputStream* st) const {
   st->cr();
   if (_numa->is_enabled()) {
     uint num_nodes = _numa->num_active_nodes();
-    st->print("  remaining free region(s) on each NUMA node: ");
+    st->print("remaining free region(s) on each NUMA node: ");
     const uint* node_ids = _numa->node_ids();
     for (uint node_index = 0; node_index < num_nodes; node_index++) {
       uint num_free_regions = _hrm.num_free_regions(node_index);
@@ -2198,7 +2201,6 @@ void G1CollectedHeap::print_on(outputStream* st) const {
     }
     st->cr();
   }
-  MetaspaceUtils::print_on(st);
 }
 
 void G1CollectedHeap::print_regions_on(outputStream* st) const {
@@ -2212,15 +2214,16 @@ void G1CollectedHeap::print_regions_on(outputStream* st) const {
 }
 
 void G1CollectedHeap::print_extended_on(outputStream* st) const {
-  print_on(st);
+  print_heap_on(st);
 
   // Print the per-region information.
   st->cr();
   print_regions_on(st);
 }
 
-void G1CollectedHeap::print_on_error(outputStream* st) const {
-  print_extended_on(st);
+void G1CollectedHeap::print_gc_on(outputStream* st) const {
+  // Print the per-region information.
+  print_regions_on(st);
   st->cr();
 
   BarrierSet* bs = BarrierSet::barrier_set();
@@ -2230,7 +2233,7 @@ void G1CollectedHeap::print_on_error(outputStream* st) const {
 
   if (_cm != nullptr) {
     st->cr();
-    _cm->print_on_error(st);
+    _cm->print_on(st);
   }
 }
 
