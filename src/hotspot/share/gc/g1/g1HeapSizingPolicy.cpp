@@ -188,6 +188,7 @@ size_t G1HeapSizingPolicy::young_collection_shrink_amount(double delta, size_t a
   if (_g1h->is_humongous(allocation_word_size)) {
     needed_for_allocation += (uint) _g1h->humongous_obj_size_in_regions(allocation_word_size);
   }
+
   uint should_be_kept_committed = needed_for_allocation; // MAX2(needed_for_allocation, reserve_regions);
 
   if (target_regions_to_shrink >= should_be_kept_committed) {
@@ -204,13 +205,14 @@ size_t G1HeapSizingPolicy::young_collection_shrink_amount(double delta, size_t a
                             "reserve regions %u "
                             "needed for alloc %u "
                             "base targeted for shrinking %u "
-                            "resize_bytes %zd",
+                            "resize_bytes %zd ( %zu regions)",
                             scale_factor * 100.0,
                             _g1h->num_free_regions(),
                             reserve_regions,
                             needed_for_allocation,
                             target_regions_to_shrink,
-                            resize_bytes);
+                            resize_bytes,
+                            (resize_bytes / G1HeapRegion::GrainBytes));
 
   return resize_bytes;
 }
@@ -262,7 +264,7 @@ size_t G1HeapSizingPolicy::young_collection_resize_amount(bool& expand, size_t a
                             long_term_count_limit(),
                             short_term_ratio_delta,
                             _ratio_exceeds_threshold);
-  log_debug(gc, ergo, heap)("Hysterisis: %.3f < %0.3f < %0.3f | pause_time_threshold %0.3f", lower_threshold, mid_threshold, upper_threshold, pause_time_threshold);
+  log_debug(gc, ergo, heap)("Hysterisis: %.3f < %0.3f < %0.3f | short_term_pause_time_ratio %0.3f", lower_threshold, mid_threshold, upper_threshold, short_term_pause_time_ratio);
   log_debug(gc, ergo, heap)("Heap triggers: pauses-since-start: %u num-prev-pauses-for-heuristics: %u ratio-exceeds-threshold-count: %d",
                             _recent_pause_ratios.num(), long_term_count_limit(), _ratio_exceeds_threshold);
 
