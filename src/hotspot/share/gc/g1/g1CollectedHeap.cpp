@@ -838,7 +838,7 @@ void G1CollectedHeap::verify_after_full_collection() {
   _ref_processor_cm->verify_no_references_recorded();
 }
 
-bool G1CollectedHeap::do_full_collection(bool clear_all_soft_refs,
+void G1CollectedHeap::do_full_collection(bool clear_all_soft_refs,
                                          bool do_maximal_compaction,
                                          size_t allocation_word_size) {
   assert_at_safepoint_on_vm_thread();
@@ -853,9 +853,6 @@ bool G1CollectedHeap::do_full_collection(bool clear_all_soft_refs,
   collector.prepare_collection();
   collector.collect();
   collector.complete_collection(allocation_word_size);
-
-  // Full collection was successfully completed.
-  return true;
 }
 
 void G1CollectedHeap::do_full_collection(bool clear_all_soft_refs) {
@@ -865,19 +862,15 @@ void G1CollectedHeap::do_full_collection(bool clear_all_soft_refs) {
 
   do_full_collection(clear_all_soft_refs,
                      false /* do_maximal_compaction */,
-                     size_t(0) /* allocation_word_size*/);
+                     size_t(0) /* allocation_word_size */);
 }
 
-bool G1CollectedHeap::upgrade_to_full_collection() {
+void G1CollectedHeap::upgrade_to_full_collection() {
   GCCauseSetter compaction(this, GCCause::_g1_compaction_pause);
   log_info(gc, ergo)("Attempting full compaction clearing soft references");
-  bool success = do_full_collection(true  /* clear_all_soft_refs */,
-                                    false /* do_maximal_compaction */,
-                                    size_t(0));
-  // do_full_collection only fails if blocked by GC locker and that can't
-  // be the case here since we only call this when already completed one gc.
-  assert(success, "invariant");
-  return success;
+  do_full_collection(true  /* clear_all_soft_refs */,
+                     false /* do_maximal_compaction */,
+                     size_t(0) /* allocation_word_size */);
 }
 
 
@@ -918,9 +911,7 @@ void G1CollectedHeap::resize_heap_after_young_collection(size_t allocation_word_
 HeapWord* G1CollectedHeap::satisfy_failed_allocation_helper(size_t word_size,
                                                             bool do_gc,
                                                             bool maximal_compaction,
-                                                            bool expect_null_mutator_alloc_region,
-                                                            bool* gc_succeeded) {
-  *gc_succeeded = true;
+                                                            bool expect_null_mutator_alloc_region) {
   // Let's attempt the allocation first.
   HeapWord* result =
     attempt_allocation_at_safepoint(word_size,
@@ -949,16 +940,15 @@ HeapWord* G1CollectedHeap::satisfy_failed_allocation_helper(size_t word_size,
     } else {
       log_info(gc, ergo)("Attempting full compaction");
     }
-    *gc_succeeded = do_full_collection(maximal_compaction /* clear_all_soft_refs */ ,
-                                       maximal_compaction /* do_maximal_compaction */,
-                                       word_size);
+    do_full_collection(maximal_compaction /* clear_all_soft_refs */,
+                       maximal_compaction /* do_maximal_compaction */,
+                       word_size /* allocation_word_size */);
   }
 
   return nullptr;
 }
 
-HeapWord* G1CollectedHeap::satisfy_failed_allocation(size_t word_size,
-                                                     bool* succeeded) {
+HeapWord* G1CollectedHeap::satisfy_failed_allocation(size_t word_size) {
   assert_at_safepoint_on_vm_thread();
 
   // Attempts to allocate followed by Full GC.
@@ -966,10 +956,9 @@ HeapWord* G1CollectedHeap::satisfy_failed_allocation(size_t word_size,
     satisfy_failed_allocation_helper(word_size,
                                      true,  /* do_gc */
                                      false, /* maximum_collection */
-                                     false, /* expect_null_mutator_alloc_region */
-                                     succeeded);
+                                     false /* expect_null_mutator_alloc_region */);
 
-  if (result != nullptr || !*succeeded) {
+  if (result != nullptr) {
     return result;
   }
 
@@ -977,10 +966,9 @@ HeapWord* G1CollectedHeap::satisfy_failed_allocation(size_t word_size,
   result = satisfy_failed_allocation_helper(word_size,
                                             true, /* do_gc */
                                             true, /* maximum_collection */
-                                            true, /* expect_null_mutator_alloc_region */
-                                            succeeded);
+                                            true /* expect_null_mutator_alloc_region */);
 
-  if (result != nullptr || !*succeeded) {
+  if (result != nullptr) {
     return result;
   }
 
@@ -988,8 +976,7 @@ HeapWord* G1CollectedHeap::satisfy_failed_allocation(size_t word_size,
   result = satisfy_failed_allocation_helper(word_size,
                                             false, /* do_gc */
                                             false, /* maximum_collection */
-                                            true,  /* expect_null_mutator_alloc_region */
-                                            succeeded);
+                                            true  /* expect_null_mutator_alloc_region */);
 
   if (result != nullptr) {
     return result;
@@ -1905,30 +1892,6 @@ bool G1CollectedHeap::try_collect_concurrently(GCCause::Cause cause,
   }
 }
 
-bool G1CollectedHeap::try_collect_fullgc(GCCause::Cause cause,
-                                         const G1GCCounters& counters_before) {
-  assert_heap_not_locked();
-
-  while(true) {
-    VM_G1CollectFull op(counters_before.total_collections(),
-                        counters_before.total_full_collections(),
-                        cause);
-    VMThread::execute(&op);
-
-    // Request is trivially finished.
-    if (!GCCause::is_explicit_full_gc(cause) || op.gc_succeeded()) {
-      return op.gc_succeeded();
-    }
-
-    {
-      MutexLocker ml(Heap_lock);
-      if (counters_before.total_full_collections() != total_full_collections()) {
-        return true;
-      }
-    }
-  }
-}
-
 bool G1CollectedHeap::try_collect(GCCause::Cause cause,
                                   const G1GCCounters& counters_before) {
   if (should_do_concurrent_full_gc(cause)) {
@@ -1947,7 +1910,11 @@ bool G1CollectedHeap::try_collect(GCCause::Cause cause,
     return op.gc_succeeded();
   } else {
     // Schedule a Full GC.
-    return try_collect_fullgc(cause, counters_before);
+    VM_G1CollectFull op(counters_before.total_collections(),
+                        counters_before.total_full_collections(),
+                        cause);
+    VMThread::execute(&op);
+    return op.gc_succeeded();
   }
 }
 
@@ -2350,10 +2317,9 @@ HeapWord* G1CollectedHeap::do_collection_pause(size_t word_size,
   VMThread::execute(&op);
 
   HeapWord* result = op.result();
-  bool ret_succeeded = op.prologue_succeeded() && op.gc_succeeded();
-  assert(result == nullptr || ret_succeeded,
+  *succeeded = op.gc_succeeded();
+  assert(result == nullptr || *succeeded,
          "the result should be null if the VM did not succeed");
-  *succeeded = ret_succeeded;
 
   assert_heap_not_locked();
   return result;

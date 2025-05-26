@@ -280,9 +280,6 @@ private:
                                 uint gc_counter,
                                 uint old_marking_started_before);
 
-  bool try_collect_fullgc(GCCause::Cause cause,
-                          const G1GCCounters& counters_before);
-
   // indicates whether we are in young or mixed GC mode
   G1CollectorState _collector_state;
 
@@ -480,9 +477,11 @@ private:
   //   cleared during the GC.
   // - if do_maximal_compaction is true, full gc will do a maximally
   //   compacting collection, leaving no dead wood.
+  // - if allocation_word_size is set, then this allocation size will
+  //    be accounted for in case shrinking of the heap happens.
   // - it returns false if it is unable to do the collection due to the
   //   GC locker being active, true otherwise.
-  bool do_full_collection(bool clear_all_soft_refs,
+  void do_full_collection(bool clear_all_soft_refs,
                           bool do_maximal_compaction,
                           size_t allocation_word_size);
 
@@ -490,13 +489,12 @@ private:
   void do_full_collection(bool clear_all_soft_refs) override;
 
   // Helper to do a full collection that clears soft references.
-  bool upgrade_to_full_collection();
+  void upgrade_to_full_collection();
 
   // Callback from VM_G1CollectForAllocation operation.
   // This function does everything necessary/possible to satisfy a
   // failed allocation request (including collection, expansion, etc.)
-  HeapWord* satisfy_failed_allocation(size_t word_size,
-                                      bool* succeeded);
+  HeapWord* satisfy_failed_allocation(size_t word_size);
   // Internal helpers used during full GC to split it up to
   // increase readability.
   bool abort_concurrent_cycle();
@@ -511,8 +509,7 @@ private:
   HeapWord* satisfy_failed_allocation_helper(size_t word_size,
                                              bool do_gc,
                                              bool maximal_compaction,
-                                             bool expect_null_mutator_alloc_region,
-                                             bool* gc_succeeded);
+                                             bool expect_null_mutator_alloc_region);
 
   // Attempting to expand the heap sufficiently
   // to support an allocation of the given "word_size".  If
@@ -745,9 +742,7 @@ private:
                                 GCCause::Cause gc_cause);
 
   // Perform an incremental collection at a safepoint, possibly
-  // followed by a by-policy upgrade to a full collection.  Returns
-  // false if unable to do the collection due to the GC locker being
-  // active, true otherwise.
+  // followed by a by-policy upgrade to a full collection.
   // precondition: at safepoint on VM thread
   // precondition: !is_stw_gc_active()
   bool do_collection_pause_at_safepoint(size_t allocation_word_size = 0);

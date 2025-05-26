@@ -110,6 +110,8 @@ public:
   // Return the amount of bytes to resize the heap; if expand is set, the heap
   // should by expanded by that amount, shrunk otherwise.
   size_t full_collection_resize_amount(bool& expand, size_t allocation_word_size);
+  // Clear ratio tracking data used by expansion_amount().
+  void clear_ratio_check_data();
 
   static G1HeapSizingPolicy* create(const G1CollectedHeap* g1h, const G1Analytics* analytics);
 };
