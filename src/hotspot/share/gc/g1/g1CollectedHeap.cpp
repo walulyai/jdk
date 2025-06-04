@@ -1029,8 +1029,8 @@ bool G1CollectedHeap::expand(size_t expand_bytes, WorkerThreads* pretouch_worker
   log_debug(gc, ergo, heap)("Heap resize. Requested expansion amount: %zuM aligned expansion amount: %zuM (%u regions)",
                             expand_bytes / M, aligned_expand_bytes / M, regions_to_expand);
 
-  if (num_inactive_regions() == 0) {
-    log_debug(gc, ergo, heap)("Did not expand the heap (heap already fully expanded)");
+  if (is_maximal_no_gc()) {
+    log_debug(gc, ergo, heap)("Heap resize. Did not expand the heap (heap already fully expanded)");
     return false;
   }
 
