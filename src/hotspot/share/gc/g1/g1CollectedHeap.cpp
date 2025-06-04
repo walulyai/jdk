@@ -2088,10 +2088,6 @@ size_t G1CollectedHeap::min_capacity() const {
   return MinHeapSize;
 }
 
-size_t G1CollectedHeap::min_capacity() const {
-  return MinHeapSize;
-}
-
 void G1CollectedHeap::prepare_for_verify() {
   _verifier->prepare_for_verify();
 }
@@ -2651,7 +2647,7 @@ void G1CollectedHeap::record_obj_copy_mem_stats() {
   uint sum = _survivor_evac_stats.regions_filled() + _old_evac_stats.regions_filled();
   log_debug(gc)("Allocated %u survivor %u old percent total %1.2f%% (%u%%)",
                 _survivor_evac_stats.regions_filled(), _old_evac_stats.regions_filled(),
-                percent_of(sum, num_regions() - sum),
+                percent_of(sum, num_committed_regions() - sum),
                 G1ReservePercent);
   policy()->old_gen_alloc_tracker()->
     add_allocated_bytes_since_last_gc(total_old_allocated * HeapWordSize);

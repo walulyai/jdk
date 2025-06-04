@@ -182,7 +182,7 @@ size_t G1HeapSizingPolicy::young_collection_shrink_amount(double delta, size_t a
   // going to use during this mutator phase.
   uint target_regions_to_shrink = _g1h->num_free_regions();
 
-  uint reserve_regions = ceil(_g1h->num_regions() * G1ReservePercent / 100.0);
+  uint reserve_regions = ceil(_g1h->num_committed_regions() * G1ReservePercent / 100.0);
 
   uint needed_for_allocation = _g1h->eden_target_length();
   if (_g1h->is_humongous(allocation_word_size)) {
