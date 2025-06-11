@@ -84,6 +84,9 @@ double G1HeapSizingPolicy::scale_with_heap(double pause_time_threshold) {
     threshold = MAX2(threshold, 0.01);
   }
 
+  // TODO: probably handle the memory pressure issues here, set a threshold and adjust the pause_time_threshold if the heap is above that threshold.
+  // This should be similar to memory pressure from other implementations.
+
   return threshold;
 }
 
@@ -230,10 +233,12 @@ size_t G1HeapSizingPolicy::young_collection_resize_amount(bool& expand, size_t a
   // - lower threshold, we do not want to go under.
   // - mid threshold, halfway between upper and lower threshold, represents the
   // actual target when resizing the heap.
-  const double pause_time_threshold = 1.0 / (1.0 + GCTimeRatio);
+  double pause_time_threshold = 1.0 / (1.0 + GCTimeRatio);
+
+  pause_time_threshold = scale_with_heap(pause_time_threshold);
   const double min_gc_time_ratio_ratio = G1MinimumPercentOfGCTimeRatio / 100.0;
-  double upper_threshold = scale_with_heap(pause_time_threshold) * (1 + min_gc_time_ratio_ratio);
-  double lower_threshold = scale_with_heap(pause_time_threshold) * (1 - min_gc_time_ratio_ratio);
+  double upper_threshold = pause_time_threshold * (1 + min_gc_time_ratio_ratio);
+  double lower_threshold = pause_time_threshold * (1 - min_gc_time_ratio_ratio);
 
   // Use threshold based relative to current GCTimeRatio to more quickly expand
   // and shrink at smaller heap sizes (relative to maximum).
