@@ -169,8 +169,9 @@
           "Percentage of GCTimeRatio G1 will try to avoid going below.")    \
           range(0, 100)                                                     \
                                                                             \
-  product(uint, G1ShortTermShrinkThreshold, 8, EXPERIMENTAL,                 \
-          "Number of short term shrink attempts until actual shrink.")      \
+  product(uint, G1ShortTermShrinkThreshold, 8, EXPERIMENTAL,                \
+          "Number of consecutive GCs with the short term gc time ratio"     \
+          "below the threshold before we attempt to shrink.")               \
           range(0, 10)                                                      \
                                                                             \
   product(size_t, G1UpdateBufferSize, 256,                                  \

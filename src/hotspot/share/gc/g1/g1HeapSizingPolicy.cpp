@@ -36,7 +36,7 @@ G1HeapSizingPolicy* G1HeapSizingPolicy::create(const G1CollectedHeap* g1h, const
 }
 
 uint G1HeapSizingPolicy::long_term_count_limit() const {
-  return _analytics->number_of_recorded_pause_times();
+  return _analytics->max_num_of_recorded_pause_times();
 }
 
 G1HeapSizingPolicy::G1HeapSizingPolicy(const G1CollectedHeap* g1h, const G1Analytics* analytics) :
@@ -48,18 +48,17 @@ G1HeapSizingPolicy::G1HeapSizingPolicy(const G1CollectedHeap* g1h, const G1Analy
   _recent_pause_ratios(long_term_count_limit()),
   _long_term_count(0) {
 
-
   assert(_ratio_exceeds_threshold < MinOverThresholdForExpansion,
-      "Initial ratio counter value too high.");
+         "Initial ratio counter value too high.");
 
   assert(_ratio_exceeds_threshold > -MinOverThresholdForExpansion,
-        "Initial ratio counter value too low.");
+         "Initial ratio counter value too low.");
 
   assert(MinOverThresholdForExpansion <= long_term_count_limit(),
-        "Expansion threshold count must be less than %u", long_term_count_limit());
+         "Expansion threshold count must be less than %u", long_term_count_limit());
 
   assert(G1ShortTermShrinkThreshold <= long_term_count_limit(),
-        "Shrink threshold count must be less than %u", long_term_count_limit());
+         "Shrink threshold count must be less than %u", long_term_count_limit());
 }
 
 void G1HeapSizingPolicy::reset_ratio_tracking_data() {
@@ -87,7 +86,7 @@ double G1HeapSizingPolicy::scale_with_heap(double pause_time_threshold) {
   return threshold;
 }
 
-// Logistic function, produces values in the range 0 - 1 in an S shape
+// Logistic function, returns values in the range [0,1]
 static double sigmoid_function(double value) {
   // Sigmoid Parameters:
   double inflection_point = 1.0; // Inflection point where acceleration begins.
@@ -105,8 +104,6 @@ double G1HeapSizingPolicy::scale_resize_ratio_delta(double ratio_delta,
   double sigmoid = sigmoid_function(ratio_delta);
 
   double scale_factor = min_scale_down_factor + (max_scale_up_factor - min_scale_down_factor) * sigmoid;
-
-  log_debug(gc, ergo, heap)("scaling ratio %1.2f scale %1.2f ", ratio_delta, scale_factor);
   return scale_factor;
 }
 
@@ -122,7 +119,7 @@ static void log_resize(double short_term_pause_time_ratio,
                        double pause_time_ratio,
                        bool at_limit,
                        size_t resize_bytes,
-                      bool expand) {
+                       bool expand) {
 
   log_debug(gc, ergo, heap)("Heap resize: "
                             "short term pause time ratio %1.2f%% long term pause time ratio %1.2f%% "
@@ -147,9 +144,7 @@ size_t G1HeapSizingPolicy::young_collection_expand_amount(double delta) const {
   size_t expand_bytes_via_pct =
     uncommitted_bytes * G1ExpandByPercentOfAvailable / 100;
   size_t min_expand_bytes = MIN2(G1HeapRegion::GrainBytes, uncommitted_bytes);
-  double scale_factor = 1.0;
 
-  size_t resize_bytes = 0;
   // Take the current size, or G1ExpandByPercentOfAvailable % of
   // the available expansion space, whichever is smaller, as the base
   // expansion size. Then possibly scale this size according to how much the
@@ -157,11 +152,11 @@ size_t G1HeapSizingPolicy::young_collection_expand_amount(double delta) const {
   const double MinScaleDownFactor = 0.2;
   const double MaxScaleUpFactor = 2.0;
 
-  scale_factor = scale_resize_ratio_delta(delta,
-                                          MinScaleDownFactor,
-                                          MaxScaleUpFactor);
+  double scale_factor = scale_resize_ratio_delta(delta,
+                                                 MinScaleDownFactor,
+                                                 MaxScaleUpFactor);
 
-  resize_bytes = MIN2(expand_bytes_via_pct, committed_bytes);
+  size_t resize_bytes = MIN2(expand_bytes_via_pct, committed_bytes);
 
   resize_bytes = static_cast<size_t>(resize_bytes * scale_factor);
 
@@ -190,16 +185,13 @@ size_t G1HeapSizingPolicy::young_collection_shrink_amount(double delta, size_t a
     needed_for_allocation += (uint) _g1h->humongous_obj_size_in_regions(allocation_word_size);
   }
 
-  uint should_be_kept_committed = needed_for_allocation;
-
-  if (target_regions_to_shrink >= should_be_kept_committed) {
-    target_regions_to_shrink -= should_be_kept_committed;
+  if (target_regions_to_shrink >= needed_for_allocation) {
+    target_regions_to_shrink -= needed_for_allocation;
   } else {
     target_regions_to_shrink = 0;
   }
 
-  // We limit the scale factor as the free regions are already the maximum number of regions.
-  size_t resize_bytes = (double)G1HeapRegion::GrainBytes * MIN2(scale_factor, 1.0) * target_regions_to_shrink;
+  size_t resize_bytes = (double)G1HeapRegion::GrainBytes * target_regions_to_shrink * scale_factor;
 
   log_debug(gc, ergo, heap)("Shrink log: scale factor %1.2f%% "
                             "total free regions %u "
@@ -240,10 +232,8 @@ size_t G1HeapSizingPolicy::young_collection_resize_amount(bool& expand, size_t a
 
   // Use threshold based relative to current GCTimeRatio to more quickly expand
   // and shrink at smaller heap sizes (relative to maximum).
-  const double mid_threshold = (upper_threshold + lower_threshold) / 2;
-
-  const double long_term_delta = rel_ratio(long_term_pause_time_ratio, mid_threshold);
-  double short_term_ratio_delta = rel_ratio(short_term_pause_time_ratio, mid_threshold);
+  const double long_term_delta = rel_ratio(long_term_pause_time_ratio, pause_time_threshold);
+  double short_term_ratio_delta = rel_ratio(short_term_pause_time_ratio, pause_time_threshold);
 
   // If the short term GC time ratio exceeds a threshold, increment the occurrence
   // counter.
@@ -258,7 +248,6 @@ size_t G1HeapSizingPolicy::young_collection_resize_amount(bool& expand, size_t a
   }
   _long_term_count++;
 
-
   log_trace(gc, ergo, heap)("Heap resize triggers: long term count: %u "
                             "long term interval: %u "
                             "delta: %1.2f "
@@ -267,7 +256,7 @@ size_t G1HeapSizingPolicy::young_collection_resize_amount(bool& expand, size_t a
                             long_term_count_limit(),
                             short_term_ratio_delta,
                             _ratio_exceeds_threshold);
-  log_debug(gc, ergo, heap)("Hysterisis: %.3f < %0.3f < %0.3f | short_term_pause_time_ratio %0.3f", lower_threshold, mid_threshold, upper_threshold, short_term_pause_time_ratio);
+
   log_debug(gc, ergo, heap)("Heap triggers: pauses-since-start: %u num-prev-pauses-for-heuristics: %u ratio-exceeds-threshold-count: %d",
                             _recent_pause_ratios.num(), long_term_count_limit(), _ratio_exceeds_threshold);
 

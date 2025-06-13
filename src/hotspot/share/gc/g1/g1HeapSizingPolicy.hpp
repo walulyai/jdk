@@ -34,15 +34,15 @@ class G1CollectedHeap;
 //
 // Contains heuristics to resize the heap, i.e. expand or shrink, during operation.
 //
-// For young collections, this heuristics is based on gc time ratio, i.e. trying to
-// change the heap so that current gc time ratio stays approximately as selected
-// by the user.
+// For young collections, this heuristics is based on gc time ratio, i.e. trying
+// to change the heap so that current gc time ratio stays approximately as
+// selected  by the user.
 //
-// The heuristics tracks both short and long term GC behavior to effect heap
-// size change.
+// The heuristics tracks both short and long term GC behavior to effect heap size
+// change.
 //
-// Short term tracking is based on the short-term gc time ratio i.e we
-// record events for which actual gc time ratio is outside the range of
+// Short term tracking is based on the short-term gc time ratio i.e we  count
+// events for which short-term gc time ratio is outside the range of
 // [GCTimeRatio * (1 - G1MinimumPercentOfGCTimeRatio / 100), GCTimeRatio * (1 + G1MinimumPercentOfGCTimeRatio / 100)]
 // If below that range, we decrement that counter, if above, we increment it.
 //
@@ -50,7 +50,7 @@ class G1CollectedHeap;
 // some overhead.
 //
 // If that counter reaches the MinOverThresholdForExpansion we consider expansion,
-// if that counter reaches -G1ShortTermShrinkThreshold we consider heap shrinking.
+// if that counter reaches -G1ShortTermShrinkThreshold we consider shrinking the heap.
 //
 // While doing so, we accumulate the relative difference to the midpoint of this range
 // (GCTimeRatio) to guide the expansion/shrinking amount.
@@ -60,10 +60,9 @@ class G1CollectedHeap;
 // intermediate length short term behavior followed by a quiet time and a single
 // short term event causes unnecessary resizes.
 //
-// Long term behavior is solely managed by regularly comparing actual long term
-// gc time ratio with the boundaries of above range in regular long term
-// intervals. If current long term gc time ratio is outside, expand or shrink
-// respectively.
+// Long term behavior is solely managed by regularly comparing actual long term gc
+// time ratio with the boundaries of above range in regular long term  intervals.
+// If current long term gc time ratio is outside, expand or shrink  respectively.
 //
 // For full collections, we base resize decisions only on Min/MaxHeapFreeRatio.
 //
@@ -76,9 +75,9 @@ class G1HeapSizingPolicy: public CHeapObj<mtGC> {
   const G1Analytics* _analytics;
 
   uint long_term_count_limit() const;
-  // Number of times actual gc time ratio crossed the lower or upper threshold
-  // recently; every time the upper threshold is exceeded, it is incremented,
-  // and decremented if the lower threshold is exceeded.
+  // Number of times short-term gc time ratio crossed the lower or upper threshold
+  // recently; every time the upper threshold is exceeded, it is incremented,  and
+  // decremented if the lower threshold is exceeded.
   int _ratio_exceeds_threshold;
   // Recent actual gc time ratios relative to the middle of lower and upper threshold.
   TruncatedSeq _recent_pause_ratios;
@@ -107,7 +106,7 @@ public:
   // otherwise shrunk.
   size_t young_collection_resize_amount(bool& expand, size_t allocation_word_size);
 
-  // Return the amount of bytes to resize the heap; if expand is set, the heap
+  // Returns the amount of bytes to resize the heap; if expand is set, the heap
   // should by expanded by that amount, shrunk otherwise.
   size_t full_collection_resize_amount(bool& expand, size_t allocation_word_size);
   // Clear ratio tracking data used by expansion_amount().

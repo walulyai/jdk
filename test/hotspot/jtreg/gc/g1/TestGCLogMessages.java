@@ -184,11 +184,6 @@ public class TestGCLogMessages {
         new LogMessageWithLevel("Redirty Logged Cards \\(ms\\):", Level.DEBUG),
         new LogMessageWithLevel("Redirtied Cards:", Level.DEBUG),
         new LogMessageWithLevel("Resize TLABs \\(ms\\):", Level.DEBUG),
-        new LogMessageWithLevel("Resize Heap After Collection", Level.DEBUG),
-        // We do not guarantee a mixed phase in these tests, so this log may not show
-        // up at all.
-        //new LogMessageWithLevel("Sample Collection Set Candidates", Level.DEBUG),
-        // Free CSet
         new LogMessageWithLevel("Free Collection Set \\(ms\\):", Level.DEBUG),
         new LogMessageWithLevel("Serial Free Collection Set:", Level.TRACE),
         new LogMessageWithLevel("Young Free Collection Set \\(ms\\):", Level.TRACE),

@@ -139,7 +139,7 @@ class G1YoungCollector {
 
 public:
   G1YoungCollector(GCCause::Cause gc_cause,
-                   size_t allocation_word_siz);
+                   size_t allocation_word_size);
   void collect();
 
   bool concurrent_operation_is_full_mark() const { return _concurrent_operation_is_full_mark; }

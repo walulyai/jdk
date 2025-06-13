@@ -1465,6 +1465,7 @@ void G1ConcurrentMark::remark() {
       _g1h->resize_heap_after_full_collection(size_t(0) /* allocation_word_size */);
       _g1h->uncommit_regions_if_necessary();
     }
+
     compute_new_sizes();
 
     verify_during_pause(G1HeapVerifier::G1VerifyRemark, VerifyLocation::RemarkAfter);
