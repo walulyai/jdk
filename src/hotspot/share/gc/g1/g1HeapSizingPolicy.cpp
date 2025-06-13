@@ -90,21 +90,26 @@ double G1HeapSizingPolicy::scale_with_heap(double pause_time_threshold) {
   return threshold;
 }
 
+// Logistic function, produces values in the range 0 - 1 in an S shape
+static double sigmoid_function(double value) {
+  // Sigmoid Parameters:
+  double inflection_point = 1.0; // Inflection point where acceleration begins.
+  double steepness = 6.0;
+
+  return 1.0 / (1.0 + pow(M_E, -steepness * (value - inflection_point)));
+}
+
 double G1HeapSizingPolicy::scale_resize_ratio_delta(double ratio_delta,
                                                     double min_scale_down_factor,
                                                     double max_scale_up_factor) const {
    // We use a sigmoid function for scaling smoothly as we transition from a slow start to a fast growth
    // function with increasing ratio_delta. The sigmoid outputs a value in the range [0,1] which we scale to
    // the range [min_scale_down_factor, max_scale_up_factor]
-  // Sigmoid Parameters:
-  double inflection_point = 1.0; // Inflection point where acceleration begins.
-  double steepness = 6.0;
-
-  double sigmoid = 1.0 / (1.0 + pow(M_E, -steepness * (ratio_delta - inflection_point)));
+  double sigmoid = sigmoid_function(ratio_delta);
 
   double scale_factor = min_scale_down_factor + (max_scale_up_factor - min_scale_down_factor) * sigmoid;
 
-  log_debug(gc)("scaling ratio %1.2f scale %1.2f ", ratio_delta, scale_factor);
+  log_debug(gc, ergo, heap)("scaling ratio %1.2f scale %1.2f ", ratio_delta, scale_factor);
   return scale_factor;
 }
 
@@ -156,9 +161,11 @@ size_t G1HeapSizingPolicy::young_collection_expand_amount(double delta) const {
   // the available expansion space, whichever is smaller, as the base
   // expansion size. Then possibly scale this size according to how much the
   // threshold has (on average) been exceeded by.
-  if (committed_bytes < InitialHeapSize / 4) {
+ /* TODO: if (committed_bytes < InitialHeapSize / 4) {
     resize_bytes = (InitialHeapSize - committed_bytes) / 2;
-  } else {
+  } else
+  */
+ {
     scale_factor = scale_resize_ratio_delta(delta,
                                             0.2,  // arbitrary value
                                             2.0); // arbitrary value
@@ -427,9 +434,9 @@ size_t G1HeapSizingPolicy::full_collection_resize_amount(bool& expand, size_t al
     size_t expand_bytes = minimum_desired_capacity - capacity_after_gc;
 
     log_debug(gc, ergo, heap)("Heap resize. Attempt heap expansion (capacity lower than min desired capacity). "
-                              "Capacity: %zuB occupancy: %zuB live: %zuB "
-                              "min_desired_capacity: %zuB (%zu %%)",
-                              capacity_after_gc, used_after_gc, _g1h->used(), minimum_desired_capacity, MinHeapFreeRatio);
+                              "Capacity: %zuMB occupancy: %zuMB live: %zuMB "
+                              "min_desired_capacity: %zuMB (%zu %%)",
+                              capacity_after_gc / M, used_after_gc / M, _g1h->used() / M, minimum_desired_capacity / M, MinHeapFreeRatio);
 
     expand = true;
     return expand_bytes;
@@ -439,9 +446,9 @@ size_t G1HeapSizingPolicy::full_collection_resize_amount(bool& expand, size_t al
     size_t shrink_bytes = capacity_after_gc - maximum_desired_capacity;
 
     log_debug(gc, ergo, heap)("Heap resize. Attempt heap shrinking (capacity higher than max desired capacity). "
-                              "Capacity: %zuB occupancy: %zuB live: %zuB "
-                              "maximum_desired_capacity: %zuB (%zu %%)",
-                              capacity_after_gc, used_after_gc, _g1h->used(), maximum_desired_capacity, MaxHeapFreeRatio);
+                              "Capacity: %zuMB occupancy: %zuMB live: %zuMB "
+                              "maximum_desired_capacity: %zuMB (%zu %%)",
+                              capacity_after_gc / M, used_after_gc / M, _g1h->used() / M, maximum_desired_capacity / M, MaxHeapFreeRatio);
 
     expand = false;
     return shrink_bytes;
