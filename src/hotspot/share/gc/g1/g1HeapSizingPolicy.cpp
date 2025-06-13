@@ -84,9 +84,6 @@ double G1HeapSizingPolicy::scale_with_heap(double pause_time_threshold) {
     threshold = MAX2(threshold, 0.01);
   }
 
-  // TODO: probably handle the memory pressure issues here, set a threshold and adjust the pause_time_threshold if the heap is above that threshold.
-  // This should be similar to memory pressure from other implementations.
-
   return threshold;
 }
 
@@ -153,25 +150,18 @@ size_t G1HeapSizingPolicy::young_collection_expand_amount(double delta) const {
   double scale_factor = 1.0;
 
   size_t resize_bytes = 0;
-  // If the current size is less than 1/4 of the Initial heap size, expand
-  // by half of the delta between the current and Initial sizes. IE, grow
-  // back quickly.
-  //
-  // Otherwise, take the current size, or G1ExpandByPercentOfAvailable % of
+  // Take the current size, or G1ExpandByPercentOfAvailable % of
   // the available expansion space, whichever is smaller, as the base
   // expansion size. Then possibly scale this size according to how much the
   // threshold has (on average) been exceeded by.
- /* TODO: if (committed_bytes < InitialHeapSize / 4) {
-    resize_bytes = (InitialHeapSize - committed_bytes) / 2;
-  } else
-  */
- {
-    scale_factor = scale_resize_ratio_delta(delta,
-                                            0.2,  // arbitrary value
-                                            2.0); // arbitrary value
+  const double MinScaleDownFactor = 0.2;
+  const double MaxScaleUpFactor = 2.0;
 
-    resize_bytes = MIN2(expand_bytes_via_pct, committed_bytes);
-  }
+  scale_factor = scale_resize_ratio_delta(delta,
+                                          MinScaleDownFactor,
+                                          MaxScaleUpFactor);
+
+  resize_bytes = MIN2(expand_bytes_via_pct, committed_bytes);
 
   resize_bytes = static_cast<size_t>(resize_bytes * scale_factor);
 
@@ -186,6 +176,7 @@ size_t G1HeapSizingPolicy::young_collection_shrink_amount(double delta, size_t a
   double scale_factor = scale_resize_ratio_delta(delta,
                                                  G1ShrinkByPercentOfAvailable / 1000.0,
                                                  G1ShrinkByPercentOfAvailable / 100.0);
+  assert(scale_factor <= 1.0, "must be");
 
   // We are at the end of GC, so free regions are at maximum. Do not try to shrink
   // to have less than the reserve or the number of regions we are most certainly
@@ -199,7 +190,7 @@ size_t G1HeapSizingPolicy::young_collection_shrink_amount(double delta, size_t a
     needed_for_allocation += (uint) _g1h->humongous_obj_size_in_regions(allocation_word_size);
   }
 
-  uint should_be_kept_committed = needed_for_allocation; // MAX2(needed_for_allocation, reserve_regions);
+  uint should_be_kept_committed = needed_for_allocation;
 
   if (target_regions_to_shrink >= should_be_kept_committed) {
     target_regions_to_shrink -= should_be_kept_committed;
@@ -210,7 +201,7 @@ size_t G1HeapSizingPolicy::young_collection_shrink_amount(double delta, size_t a
   // We limit the scale factor as the free regions are already the maximum number of regions.
   size_t resize_bytes = (double)G1HeapRegion::GrainBytes * MIN2(scale_factor, 1.0) * target_regions_to_shrink;
 
-  log_debug(gc, ergo, heap)("shrink log: scale factor %1.2f%% "
+  log_debug(gc, ergo, heap)("Shrink log: scale factor %1.2f%% "
                             "total free regions %u "
                             "reserve regions %u "
                             "needed for alloc %u "
