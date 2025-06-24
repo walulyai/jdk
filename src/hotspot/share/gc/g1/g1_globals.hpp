@@ -144,7 +144,7 @@
                                                                             \
   product(size_t, G1SATBBufferSize, 1*K,                                    \
           "Number of entries in an SATB log buffer.")                       \
-          constraint(G1SATBBufferSizeConstraintFunc, AtParse)               \
+          constraint(G1SATBBufferSizeConstraintFunc, AfterErgo)               \
                                                                             \
   develop(uintx, G1SATBProcessCompletedThreshold, 20,                       \
           "Number of completed buffers that triggers log processing.")      \
@@ -158,25 +158,30 @@
           range(0, 100)                                                     \
                                                                             \
   product(uint, G1ExpandByPercentOfAvailable, 20, EXPERIMENTAL,             \
-          "When expanding, % of uncommitted space to claim.")               \
+          "When expanding, % of uncommitted space to expand the heap by in "\
+          "a single expand attempt.")                                       \
           range(0, 100)                                                     \
                                                                             \
-  product(uint, G1ShrinkByPercentOfAvailable, 50, EXPERIMENTAL,           \
-          "When shrinking, maximum % of free space to claim.")              \
+  product(uint, G1ShrinkByPercentOfAvailable, 50, EXPERIMENTAL,             \
+          "When shrinking, maximum % of free space to free for a single "   \
+          "shrink attempt.")                                                \
           range(0, 100)                                                     \
                                                                             \
-  product(uint, G1MinimumPercentOfGCTimeRatio, 25, EXPERIMENTAL,          \
-          "Percentage of GCTimeRatio G1 will try to avoid going below.")    \
+  product(uint, G1MinimumPercentOfGCTimeRatio, 25, EXPERIMENTAL,            \
+          "Determines the lower and upper thresholds as percentage of "     \
+          "GCTimeRatio. G1 compares these thresholds against the current "  \
+          "gc cpu usage (gc time ratio) to register too low or too high "   \
+          "cpu usage events for heap resizing.")                            \
           range(0, 100)                                                     \
                                                                             \
   product(uint, G1ShortTermShrinkThreshold, 8, EXPERIMENTAL,                \
-          "Number of consecutive GCs with the short term gc time ratio"     \
+          "Number of consecutive GCs with the short term gc time ratio "    \
           "below the threshold before we attempt to shrink.")               \
-          range(0, 10)                                                      \
+          constraint(G1ShortTermShrinkThresholdConstraintFunc, AfterErgo)   \
                                                                             \
   product(size_t, G1UpdateBufferSize, 256,                                  \
           "Size of an update buffer")                                       \
-          constraint(G1UpdateBufferSizeConstraintFunc, AtParse)             \
+          constraint(G1UpdateBufferSizeConstraintFunc, AfterErgo)             \
                                                                             \
   product(uint, G1RSetUpdatingPauseTimePercent, 10,                         \
           "A target percentage of time that is allowed to be spend on "     \

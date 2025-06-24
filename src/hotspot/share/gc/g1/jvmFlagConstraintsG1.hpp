@@ -48,6 +48,9 @@
   /* G1 PtrQueue buffer size constraints */           \
   f(size_t, G1SATBBufferSizeConstraintFunc)           \
   f(size_t, G1UpdateBufferSizeConstraintFunc)         \
+                                                      \
+  /* G1 GC count thresholds constraints */            \
+  f(uint, G1ShortTermShrinkThresholdConstraintFunc) \
   /* */
 
 G1_GC_CONSTRAINTS(DECLARE_CONSTRAINT)

@@ -35,10 +35,6 @@ G1HeapSizingPolicy* G1HeapSizingPolicy::create(const G1CollectedHeap* g1h, const
   return new G1HeapSizingPolicy(g1h, analytics);
 }
 
-uint G1HeapSizingPolicy::long_term_count_limit() const {
-  return _analytics->max_num_of_recorded_pause_times();
-}
-
 G1HeapSizingPolicy::G1HeapSizingPolicy(const G1CollectedHeap* g1h, const G1Analytics* analytics) :
   _g1h(g1h),
   _analytics(analytics),
@@ -48,17 +44,8 @@ G1HeapSizingPolicy::G1HeapSizingPolicy(const G1CollectedHeap* g1h, const G1Analy
   _recent_pause_ratios(long_term_count_limit()),
   _long_term_count(0) {
 
-  assert(_ratio_exceeds_threshold < MinOverThresholdForExpansion,
-         "Initial ratio counter value too high.");
-
-  assert(_ratio_exceeds_threshold > -MinOverThresholdForExpansion,
-         "Initial ratio counter value too low.");
-
-  assert(MinOverThresholdForExpansion <= long_term_count_limit(),
-         "Expansion threshold count must be less than %u", long_term_count_limit());
-
-  assert(G1ShortTermShrinkThreshold <= long_term_count_limit(),
-         "Shrink threshold count must be less than %u", long_term_count_limit());
+  static_assert(MinOverThresholdForExpansion <= long_term_count_limit(),
+                "Expansion threshold count must be less than long_term_count_limit()");
 }
 
 void G1HeapSizingPolicy::reset_ratio_tracking_data() {
@@ -89,21 +76,45 @@ double G1HeapSizingPolicy::scale_with_heap(double pause_time_threshold) {
 // Logistic function, returns values in the range [0,1]
 static double sigmoid_function(double value) {
   // Sigmoid Parameters:
-  double inflection_point = 1.0; // Inflection point where acceleration begins (midpoint of sigmoid).
+  double inflection_point = 1.0; // Inflection point (midpoint of the sigmoid).
   double steepness = 6.0;
 
-  return 1.0 / (1.0 + pow(M_E, -steepness * (value - inflection_point)));
+  return 1.0 / (1.0 + exp(-steepness * (value - inflection_point)));
 }
 
+// Computes a smooth scaling factor based on the relative deviation of observed gc pause time ratio
+// (gc cpu usage) from the target gc pause time ratio, using a sigmoid function to transition between
+// the specified minimum and maximum scaling factors.
+//
+// The input ratio_delta represents the relative deviation of the current gc pause time ratio to the
+// target pause time ratio. This value is passed through a sigmoid function that produces a smooth
+// output between 0 and 1, which is then scaled to the range
+// [min_scale_factor, max_scale_factor].
+//
+// The sigmoid's inflection point is set at ratio_delta = 1.0 (a 100% deviation), where the scaling
+// response increases most rapidly. This ensures appropriate heap resizing when deviations become
+// significant, while avoiding overreacting to minor deviations.
+//
+// The steepness parameter controls how sharply the scale factor changes near the inflection point.
+//  * Low steepness (1-3): gradual scaling over a wide range of deviations (more conservative).
+//  * High steepness (7-10): rapid scaling near the inflection point; small deviations result
+//                           in very low scaling, but larger deviations ramp up scaling quickly.
+//                           Steepness at 10 is nearly a step function.
+//
+// In this case, we choose a steepness of 6.0:
+// - For small deviations, the sigmoid output is close to 0, resulting in scale factors near the
+//   lower bound, preventing excessive resizing.
+// - As ratio_delta grows toward 1.0, the steepness value makes the transition sharper, enabling
+//   more aggressive scaling for large deviations.
+//
+// This helps avoid overreacting to small gc pause time ratio variations but respond appropriately
+// when necessary.
 double G1HeapSizingPolicy::scale_resize_ratio_delta(double ratio_delta,
-                                                    double min_scale_down_factor,
-                                                    double max_scale_up_factor) const {
-   // We use a sigmoid function for scaling smoothly as we transition from a slow start to a fast growth
-   // function with increasing ratio_delta. The sigmoid outputs a value in the range [0,1] which we scale to
-   // the range [min_scale_down_factor, max_scale_up_factor]
+                                                    double min_scale_factor,
+                                                    double max_scale_factor) const {
   double sigmoid = sigmoid_function(ratio_delta);
 
-  double scale_factor = min_scale_down_factor + (max_scale_up_factor - min_scale_down_factor) * sigmoid;
+  double scale_factor = min_scale_factor + (max_scale_factor - min_scale_factor) * sigmoid;
   return scale_factor;
 }
 
@@ -149,12 +160,12 @@ size_t G1HeapSizingPolicy::young_collection_expand_amount(double delta) const {
   // the available expansion space, whichever is smaller, as the base
   // expansion size. Then possibly scale this size according to how much the
   // threshold has (on average) been exceeded by.
-  const double MinScaleDownFactor = 0.2;
-  const double MaxScaleUpFactor = 2.0;
+  const double min_scale_factor = 0.2;
+  const double max_scale_factor = 2.0;
 
   double scale_factor = scale_resize_ratio_delta(delta,
-                                                 MinScaleDownFactor,
-                                                 MaxScaleUpFactor);
+                                                 min_scale_factor,
+                                                 max_scale_factor);
 
   size_t resize_bytes = MIN2(expand_bytes_via_pct, committed_bytes);
 
@@ -162,15 +173,18 @@ size_t G1HeapSizingPolicy::young_collection_expand_amount(double delta) const {
 
   // Ensure the expansion size is at least the minimum growth amount
   // and at most the remaining uncommitted byte size.
-  return clamp((size_t)resize_bytes, min_expand_bytes, uncommitted_bytes);
+  return clamp(resize_bytes, min_expand_bytes, uncommitted_bytes);
 }
 
 size_t G1HeapSizingPolicy::young_collection_shrink_amount(double delta, size_t allocation_word_size) const {
   assert(delta >= 0.0, "must be");
 
+  const double min_scale_factor = G1ShrinkByPercentOfAvailable / 1000.0;
+  const double max_scale_factor = G1ShrinkByPercentOfAvailable / 100.0;
+
   double scale_factor = scale_resize_ratio_delta(delta,
-                                                 G1ShrinkByPercentOfAvailable / 1000.0,
-                                                 G1ShrinkByPercentOfAvailable / 100.0);
+                                                 min_scale_factor,
+                                                 max_scale_factor);
   assert(scale_factor <= 1.0, "must be");
 
   // We are at the end of GC, so free regions are at maximum. Do not try to shrink
@@ -221,8 +235,8 @@ size_t G1HeapSizingPolicy::young_collection_resize_amount(bool& expand, size_t a
   // - upper threshold, directly based on GCTimeRatio. We do not want to exceed
   // this.
   // - lower threshold, we do not want to go under.
-  // - mid threshold, halfway between upper and lower threshold, represents the
-  // actual target when resizing the heap.
+  // - actual pause time threshold, halfway between upper and lower threshold,
+  // represents the actual target when resizing the heap.
   double pause_time_threshold = 1.0 / (1.0 + GCTimeRatio);
 
   pause_time_threshold = scale_with_heap(pause_time_threshold);
@@ -407,7 +421,7 @@ size_t G1HeapSizingPolicy::full_collection_resize_amount(bool& expand, size_t al
   // Should not be less than the heap min size. No need to adjust it
   // with respect to the heap max size as it's an upper bound (i.e.,
   // we'll try to make the capacity smaller than it, not greater).
-  maximum_desired_capacity =  MAX2(maximum_desired_capacity, _g1h->min_capacity());
+  maximum_desired_capacity = MAX2(maximum_desired_capacity, _g1h->min_capacity());
 
   // Don't expand unless it's significant; prefer expansion to shrinking.
   if (capacity_after_gc < minimum_desired_capacity) {

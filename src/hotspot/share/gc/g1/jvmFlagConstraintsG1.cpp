@@ -23,6 +23,7 @@
  */
 
 #include "gc/g1/g1HeapRegionBounds.inline.hpp"
+#include "gc/g1/g1HeapSizingPolicy.hpp"
 #include "gc/g1/jvmFlagConstraintsG1.hpp"
 #include "gc/shared/bufferNode.hpp"
 #include "gc/shared/ptrQueue.hpp"
@@ -209,4 +210,18 @@ JVMFlag::Error G1UpdateBufferSizeConstraintFunc(size_t value, bool verbose) {
   return buffer_size_constraint_helper(FLAG_MEMBER_ENUM(G1UpdateBufferSize),
                                        value,
                                        verbose);
+}
+
+JVMFlag::Error G1ShortTermShrinkThresholdConstraintFunc(uint value, bool verbose) {
+  if (UseG1GC) {
+    const uint max_count = G1HeapSizingPolicy::long_term_count_limit();
+    if (FLAG_IS_CMDLINE(G1ShortTermShrinkThreshold) && (value > max_count)) 
+    {
+      JVMFlag::printError(verbose,
+                          "G1ShortTermShrinkThreshold (%u) must be in range [0, %u]\n",
+                          value, max_count);
+      return JVMFlag::VIOLATES_CONSTRAINT;
+    }
+  }
+  return JVMFlag::SUCCESS;
 }
