@@ -40,37 +40,37 @@ G1HeapSizingPolicy::G1HeapSizingPolicy(const G1CollectedHeap* g1h, const G1Analy
   _analytics(analytics),
   // Bias for expansion at startup; the +1 is to counter the first sample always
   // being 0.0, i.e. lower than any threshold.
-  _ratio_exceeds_threshold((MinOverThresholdForExpansion / 2) + 1),
-  _recent_pause_ratios(long_term_count_limit()),
+  _gc_cpu_usage_deviation_counter((MinOverThresholdForExpansion / 2) + 1),
+  _recent_cpu_usage_deltas(long_term_count_limit()),
   _long_term_count(0) {
 
   static_assert(MinOverThresholdForExpansion <= long_term_count_limit(),
                 "Expansion threshold count must be less than long_term_count_limit()");
 }
 
-void G1HeapSizingPolicy::reset_ratio_tracking_data() {
+void G1HeapSizingPolicy::reset_cpu_usage_tracking_data() {
   _long_term_count = 0;
-  _ratio_exceeds_threshold = 0;
+  _gc_cpu_usage_deviation_counter = 0;
   // Keep the recent gc time ratio data.
 }
 
-void G1HeapSizingPolicy::decay_ratio_tracking_data() {
+void G1HeapSizingPolicy::decay_cpu_usage_tracking_data() {
   _long_term_count = 0;
-  _ratio_exceeds_threshold /= 2;
+  _gc_cpu_usage_deviation_counter /= 2;
   // Keep the recent gc time ratio data.
 }
 
-double G1HeapSizingPolicy::scale_with_heap(double pause_time_threshold) {
-  double threshold = pause_time_threshold;
+double G1HeapSizingPolicy::scale_with_heap(double gc_cpu_usage_target) {
+  double target = gc_cpu_usage_target;
   // If the heap is at less than half its maximum size, scale the threshold down,
   // to a limit of 1%. Thus the smaller the heap is, the more likely it is to expand,
   // though the scaling code will likely keep the increase small.
   if (_g1h->capacity() <= _g1h->max_capacity() / 2) {
-    threshold *= (double)_g1h->capacity() / (double)(_g1h->max_capacity() / 2);
-    threshold = MAX2(threshold, 0.01);
+    target *= (double)_g1h->capacity() / (double)(_g1h->max_capacity() / 2);
+    target = MAX2(target, 0.01);
   }
 
-  return threshold;
+  return target;
 }
 
 // Logistic function, returns values in the range [0,1]
@@ -78,20 +78,18 @@ static double sigmoid_function(double value) {
   // Sigmoid Parameters:
   double inflection_point = 1.0; // Inflection point (midpoint of the sigmoid).
   double steepness = 6.0;
-
   return 1.0 / (1.0 + exp(-steepness * (value - inflection_point)));
 }
 
-// Computes a smooth scaling factor based on the relative deviation of observed gc pause time ratio
-// (gc cpu usage) from the target gc pause time ratio, using a sigmoid function to transition between
+// Computes a smooth scaling factor based on the relative deviation of observed gc_cpu_usage
+// from the gc_cpu_usage_target, using a sigmoid function to transition between
 // the specified minimum and maximum scaling factors.
 //
-// The input ratio_delta represents the relative deviation of the current gc pause time ratio to the
-// target pause time ratio. This value is passed through a sigmoid function that produces a smooth
-// output between 0 and 1, which is then scaled to the range
-// [min_scale_factor, max_scale_factor].
+// The input cpu_usage_delta represents the relative deviation of the current gc_cpu_usage to the
+// gc_cpu_usage_target. This value is passed through a sigmoid function that produces a smooth
+// output between 0 and 1, which is then scaled to the range [min_scale_factor, max_scale_factor].
 //
-// The sigmoid's inflection point is set at ratio_delta = 1.0 (a 100% deviation), where the scaling
+// The sigmoid's inflection point is set at cpu_usage_delta = 1.0 (a 100% deviation), where the scaling
 // response increases most rapidly. This ensures appropriate heap resizing when deviations become
 // significant, while avoiding overreacting to minor deviations.
 //
@@ -104,50 +102,50 @@ static double sigmoid_function(double value) {
 // In this case, we choose a steepness of 6.0:
 // - For small deviations, the sigmoid output is close to 0, resulting in scale factors near the
 //   lower bound, preventing excessive resizing.
-// - As ratio_delta grows toward 1.0, the steepness value makes the transition sharper, enabling
+// - As cpu_usage_delta grows toward 1.0, the steepness value makes the transition sharper, enabling
 //   more aggressive scaling for large deviations.
 //
-// This helps avoid overreacting to small gc pause time ratio variations but respond appropriately
+// This helps avoid overreacting to small gc_cpu_usage deviations but respond appropriately
 // when necessary.
-double G1HeapSizingPolicy::scale_resize_ratio_delta(double ratio_delta,
-                                                    double min_scale_factor,
-                                                    double max_scale_factor) const {
-  double sigmoid = sigmoid_function(ratio_delta);
+double G1HeapSizingPolicy::scale_cpu_usage_delta(double cpu_usage_delta,
+                                                 double min_scale_factor,
+                                                 double max_scale_factor) const {
+  double sigmoid = sigmoid_function(cpu_usage_delta);
 
   double scale_factor = min_scale_factor + (max_scale_factor - min_scale_factor) * sigmoid;
   return scale_factor;
 }
 
-// Calculate the ratio of the difference of a and b relative to b.
-static double rel_ratio(double a, double b) {
+// Calculate the relative difference between a and b.
+static double rel_diff(double a, double b) {
   return (a - b) / b;
 }
 
-static void log_resize(double short_term_pause_time_ratio,
-                       double long_term_pause_time_ratio,
+static void log_resize(double short_term_cpu_usage,
+                       double long_term_cpu_usage,
                        double lower_threshold,
                        double upper_threshold,
-                       double pause_time_ratio,
+                       double cpu_usage_target,
                        bool at_limit,
                        size_t resize_bytes,
                        bool expand) {
 
   log_debug(gc, ergo, heap)("Heap resize: "
-                            "short term pause time ratio %1.2f%% long term pause time ratio %1.2f%% "
-                            "lower threshold %1.2f%% upper threshold %1.2f%% pause time ratio %1.2f%% "
+                            "short term gc cpu usage %1.2f%% long term gc cpu usage %1.2f%% "
+                            "lower threshold %1.2f%% upper threshold %1.2f%% gc cpu usage target %1.2f%% "
                             "at limit %s resize by %zuB expand %s",
-                            short_term_pause_time_ratio * 100.0,
-                            long_term_pause_time_ratio * 100.0,
+                            short_term_cpu_usage * 100.0,
+                            long_term_cpu_usage * 100.0,
                             lower_threshold * 100.0,
                             upper_threshold * 100.0,
-                            pause_time_ratio * 100.0,
+                            cpu_usage_target * 100.0,
                             BOOL_TO_STR(at_limit),
                             resize_bytes,
                             BOOL_TO_STR(expand));
 }
 
-size_t G1HeapSizingPolicy::young_collection_expand_amount(double delta) const {
-  assert(delta >= 0.0, "must be");
+size_t G1HeapSizingPolicy::young_collection_expand_amount(double cpu_usage_delta) const {
+  assert(cpu_usage_delta >= 0.0, "must be");
 
   size_t reserved_bytes = _g1h->max_capacity();
   size_t committed_bytes = _g1h->capacity();
@@ -163,9 +161,9 @@ size_t G1HeapSizingPolicy::young_collection_expand_amount(double delta) const {
   const double min_scale_factor = 0.2;
   const double max_scale_factor = 2.0;
 
-  double scale_factor = scale_resize_ratio_delta(delta,
-                                                 min_scale_factor,
-                                                 max_scale_factor);
+  double scale_factor = scale_cpu_usage_delta(cpu_usage_delta,
+                                              min_scale_factor,
+                                              max_scale_factor);
 
   size_t resize_bytes = MIN2(expand_bytes_via_pct, committed_bytes);
 
@@ -176,16 +174,16 @@ size_t G1HeapSizingPolicy::young_collection_expand_amount(double delta) const {
   return clamp(resize_bytes, min_expand_bytes, uncommitted_bytes);
 }
 
-size_t G1HeapSizingPolicy::young_collection_shrink_amount(double delta, size_t allocation_word_size) const {
-  assert(delta >= 0.0, "must be");
+size_t G1HeapSizingPolicy::young_collection_shrink_amount(double cpu_usage_delta, size_t allocation_word_size) const {
+  assert(cpu_usage_delta >= 0.0, "must be");
 
   const double min_scale_factor = G1ShrinkByPercentOfAvailable / 1000.0;
   const double max_scale_factor = G1ShrinkByPercentOfAvailable / 100.0;
 
-  double scale_factor = scale_resize_ratio_delta(delta,
-                                                 min_scale_factor,
-                                                 max_scale_factor);
-  assert(scale_factor <= 1.0, "must be");
+  double scale_factor = scale_cpu_usage_delta(cpu_usage_delta,
+                                              min_scale_factor,
+                                              max_scale_factor);
+  assert(scale_factor <= max_scale_factor, "must be");
 
   // We are at the end of GC, so free regions are at maximum. Do not try to shrink
   // to have less than the reserve or the number of regions we are most certainly
@@ -228,129 +226,127 @@ size_t G1HeapSizingPolicy::young_collection_resize_amount(bool& expand, size_t a
   assert(GCTimeRatio > 0, "must be");
   expand = false;
 
-  const double long_term_pause_time_ratio = _analytics->long_term_pause_time_ratio();
-  const double short_term_pause_time_ratio = _analytics->short_term_pause_time_ratio();
+  const double long_term_gc_cpu_usage = _analytics->long_term_pause_time_ratio();
+  const double short_term_gc_cpu_usage = _analytics->short_term_pause_time_ratio();
 
-  // Calculate gc time ratio thresholds:
-  // - upper threshold, directly based on GCTimeRatio. We do not want to exceed
-  // this.
+  // Calculate gc cpu usage thresholds:
+  // - upper threshold, do not want to exceed this.
   // - lower threshold, we do not want to go under.
-  // - actual pause time threshold, halfway between upper and lower threshold,
-  // represents the actual target when resizing the heap.
-  double pause_time_threshold = 1.0 / (1.0 + GCTimeRatio);
 
-  pause_time_threshold = scale_with_heap(pause_time_threshold);
-  const double min_gc_time_ratio_ratio = G1MinimumPercentOfGCTimeRatio / 100.0;
-  double upper_threshold = pause_time_threshold * (1 + min_gc_time_ratio_ratio);
-  double lower_threshold = pause_time_threshold * (1 - min_gc_time_ratio_ratio);
+  double gc_cpu_usage_target = 1.0 / (1.0 + GCTimeRatio);
+
+  gc_cpu_usage_target = scale_with_heap(gc_cpu_usage_target);
+
+  const double gc_cpu_usage_margin = G1GCCPUUsageDeviationPercent / 100.0;
+  const double upper_threshold = gc_cpu_usage_target * (1 + gc_cpu_usage_margin);
+  const double lower_threshold = gc_cpu_usage_target * (1 - gc_cpu_usage_margin);
 
   // Use threshold based relative to current GCTimeRatio to more quickly expand
   // and shrink at smaller heap sizes (relative to maximum).
-  const double long_term_delta = rel_ratio(long_term_pause_time_ratio, pause_time_threshold);
-  double short_term_ratio_delta = rel_ratio(short_term_pause_time_ratio, pause_time_threshold);
+  const double long_term_delta = rel_diff(long_term_gc_cpu_usage, gc_cpu_usage_target);
+  const double short_term_delta = rel_diff(short_term_gc_cpu_usage, gc_cpu_usage_target);
 
   // If the short term GC time ratio exceeds a threshold, increment the occurrence
   // counter.
-  if (short_term_pause_time_ratio > upper_threshold) {
-    _ratio_exceeds_threshold++;
-  } else if (short_term_pause_time_ratio < lower_threshold) {
-    _ratio_exceeds_threshold--;
+  if (short_term_gc_cpu_usage > upper_threshold) {
+    _gc_cpu_usage_deviation_counter++;
+  } else if (short_term_gc_cpu_usage < lower_threshold) {
+    _gc_cpu_usage_deviation_counter--;
   }
   // Ignore very first sample as it is garbage.
-  if (_long_term_count != 0 || _recent_pause_ratios.num() != 0) {
-    _recent_pause_ratios.add(short_term_ratio_delta);
+  if (_long_term_count != 0 || _recent_cpu_usage_deltas.num() != 0) {
+    _recent_cpu_usage_deltas.add(short_term_delta);
   }
   _long_term_count++;
 
   log_trace(gc, ergo, heap)("Heap resize triggers: long term count: %u "
-                            "long term interval: %u "
-                            "delta: %1.2f "
-                            "ratio exceeds threshold count: %d",
+                            "long term count limit: %u "
+                            "short term delta: %1.2f "
+                            "gc cpu usage deviation counter: %d",
                             _long_term_count,
                             long_term_count_limit(),
-                            short_term_ratio_delta,
-                            _ratio_exceeds_threshold);
+                            short_term_delta,
+                            _gc_cpu_usage_deviation_counter);
 
-  log_debug(gc, ergo, heap)("Heap triggers: pauses-since-start: %u num-prev-pauses-for-heuristics: %u ratio-exceeds-threshold-count: %d",
-                            _recent_pause_ratios.num(), long_term_count_limit(), _ratio_exceeds_threshold);
+  log_debug(gc, ergo, heap)("Heap triggers: pauses-since-start: %u num-prev-pauses-for-heuristics: %u gc cpu usage deviation counter: %d",
+                            _recent_cpu_usage_deltas.num(), long_term_count_limit(), _gc_cpu_usage_deviation_counter);
 
   // Check if there is a short- or long-term need for resizing, expansion first.
   //
   // Short-term resizing need is detected by exceeding the upper or lower thresholds
-  // multiple times, tracked in _ratio_exceeds_threshold. If it contains a large
+  // multiple times, tracked in _gc_cpu_usage_deviation_counter. If it contains a large
   // positive or negative (larger than the respective thresholds), we trigger
   // resizing calculation.
   //
-  // Slowly occurring long-term changes to the actual gc time ratios are checked
-  // only every once a while.
+  // Slowly occurring long-term changes to the actual gc cpu usage are checked
+  // only every once in a while.
   //
-  // The _ratio_exceeds_threshold value is reset after each resize, or slowly
-  // decayed if nothing happens.
+  // The _gc_cpu_usage_deviation_counter value is reset after each resize, or slowly
+  // decayed if no resizing happens.
 
   size_t resize_bytes = 0;
 
   const bool use_long_term_delta = (_long_term_count == long_term_count_limit());
-  const double short_term_delta = _recent_pause_ratios.avg();
+  const double avg_short_term_delta = _recent_cpu_usage_deltas.avg();
 
   double delta;
   if (use_long_term_delta) {
     // For expansion, deltas are positive, and we want to expand aggressively.
     // For shrinking, deltas are negative, so the MAX2 below selects the least
     // aggressive one as we are using the absolute value for scaling.
-    delta = MAX2(short_term_delta, long_term_delta);
+    delta = MAX2(avg_short_term_delta, long_term_delta);
   } else {
-    delta = short_term_delta;
+    delta = avg_short_term_delta;
   }
   // Delta is negative when shrinking, but the calculation of the resize amount
   // always expects an absolute value. Do that here unconditionally.
   delta = fabsd(delta);
 
-  int ThresholdForShrink = (int)MIN2(G1ShortTermShrinkThreshold, long_term_count_limit());
+  int count_threshold_for_shrink = (int)G1CPUUsageShrinkThreshold;
 
-  if ((_ratio_exceeds_threshold == MinOverThresholdForExpansion) ||
-      (use_long_term_delta && (long_term_pause_time_ratio > upper_threshold))) {
+  if ((_gc_cpu_usage_deviation_counter == MinOverThresholdForExpansion) ||
+      (use_long_term_delta && (long_term_gc_cpu_usage > upper_threshold))) {
+    expand = true;
 
     // Short-cut calculation if already at maximum capacity.
     if (_g1h->capacity() == _g1h->max_capacity()) {
-      log_resize(short_term_pause_time_ratio, long_term_pause_time_ratio,
-                 lower_threshold, upper_threshold, pause_time_threshold, true, 0, expand);
-      reset_ratio_tracking_data();
+      log_resize(short_term_gc_cpu_usage, long_term_gc_cpu_usage,
+                 lower_threshold, upper_threshold, gc_cpu_usage_target, true, 0, expand);
+      reset_cpu_usage_tracking_data();
       return resize_bytes;
     }
 
     log_trace(gc, ergo, heap)("expand deltas long %1.2f short %1.2f use long term %u delta %1.2f",
-                              long_term_delta, short_term_delta, use_long_term_delta, delta);
+                              long_term_delta, avg_short_term_delta, use_long_term_delta, delta);
 
     resize_bytes = young_collection_expand_amount(delta);
-    expand = true;
 
-    reset_ratio_tracking_data();
-  } else if ((_ratio_exceeds_threshold == -ThresholdForShrink) ||
-             (use_long_term_delta && (long_term_pause_time_ratio < lower_threshold))) {
-
+    reset_cpu_usage_tracking_data();
+  } else if ((_gc_cpu_usage_deviation_counter == -count_threshold_for_shrink) ||
+           (use_long_term_delta && (long_term_gc_cpu_usage < lower_threshold))) {
+    expand = false;
     // Short-cut calculation if already at minimum capacity.
     if (_g1h->capacity() == _g1h->min_capacity()) {
-      log_resize(short_term_pause_time_ratio, long_term_pause_time_ratio,
-                 lower_threshold, upper_threshold, pause_time_threshold, true, 0, expand);
-      reset_ratio_tracking_data();
+      log_resize(short_term_gc_cpu_usage, long_term_gc_cpu_usage,
+                 lower_threshold, upper_threshold, gc_cpu_usage_target, true, 0, expand);
+      reset_cpu_usage_tracking_data();
       return resize_bytes;
     }
 
     log_trace(gc, ergo, heap)("expand deltas long %1.2f short %1.2f use long term %u delta %1.2f",
-                              long_term_delta, short_term_delta, use_long_term_delta, delta);
+                              long_term_delta, avg_short_term_delta, use_long_term_delta, delta);
 
     resize_bytes = young_collection_shrink_amount(delta, allocation_word_size);
-    expand = false;
 
-    reset_ratio_tracking_data();
+    reset_cpu_usage_tracking_data();
   } else if (use_long_term_delta) {
     // A resize has not been triggered, but the long term counter overflowed.
-    decay_ratio_tracking_data();
-    expand = true; // Does not matter.
+    decay_cpu_usage_tracking_data();
+    expand = false; // Does not matter.
   }
 
-  log_resize(short_term_pause_time_ratio, long_term_pause_time_ratio,
-             lower_threshold, upper_threshold, pause_time_threshold,
+  log_resize(short_term_gc_cpu_usage, long_term_gc_cpu_usage,
+             lower_threshold, upper_threshold, gc_cpu_usage_target,
              false, resize_bytes, expand);
 
   return resize_bytes;

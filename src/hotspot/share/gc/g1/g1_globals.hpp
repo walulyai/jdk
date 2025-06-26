@@ -144,7 +144,7 @@
                                                                             \
   product(size_t, G1SATBBufferSize, 1*K,                                    \
           "Number of entries in an SATB log buffer.")                       \
-          constraint(G1SATBBufferSizeConstraintFunc, AfterErgo)               \
+          constraint(G1SATBBufferSizeConstraintFunc, AtParse)               \
                                                                             \
   develop(uintx, G1SATBProcessCompletedThreshold, 20,                       \
           "Number of completed buffers that triggers log processing.")      \
@@ -167,21 +167,30 @@
           "shrink attempt.")                                                \
           range(0, 100)                                                     \
                                                                             \
-  product(uint, G1MinimumPercentOfGCTimeRatio, 25, EXPERIMENTAL,            \
-          "Determines the lower and upper thresholds as percentage of "     \
-          "GCTimeRatio. G1 compares these thresholds against the current "  \
-          "gc cpu usage (gc time ratio) to register too low or too high "   \
-          "cpu usage events for heap resizing.")                            \
+  product(uint, G1GCCPUUsageDeviationPercent, 25, DIAGNOSTIC,               \
+          "The acceptable deviation (in percent) from the target GC CPU "   \
+          "usage (based on GCTimeRatio). Creates a tolerance range "        \
+          "around the target to deal with short-term fluctuations without " \
+          "triggering GC resizing mechanism prematurely.")                  \
           range(0, 100)                                                     \
                                                                             \
-  product(uint, G1ShortTermShrinkThreshold, 8, EXPERIMENTAL,                \
-          "Number of consecutive GCs with the short term gc time ratio "    \
-          "below the threshold before we attempt to shrink.")               \
-          constraint(G1ShortTermShrinkThresholdConstraintFunc, AfterErgo)   \
+  product(uint, G1CPUUsageExpandThreshold, 4, DIAGNOSTIC,                   \
+          "If the GC CPU usage deviation counter exceeds this threshold, "  \
+          "a heap expansion may be triggered. The counter is incremented "  \
+          "when short-term GC CPU usage exceeds the upper bound of the "    \
+          "acceptable deviation range.")                                    \
+          constraint(G1CPUUsageExpandConstraintFunc, AfterErgo)             \
+                                                                            \
+  product(uint, G1CPUUsageShrinkThreshold, 8, DIAGNOSTIC,                   \
+          "If the GC CPU usage deviation counter drops below the negative " \
+          "of this threshold, a heap shrink may be triggered. The counter " \
+          "is decremented when short-term GC CPU usage is below the lower " \
+          "bound of acceptable deviation range.")                           \
+          constraint(G1CPUUsageShrinkConstraintFunc, AfterErgo)             \
                                                                             \
   product(size_t, G1UpdateBufferSize, 256,                                  \
           "Size of an update buffer")                                       \
-          constraint(G1UpdateBufferSizeConstraintFunc, AfterErgo)             \
+          constraint(G1UpdateBufferSizeConstraintFunc, AfterErgo)           \
                                                                             \
   product(uint, G1RSetUpdatingPauseTimePercent, 10,                         \
           "A target percentage of time that is allowed to be spend on "     \
