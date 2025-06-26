@@ -73,6 +73,29 @@ double G1HeapSizingPolicy::scale_with_heap(double gc_cpu_usage_target) {
   return target;
 }
 
+static void log_resize(double short_term_cpu_usage,
+                       double long_term_cpu_usage,
+                       double lower_threshold,
+                       double upper_threshold,
+                       double cpu_usage_target,
+                       bool at_limit,
+                       size_t resize_bytes,
+                       bool expand) {
+
+  log_debug(gc, ergo, heap)("Heap resize: "
+                            "short term gc cpu usage %1.2f%% long term gc cpu usage %1.2f%% "
+                            "lower threshold %1.2f%% upper threshold %1.2f%% gc cpu usage target %1.2f%% "
+                            "at limit %s resize by %zuB expand %s",
+                            short_term_cpu_usage * 100.0,
+                            long_term_cpu_usage * 100.0,
+                            lower_threshold * 100.0,
+                            upper_threshold * 100.0,
+                            cpu_usage_target * 100.0,
+                            BOOL_TO_STR(at_limit),
+                            resize_bytes,
+                            BOOL_TO_STR(expand));
+}
+
 // Logistic function, returns values in the range [0,1]
 static double sigmoid_function(double value) {
   // Sigmoid Parameters:
@@ -119,29 +142,6 @@ double G1HeapSizingPolicy::scale_cpu_usage_delta(double cpu_usage_delta,
 // Calculate the relative difference between a and b.
 static double rel_diff(double a, double b) {
   return (a - b) / b;
-}
-
-static void log_resize(double short_term_cpu_usage,
-                       double long_term_cpu_usage,
-                       double lower_threshold,
-                       double upper_threshold,
-                       double cpu_usage_target,
-                       bool at_limit,
-                       size_t resize_bytes,
-                       bool expand) {
-
-  log_debug(gc, ergo, heap)("Heap resize: "
-                            "short term gc cpu usage %1.2f%% long term gc cpu usage %1.2f%% "
-                            "lower threshold %1.2f%% upper threshold %1.2f%% gc cpu usage target %1.2f%% "
-                            "at limit %s resize by %zuB expand %s",
-                            short_term_cpu_usage * 100.0,
-                            long_term_cpu_usage * 100.0,
-                            lower_threshold * 100.0,
-                            upper_threshold * 100.0,
-                            cpu_usage_target * 100.0,
-                            BOOL_TO_STR(at_limit),
-                            resize_bytes,
-                            BOOL_TO_STR(expand));
 }
 
 size_t G1HeapSizingPolicy::young_collection_expand_amount(double cpu_usage_delta) const {
