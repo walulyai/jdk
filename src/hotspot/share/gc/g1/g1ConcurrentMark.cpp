@@ -40,6 +40,7 @@
 #include "gc/g1/g1HeapRegionRemSet.inline.hpp"
 #include "gc/g1/g1HeapRegionSet.inline.hpp"
 #include "gc/g1/g1HeapVerifier.hpp"
+#include "gc/g1/g1MarkStack.inline.hpp"
 #include "gc/g1/g1OopClosures.inline.hpp"
 #include "gc/g1/g1Policy.hpp"
 #include "gc/g1/g1RegionMarkStatsCache.inline.hpp"
@@ -100,8 +101,9 @@ bool G1CMBitMapClosure::do_addr(HeapWord* const addr) {
 
   _task->scan_task_entry(G1TaskQueueEntry::from_oop(cast_to_oop(addr)));
   // we only partially drain the local queue and global stack
-  _task->drain_local_queue(true);
-  _task->drain_global_stack(true);
+  //_task->drain_local_queue(true);
+  //_task->drain_global_stack(true);
+  _task->drain(true);
 
   // if the has_aborted flag has been raised, we need to bail out of
   // the iteration
@@ -486,9 +488,10 @@ G1ConcurrentMark::G1ConcurrentMark(G1CollectedHeap* g1h,
   _max_num_tasks(MAX2(ConcGCThreads, ParallelGCThreads)),
   // _num_active_tasks set in set_non_marking_state()
   // _tasks set inside the constructor
+  _stripes(),
 
   _task_queues(new G1CMTaskQueueSet(_max_num_tasks)),
-  _terminator(_max_num_tasks, _task_queues),
+  _terminator(_max_num_tasks, &_stripes),
 
   _first_overflow_barrier_sync(),
   _second_overflow_barrier_sync(),
@@ -602,6 +605,16 @@ void G1ConcurrentMark::humongous_object_eagerly_reclaimed(G1HeapRegion* r) {
                                       });
 }
 
+size_t G1ConcurrentMark::calculate_nstripes(uint nworkers) const {
+  // Calculate the number of stripes from the number of workers we use,
+  // where the number of stripes must be a power of two and we want to
+  // have at least one worker per stripe.
+  const size_t nstripes = round_down_power_of_2(nworkers);
+  // TODO - magic constant
+  // return MIN2(nstripes, ZMarkStripesMax);
+  return MIN2(nstripes, size_t(16));
+}
+
 void G1ConcurrentMark::reset_marking_for_restart() {
   _global_mark_stack.set_empty();
 
@@ -621,7 +634,11 @@ void G1ConcurrentMark::reset_marking_for_restart() {
   for (uint i = 0; i < _max_num_tasks; ++i) {
     G1CMTaskQueue* queue = _task_queues->queue(i);
     queue->set_empty();
+    _tasks[i]->flush_stacks();
   }
+
+  // TODO: we need to clear strips and local stacks.
+  _stripes.delete_all();
 }
 
 void G1ConcurrentMark::set_concurrency(uint active_tasks) {
@@ -1146,6 +1163,11 @@ void G1ConcurrentMark::mark_from_roots() {
 
   // Parallel task terminator is set in "set_concurrency_and_phase()"
   set_concurrency_and_phase(active_workers, true /* concurrent */);
+
+  // Set number of mark stripes to use, based on number
+  // of workers we will use in the concurrent mark phase.
+  const size_t num_stripes = calculate_nstripes(active_workers);
+  _stripes.set_nstripes(num_stripes);
 
   G1CMConcurrentMarkingTask marking_task(this);
   _concurrent_workers->run_task(&marking_task);
@@ -1839,6 +1861,7 @@ public:
     } while (task->has_aborted() && !_cm->has_overflown());
     // If we overflow, then we do not want to restart. We instead
     // want to abort remark and do concurrent marking again.
+    assert(task->has_no_local_work(), "Must be empty at the end of remark");
     task->record_end_time();
   }
 
@@ -1872,6 +1895,7 @@ void G1ConcurrentMark::finalize_marking() {
   }
 
   SATBMarkQueueSet& satb_mq_set = G1BarrierSet::satb_mark_queue_set();
+  guarantee(has_overflown() || _stripes.is_empty(), "Must be empty");
   guarantee(has_overflown() ||
             satb_mq_set.completed_buffers_num() == 0,
             "Invariant: has_overflown = %s, num buffers = %zu",
@@ -2338,6 +2362,10 @@ void G1CMTask::move_entries_to_global_stack() {
   decrease_limits();
 }
 
+void G1CMTask::flush_stacks() {
+  _stacks.flush();
+}
+
 bool G1CMTask::get_entries_from_global_stack() {
   // Local array where we'll store the entries that will be popped
   // from the global stack.
@@ -2363,6 +2391,62 @@ bool G1CMTask::get_entries_from_global_stack() {
   // This operation was quite expensive, so decrease the limits
   decrease_limits();
   return true;
+}
+
+bool G1CMTask::drain(bool partially) {
+  if (has_aborted()) {
+    return false;
+  }
+
+  G1TaskQueueEntry entry;
+  size_t processed = 0;
+
+  while(_stacks.pop(_stripe, &entry)) {
+    scan_task_entry(entry);
+
+    if (partially && (processed++ & 256) == 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool G1CMTask::try_steal() {
+  return try_steal_local() || try_steal_global();
+}
+
+bool G1CMTask::try_steal_local() {
+  // Try to steal a local stack from another stripe
+  G1MarkStackStripeSet* const stripes = _cm->stripes();
+  for (G1MarkStackStripe* victim_stripe = stripes->stripe_next(_stripe);
+       victim_stripe != _stripe;
+       victim_stripe = stripes->stripe_next(victim_stripe)) {
+    G1MarkStack* const stack = _stacks.steal(victim_stripe);
+    if (stack != nullptr) {
+      // Success, install the stolen stack.
+      _stacks.install(_stripe, stack);
+      return true;
+    }
+  }
+  // Nothing to steal locally.
+  return false;
+}
+
+bool G1CMTask::try_steal_global() {
+  // Try to steal a local stack from another stripe
+  G1MarkStackStripeSet* const stripes = _cm->stripes();
+  for (G1MarkStackStripe* victim_stripe = stripes->stripe_next(_stripe);
+       victim_stripe != _stripe;
+       victim_stripe = stripes->stripe_next(victim_stripe)) {
+    G1MarkStack* const stack = victim_stripe->steal_stack();
+    if (stack != nullptr) {
+      // Success, install the stolen stack.
+      _stacks.install(_stripe, stack);
+      return true;
+    }
+  }
+  // Nothing to steal globally.
+  return false;
 }
 
 void G1CMTask::drain_local_queue(bool partially) {
@@ -2411,6 +2495,13 @@ void G1CMTask::drain_global_stack(bool partially) {
   // this is not a problem.
   // In case of total draining, we simply process until the global mark stack is
   // totally empty, disregarding the size counter.
+  /*
+  while (!has_aborted() && get_entries_from_global_stack() &&
+         (!partially || _cm->mark_stack_size() > _cm->partial_mark_stack_size_target())) {
+    drain_local_queue(partially);
+  }
+
+  */
   if (partially) {
     size_t const target_size = _cm->partial_mark_stack_size_target();
     while (!has_aborted() && _cm->mark_stack_size() > target_size) {
@@ -2597,13 +2688,8 @@ void G1CMTask::attempt_stealing() {
          "only way to reach here");
   while (!has_aborted()) {
     G1TaskQueueEntry entry;
-    if (_cm->try_stealing(_worker_id, entry)) {
-      scan_task_entry(entry);
-
-      // And since we're towards the end, let's totally drain the
-      // local queue and global stack.
-      drain_local_queue(false);
-      drain_global_stack(false);
+    if (try_steal()) {
+      drain(false);
     } else {
       break;
     }
@@ -2615,7 +2701,8 @@ void G1CMTask::attempt_termination(bool is_serial) {
   // tasks might be concurrently pushing objects on it.
   // Separated the asserts so that we know which one fires.
   assert(_cm->out_of_regions(), "only way to reach here");
-  assert(_task_queue->size() == 0, "only way to reach here");
+  assert(_stacks.is_empty(), "only way to reach here");
+  // assert(_cm->_stripes->is_empty() == 0, "only way to reach here");
   double termination_start_time_ms = os::elapsedTime() * 1000.0;
 
   // The G1CMTask class also extends the TerminatorTerminator class,
@@ -2864,8 +2951,9 @@ void G1CMTask::do_marking_step(double time_target_ms,
   // will abort this task so that it restarts.
   drain_satb_buffers();
   // ...then partially drain the local queue and the global stack
-  drain_local_queue(true);
-  drain_global_stack(true);
+  // drain_local_queue(true);
+  // drain_global_stack(true);
+  drain(true);
 
   do {
     process_current_region(bitmap_closure);
@@ -2873,8 +2961,15 @@ void G1CMTask::do_marking_step(double time_target_ms,
     // region we were holding on to, or we have aborted.
 
     // We then partially drain the local queue and the global stack.
-    drain_local_queue(true);
-    drain_global_stack(true);
+    drain(true);
+
+    /*
+    if (try_steal()) {
+      // Stole work
+      continue;
+    } */
+    // drain_local_queue(true);
+    // drain_global_stack(true);
 
     claim_new_region();
 
@@ -2885,15 +2980,16 @@ void G1CMTask::do_marking_step(double time_target_ms,
   // We cannot check whether the global stack is empty, since other
   // tasks might be pushing objects to it concurrently.
   assert(has_aborted() || _cm->out_of_regions(),
-         "at this point we should be out of regions");
+         "at this point we should be out of regions " PTR_FORMAT, p2i(_curr_region));
   // Try to reduce the number of available SATB buffers so that
   // remark has less work to do.
   drain_satb_buffers();
 
   // Since we've done everything else, we can now totally drain the
   // local queue and global stack.
-  drain_local_queue(false);
-  drain_global_stack(false);
+  // drain_local_queue(false);
+  // drain_global_stack(false);
+  drain(false);
 
   // Attempt at work stealing from other task's queues.
   if (do_stealing && !has_aborted()) {
@@ -2920,6 +3016,8 @@ void G1CMTask::do_marking_step(double time_target_ms,
   if (has_aborted()) {
     // The task was aborted for some reason.
     handle_abort(is_serial, elapsed_time_ms);
+  } else {
+   // TODO: verify that all stacks are empty 
   }
 }
 
@@ -2933,6 +3031,8 @@ G1CMTask::G1CMTask(uint worker_id,
   _cm(cm),
   _mark_bitmap(nullptr),
   _task_queue(task_queue),
+  _stacks(cm->stripes()),
+  _stripe(cm->stripes()->stripe_for_worker(cm->active_tasks(), worker_id)),
   _mark_stats_cache(mark_stats, G1RegionMarkStatsCache::RegionMarkStatsCacheSize),
   _calls(0),
   _time_target_ms(0.0),

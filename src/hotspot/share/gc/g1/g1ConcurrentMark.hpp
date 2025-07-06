@@ -29,6 +29,7 @@
 #include "gc/g1/g1ConcurrentMarkObjArrayProcessor.hpp"
 #include "gc/g1/g1HeapRegionSet.hpp"
 #include "gc/g1/g1HeapVerifier.hpp"
+#include "gc/g1/g1MarkStack.hpp"
 #include "gc/g1/g1RegionMarkStatsCache.hpp"
 #include "gc/shared/gcCause.hpp"
 #include "gc/shared/taskqueue.hpp"
@@ -50,41 +51,6 @@ class G1OldTracer;
 class G1RegionToSpaceMapper;
 class G1SurvivorRegions;
 class ThreadClosure;
-
-// This is a container class for either an oop or a continuation address for
-// mark stack entries. Both are pushed onto the mark stack.
-class G1TaskQueueEntry {
-private:
-  void* _holder;
-
-  static const uintptr_t ArraySliceBit = 1;
-
-  G1TaskQueueEntry(oop obj) : _holder(obj) {
-    assert(_holder != nullptr, "Not allowed to set null task queue element");
-  }
-  G1TaskQueueEntry(HeapWord* addr) : _holder((void*)((uintptr_t)addr | ArraySliceBit)) { }
-public:
-
-  G1TaskQueueEntry() : _holder(nullptr) { }
-  // Trivially copyable, for use in GenericTaskQueue.
-
-  static G1TaskQueueEntry from_slice(HeapWord* what) { return G1TaskQueueEntry(what); }
-  static G1TaskQueueEntry from_oop(oop obj) { return G1TaskQueueEntry(obj); }
-
-  oop obj() const {
-    assert(!is_array_slice(), "Trying to read array slice " PTR_FORMAT " as oop", p2i(_holder));
-    return cast_to_oop(_holder);
-  }
-
-  HeapWord* slice() const {
-    assert(is_array_slice(), "Trying to read oop " PTR_FORMAT " as array slice", p2i(_holder));
-    return (HeapWord*)((uintptr_t)_holder & ~ArraySliceBit);
-  }
-
-  bool is_oop() const { return !is_array_slice(); }
-  bool is_array_slice() const { return ((uintptr_t)_holder & ArraySliceBit) != 0; }
-  bool is_null() const { return _holder == nullptr; }
-};
 
 typedef GenericTaskQueue<G1TaskQueueEntry, mtGC> G1CMTaskQueue;
 typedef GenericTaskQueueSet<G1CMTaskQueue, mtGC> G1CMTaskQueueSet;
@@ -406,6 +372,8 @@ class G1ConcurrentMark : public CHeapObj<mtGC> {
   uint                    _num_active_tasks; // Number of tasks currently active
   G1CMTask**              _tasks;            // Task queue array (max_worker_id length)
 
+  G1MarkStackStripeSet    _stripes;
+
   G1CMTaskQueueSet*       _task_queues; // Task queue set
   TaskTerminator          _terminator;  // For termination
 
@@ -464,6 +432,10 @@ class G1ConcurrentMark : public CHeapObj<mtGC> {
   void finalize_marking();
 
   void weak_refs_work();
+
+  G1MarkStackStripeSet* stripes () { return &_stripes; }
+
+  size_t calculate_nstripes(uint nworkers) const;
 
   // After reclaiming empty regions, update heap sizes.
   void compute_new_sizes();
@@ -737,6 +709,9 @@ private:
   // the task queue of this task
   G1CMTaskQueue*              _task_queue;
 
+  G1MarkThreadLocalStacks     _stacks;
+  G1MarkStackStripe*          _stripe;
+
   G1RegionMarkStatsCache      _mark_stats_cache;
   // Number of calls to this task
   uint                        _calls;
@@ -918,6 +893,16 @@ public:
   // Move entries from the global stack, return true if we were successful to do so.
   bool get_entries_from_global_stack();
 
+  bool has_no_local_work() const {
+    return _stacks.is_empty();
+  }
+
+  void flush_stacks();
+
+  bool try_steal_local();
+  bool try_steal_global();
+  bool try_steal();
+  bool drain(bool partially);
   // Pops and scans objects from the local queue. If partially is
   // true, then it stops when the queue size is of a given limit. If
   // partially is false, then it stops when the queue is empty.

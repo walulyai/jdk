@@ -32,6 +32,7 @@
 #include "gc/g1/g1ConcurrentMarkObjArrayProcessor.inline.hpp"
 #include "gc/g1/g1HeapRegion.hpp"
 #include "gc/g1/g1HeapRegionRemSet.inline.hpp"
+#include "gc/g1/g1MarkStack.inline.hpp"
 #include "gc/g1/g1OopClosures.inline.hpp"
 #include "gc/g1/g1Policy.hpp"
 #include "gc/g1/g1RegionMarkStatsCache.inline.hpp"
@@ -115,17 +116,8 @@ inline void G1CMTask::push(G1TaskQueueEntry task_entry) {
               _g1h->heap_region_containing(task_entry.obj())), "invariant");
   assert(task_entry.is_array_slice() || _mark_bitmap->is_marked(cast_from_oop<HeapWord*>(task_entry.obj())), "invariant");
 
-  if (!_task_queue->push(task_entry)) {
-    // The local task queue looks full. We need to push some entries
-    // to the global stack.
-    move_entries_to_global_stack();
-
-    // this should succeed since, even if we overflow the global
-    // stack, we should have definitely removed some entries from the
-    // local queue. So, there must be space on it.
-    bool success = _task_queue->push(task_entry);
-    assert(success, "invariant");
-  }
+  G1MarkStackStripe* const stripe = _cm->stripes()->stripe_for_addr(task_entry.addr());
+  _stacks.push(stripe, task_entry);
 }
 
 inline bool G1CMTask::is_below_finger(oop obj, HeapWord* global_finger) const {
@@ -162,7 +154,7 @@ template<bool scan>
 inline void G1CMTask::process_grey_task_entry(G1TaskQueueEntry task_entry) {
   assert(scan || (task_entry.is_oop() && task_entry.obj()->is_typeArray()), "Skipping scan of grey non-typeArray");
   assert(task_entry.is_array_slice() || _mark_bitmap->is_marked(cast_from_oop<HeapWord*>(task_entry.obj())),
-         "Any stolen object should be a slice or marked");
+         "Any stolen object should be a slice or marked: %zu", task_entry.addr());
 
   if (scan) {
     if (task_entry.is_array_slice()) {
