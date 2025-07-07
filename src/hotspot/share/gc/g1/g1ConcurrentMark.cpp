@@ -2722,6 +2722,7 @@ void G1CMTask::attempt_termination(bool is_serial) {
     guarantee(_cm->out_of_regions(), "only way to reach here");
     guarantee(_cm->mark_stack_empty(), "only way to reach here");
     guarantee(_task_queue->size() == 0, "only way to reach here");
+    guarantee(_stacks.is_empty(), "only way to reach here");
     guarantee(!_cm->has_overflown(), "only way to reach here");
     guarantee(!has_aborted(), "should never happen if termination has completed");
   } else {
