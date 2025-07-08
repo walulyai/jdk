@@ -709,6 +709,8 @@ private:
   // the task queue of this task
   G1CMTaskQueue*              _task_queue;
 
+  G1MarkStack::Allocator _stack_allocator;
+
   G1MarkThreadLocalStacks     _stacks;
   G1MarkStackStripe*          _stripe;
 

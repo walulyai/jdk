@@ -57,6 +57,44 @@ void G1MarkStack::destroy(G1MarkStack* stack) {
   FreeHeap(stack);
 }
 
+G1MarkStack::AllocatorConfig::AllocatorConfig(size_t size)
+  : _capacity(size)
+{
+  assert(size >= 1, "Invalid capacity capacity %zu", size);
+}
+
+void* G1MarkStack::AllocatorConfig::allocate() {
+  size_t byte_size = size_in_bytes(capacity());
+  return NEW_C_HEAP_ARRAY(char, byte_size, mtGC);
+}
+
+void G1MarkStack::AllocatorConfig::deallocate(void* node) {
+  assert(node != nullptr, "precondition");
+  FREE_C_HEAP_ARRAY(char, node);
+}
+
+G1MarkStack::Allocator::Allocator(const char* name, size_t capacity) :
+  _config(capacity),
+  _free_list(name, &_config)
+{}
+
+size_t G1MarkStack::Allocator::free_count() const {
+  return _free_list.free_count();
+}
+
+G1MarkStack* G1MarkStack::Allocator::allocate() {
+  return ::new (_free_list.allocate()) G1MarkStack(capacity());
+}
+
+void G1MarkStack::Allocator::release(G1MarkStack* stack) {
+  assert(stack != nullptr, "precondition");
+  assert(stack->next() == nullptr, "precondition");
+  assert(stack->capacity() == capacity(),
+         "Wrong size %zu, expected %zu", stack->capacity(), capacity());
+  stack->~G1MarkStack();
+  _free_list.release(stack);
+}
+
 G1MarkStack* G1MarkStackStripe::steal_stack() {
   GlobalCounter::CriticalSection cs(Thread::current());
 
@@ -191,8 +229,8 @@ G1MarkStackStripe* G1MarkStackStripeSet::stripe_for_worker(uint nworkers, uint w
 }
 
 
-G1MarkThreadLocalStacks::G1MarkThreadLocalStacks(G1MarkStackStripeSet* stripes) {
-  _stripes = stripes;
+G1MarkThreadLocalStacks::G1MarkThreadLocalStacks(G1MarkStackStripeSet* stripes, G1MarkStack::Allocator* allocator)
+: _stripes(stripes),_allocator(allocator) {
   for (size_t i = 0; i < G1MarkStripesMax; i++) {
     _stacks[i] = nullptr;
   }

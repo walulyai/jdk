@@ -142,7 +142,8 @@ inline void G1MarkThreadLocalStacks::push(G1MarkStackStripe* stripe,
 
   // If no stack was available, allocate one and push to it
   const bool first_stack = prev_stack == nullptr;
-  G1MarkStack* const new_stack = G1MarkStack::create(first_stack);
+  // G1MarkStack* const new_stack = G1MarkStack::create(first_stack);
+  G1MarkStack* const new_stack = _allocator->allocate();
   *stackp = new_stack;
 
   new_stack->push(entry);
@@ -169,7 +170,8 @@ inline bool G1MarkThreadLocalStacks::pop(G1MarkStackStripe* stripe,
 
   if (stack->is_empty()) {
     // Eagerly free empty stacks while on a worker thread
-    G1MarkStack::destroy(stack);
+    //G1MarkStack::destroy(stack);
+    _allocator->release(stack);
     *stackp = nullptr;
   }
 

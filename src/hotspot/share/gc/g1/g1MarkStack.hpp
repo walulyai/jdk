@@ -25,6 +25,7 @@
 #ifndef SHARE_GC_G1_G1MARKSTACK_HPP
 #define SHARE_GC_G1_G1MARKSTACK_HPP
 #include "gc/g1/g1HeapRegion.hpp"
+#include "gc/shared/freeListAllocator.hpp"
 #include "gc/shared/taskqueue.hpp"
 #include "oops/oopsHierarchy.hpp"
 #include "utilities/globalDefinitions.hpp"
@@ -73,7 +74,7 @@ public:
 class G1MarkStack {
   size_t _top;
   const size_t _capacity;
-  G1MarkStack* _next;
+  G1MarkStack* volatile _next;
   // VLA implementation.
   G1TaskQueueEntry _entries[1];
 
@@ -97,8 +98,48 @@ public:
   G1MarkStack* volatile* next_addr() { return &_next; }
   inline void set_next(G1MarkStack* next);
 
+  size_t capacity() const { return _capacity; }
+
   void push(G1TaskQueueEntry entry);
   G1TaskQueueEntry pop();
+
+  class AllocatorConfig;
+  class Allocator;              // Free-list based allocator.
+};
+
+// We use BufferNode::AllocatorConfig to set the allocation options for the
+// FreeListAllocator.
+class G1MarkStack::AllocatorConfig : public FreeListConfig {
+  const size_t _capacity;
+
+public:
+  explicit AllocatorConfig(size_t size);
+
+  ~AllocatorConfig() = default;
+
+  void* allocate() override;
+
+  void deallocate(void* node) override;
+
+  size_t capacity() const { return _capacity; }
+};
+
+class G1MarkStack::Allocator {
+  friend class TestSupport;
+
+  AllocatorConfig _config;
+  FreeListAllocator _free_list;
+
+  NONCOPYABLE(Allocator);
+
+public:
+  Allocator(const char* name, size_t capacity);
+  ~Allocator() = default;
+
+  size_t capacity() const { return _config.capacity(); }
+  size_t free_count() const;
+  G1MarkStack* allocate();
+  void release(G1MarkStack* node);
 };
 
 class G1MarkStackStripe {
@@ -166,13 +207,14 @@ class G1MarkThreadLocalStacks {
   static constexpr size_t G1MarkStripesMax = 16;
   G1MarkStack* _stacks[G1MarkStripesMax];
   G1MarkStackStripeSet* _stripes;
+  G1MarkStack::Allocator* _allocator;
 
   G1MarkStack** stack_addr(G1MarkStackStripe* stripe) {
     return &_stacks[_stripes->stripe_id(stripe)];
   }
 
 public:
-  G1MarkThreadLocalStacks(G1MarkStackStripeSet* stripes);
+  G1MarkThreadLocalStacks(G1MarkStackStripeSet* stripes, G1MarkStack::Allocator* allocator);
 
   bool is_empty() const;
 

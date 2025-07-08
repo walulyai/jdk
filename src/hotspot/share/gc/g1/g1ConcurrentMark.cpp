@@ -2404,9 +2404,10 @@ bool G1CMTask::drain(bool partially) {
   while(_stacks.pop(_stripe, &entry)) {
     scan_task_entry(entry);
 
+    /*
     if (partially && (processed++ & 256) == 0) {
       return false;
-    }
+    }*/
   }
   return true;
 }
@@ -3032,7 +3033,8 @@ G1CMTask::G1CMTask(uint worker_id,
   _cm(cm),
   _mark_bitmap(nullptr),
   _task_queue(task_queue),
-  _stacks(cm->stripes()),
+  _stack_allocator("G1MarkStack Allocator", 128),
+  _stacks(cm->stripes(), &_stack_allocator),
   _stripe(cm->stripes()->stripe_for_worker(cm->active_tasks(), worker_id)),
   _mark_stats_cache(mark_stats, G1RegionMarkStatsCache::RegionMarkStatsCacheSize),
   _calls(0),
