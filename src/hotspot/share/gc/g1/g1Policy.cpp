@@ -681,7 +681,7 @@ void G1Policy::record_young_collection_start() {
          max_survivor_regions(), _g1h->num_used_regions(), _g1h->max_num_regions());
   assert_used_and_recalculate_used_equal(_g1h);
 
-  phase_times()->record_cur_collection_start_sec(now.seconds());
+  phase_times()->record_cur_collection_start_sec(now.seconds(), os::elapsed_process_cpu_time());
 
   // do that for any other surv rate groups
   _eden_surv_rate_group->stop_adding_regions();
@@ -796,6 +796,7 @@ void G1Policy::record_young_collection_end(bool concurrent_operation_is_full_mar
   G1GCPhaseTimes* p = phase_times();
 
   double start_time_sec = phase_times()->cur_collection_start_sec();
+
   double end_time_sec = Ticks::now().seconds();
   double pause_time_ms = (end_time_sec - start_time_sec) * 1000.0;
 
@@ -1341,12 +1342,15 @@ void G1Policy::maybe_start_marking() {
 }
 
 void G1Policy::update_gc_pause_time_ratios(G1GCPauseType gc_type, double start_time_sec, double end_time_sec) {
+  double start_cpu_time_sec = phase_times()->cur_process_collection_start_sec();
 
   double pause_time_sec = end_time_sec - start_time_sec;
   double pause_time_ms = pause_time_sec * 1000.0;
 
-  _analytics->compute_pause_time_ratios(end_time_sec, pause_time_ms);
-  _analytics->update_recent_gc_times(end_time_sec, pause_time_ms);
+  double elapsed_gc_cpu_time = _g1h->elapsed_gc_cpu_time();
+
+  _analytics->update_recent_gc_times(start_cpu_time_sec, end_time_sec, elapsed_gc_cpu_time, pause_time_sec);
+  _analytics->compute_gc_cpu_usage();
 
   if (gc_type == G1GCPauseType::Cleanup || gc_type == G1GCPauseType::Remark) {
     _analytics->append_prev_collection_pause_end_ms(pause_time_ms);

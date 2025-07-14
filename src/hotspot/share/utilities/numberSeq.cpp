@@ -27,6 +27,8 @@
 #include "utilities/globalDefinitions.hpp"
 #include "utilities/numberSeq.hpp"
 
+#include <cmath>
+
 AbsSeq::AbsSeq(double alpha) :
   _num(0), _sum(0.0), _sum_of_squares(0.0),
   _davg(0.0), _dvariance(0.0), _alpha(alpha) {
@@ -153,6 +155,7 @@ void TruncatedSeq::add(double val) {
 
   // get the oldest value in the sequence...
   double old_val = _sequence[_next];
+  double  old_sum = _sum;
   // ...remove it from the sum and sum of squares
   _sum -= old_val;
   _sum_of_squares -= old_val * old_val;
@@ -168,8 +171,8 @@ void TruncatedSeq::add(double val) {
   // only increase it if the buffer is not full
   if (_num < _length)
     ++_num;
-
-  guarantee( variance() > -1.0, "variance should be >= 0" );
+  guarantee(!std::isnan(_sum), "Why sum %0.4f val %0.4f", _sum, val );
+  guarantee( variance() > -1.0, "variance should be >= 0 but we get %0.4f num %d avg %0.4f", variance(), _num , old_sum);
 }
 
 // can't easily keep track of this incrementally...

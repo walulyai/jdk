@@ -32,6 +32,8 @@
 #include "utilities/globalDefinitions.hpp"
 #include "utilities/numberSeq.hpp"
 
+#include "logging/log.hpp"
+
 // Different defaults for different number of GC threads
 // They were chosen by running GCOld and SPECjbb on debris with different
 //   numbers of GC threads and choosing them based on the results
@@ -68,7 +70,11 @@ static double non_young_other_cost_per_region_ms_defaults[] = {
 
 G1Analytics::G1Analytics(const G1Predictions* predictor) :
     _predictor(predictor),
-    _recent_gc_times_ms(NumPrevPausesForHeuristics),
+    _last_process_time(),
+    _last_gc_cpu_time(),
+    _last_gc_pause_end_time(),
+    _process_times(),
+    _gc_times(),
     _concurrent_mark_remark_times_ms(NumPrevPausesForHeuristics),
     _concurrent_mark_cleanup_times_ms(NumPrevPausesForHeuristics),
     _alloc_rate_ms_seq(TruncatedSeqLength),
@@ -87,12 +93,12 @@ G1Analytics::G1Analytics(const G1Predictions* predictor) :
     _constant_other_time_ms_seq(TruncatedSeqLength),
     _young_other_cost_per_region_ms_seq(TruncatedSeqLength),
     _non_young_other_cost_per_region_ms_seq(TruncatedSeqLength),
-    _recent_prev_end_times_for_all_gcs_sec(NumPrevPausesForHeuristics),
-    _long_term_pause_time_ratio(0.0),
-    _short_term_pause_time_ratio(0.0) {
+    _avg_gc_cpu_usage(0.0),
+    _latest_gc_cpu_usage(0.0) {
 
+  _last_process_time = os::elapsed_process_cpu_time();
+  _last_gc_cpu_time      = 0.0;
   // Seed sequences with initial values.
-  _recent_prev_end_times_for_all_gcs_sec.add(os::elapsedTime());
   _prev_collection_pause_end_ms = os::elapsedTime() * 1000.0;
 
   uint index = MIN2(ParallelGCThreads - 1, 7u);
@@ -157,15 +163,14 @@ void G1Analytics::report_alloc_rate_ms(double alloc_rate) {
   _alloc_rate_ms_seq.add(alloc_rate);
 }
 
-void G1Analytics::compute_pause_time_ratios(double end_time_sec, double pause_time_ms) {
-  double long_interval_ms = (end_time_sec - oldest_known_gc_end_time_sec()) * 1000.0;
-  double gc_pause_time_ms = _recent_gc_times_ms.sum() - _recent_gc_times_ms.oldest() + pause_time_ms;
-  _long_term_pause_time_ratio = gc_pause_time_ms / long_interval_ms;
-  _long_term_pause_time_ratio = clamp(_long_term_pause_time_ratio, 0.0, 1.0);
+void G1Analytics::compute_gc_cpu_usage() {
+  const double avg_gc_time      = _gc_times.avg();
+  const double avg_process_time = _process_times.avg();
+  _avg_gc_cpu_usage = avg_gc_time / avg_process_time;
 
-  double short_interval_ms = (end_time_sec - most_recent_gc_end_time_sec()) * 1000.0;
-  _short_term_pause_time_ratio = pause_time_ms / short_interval_ms;
-  _short_term_pause_time_ratio = clamp(_short_term_pause_time_ratio, 0.0, 1.0);
+  const double latest_gc_time  = _gc_times.last();
+  const double latest_process_time = _process_times.last();
+  _latest_gc_cpu_usage = latest_gc_time / latest_process_time;
 }
 
 void G1Analytics::report_concurrent_refine_rate_ms(double cards_per_ms) {
@@ -296,18 +301,35 @@ size_t G1Analytics::predict_pending_cards(bool for_young_only_phase) const {
   return predict_size(&_pending_cards_seq, for_young_only_phase);
 }
 
-double G1Analytics::oldest_known_gc_end_time_sec() const {
-  return _recent_prev_end_times_for_all_gcs_sec.oldest();
-}
+// Anything below that is considered to be zero
+#define MIN_TIMER_GRANULARITY 0.0000001
 
-double G1Analytics::most_recent_gc_end_time_sec() const {
-  return _recent_prev_end_times_for_all_gcs_sec.last();
-}
+void G1Analytics::update_recent_gc_times(double cpu_time_pause_start, double pause_end_time, double elapsed_gc_cpu_time, double pause_time) {
+  const double process_time_now = os::elapsed_process_cpu_time();
+  double process_time = process_time_now - _last_process_time;
+  double gc_pause_cpu_time = process_time_now - cpu_time_pause_start;
+  double gc_time_since_last = elapsed_gc_cpu_time - _last_gc_cpu_time;
+  
+  double time_between_gc_ends = pause_end_time - prev_collection_pause_end_ms() / 1000.0;
 
-void G1Analytics::update_recent_gc_times(double end_time_sec,
-                                         double pause_time_ms) {
-  _recent_gc_times_ms.add(pause_time_ms);
-  _recent_prev_end_times_for_all_gcs_sec.add(end_time_sec);
+  
+  _last_process_time = process_time_now;
+  _last_gc_cpu_time  = elapsed_gc_cpu_time;
+
+  if (process_time * 1000.0 < MIN_TIMER_GRANULARITY) {
+    process_time = time_between_gc_ends;
+  }
+
+  if (gc_time_since_last * 1000.0 < MIN_TIMER_GRANULARITY) {
+    gc_time_since_last = pause_time;
+  }
+  log_debug(gc) ("update_recent_gc_times cpu ratio %0.4f | %0.4f pause ration [process_time %0.4f / %0.4f time_between_gc_ends ] [ gc_time_since_last %0.4f / %0.4f pause_time (gc_pause_cpu_time %0.4f)]", 
+                gc_time_since_last / process_time,  pause_time / time_between_gc_ends,
+                process_time * 1000.0, time_between_gc_ends * 1000.0,
+                gc_time_since_last * 1000.0, pause_time * 1000.0,
+                gc_pause_cpu_time * 1000.0);
+  _process_times.add(process_time);
+  _gc_times.add(gc_time_since_last);
 }
 
 void G1Analytics::report_concurrent_mark_cleanup_times_ms(double ms) {
