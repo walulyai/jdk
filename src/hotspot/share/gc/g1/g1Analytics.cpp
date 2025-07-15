@@ -32,6 +32,8 @@
 #include "utilities/globalDefinitions.hpp"
 #include "utilities/numberSeq.hpp"
 
+#include "logging/log.hpp"
+
 // Different defaults for different number of GC threads
 // They were chosen by running GCOld and SPECjbb on debris with different
 //   numbers of GC threads and choosing them based on the results
@@ -165,8 +167,18 @@ void G1Analytics::compute_pause_time_ratios(double end_time_sec, double pause_ti
   _long_term_pause_time_ratio = clamp(_long_term_pause_time_ratio, 0.0, 1.0);
 
   double short_interval_ms = (end_time_sec - most_recent_gc_end_time_sec()) * 1000.0;
-  _short_term_pause_time_ratio = pause_time_ms / short_interval_ms;
+
+  uint num_cpus = (uint)os::active_processor_count();
+  num_cpus = MIN2(num_cpus, MAX2(ConcGCThreads, ParallelGCThreads));
+
+  // This approximates the wall time "lost" to concurrent GC workers from the mutators's perspective
+  double concurrent_gc_impact_time = _concurrent_gc_cpu_time_ms / num_cpus;
+
+  _short_term_pause_time_ratio = (pause_time_ms + concurrent_gc_impact_time) / short_interval_ms;
   _short_term_pause_time_ratio = clamp(_short_term_pause_time_ratio, 0.0, 1.0);
+
+  log_debug(gc) ("compute_pause_time_ratios pause_time_ms %0.4f, short_interval_ms %0.4f num_cpus %u concurrent_gc_impact_time %0.4f _short_term_pause_time_ratio %0.4f (%0.4f)",
+                  pause_time_ms, short_interval_ms, num_cpus, concurrent_gc_impact_time, _short_term_pause_time_ratio , ((pause_time_ms) / short_interval_ms));
 }
 
 void G1Analytics::report_concurrent_refine_rate_ms(double cards_per_ms) {

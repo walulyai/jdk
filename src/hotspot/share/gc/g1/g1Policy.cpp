@@ -705,7 +705,7 @@ void G1Policy::record_concurrent_mark_init_end() {
 void G1Policy::record_concurrent_mark_remark_end() {
   double end_time_sec = os::elapsedTime();
   double start_time_sec = phase_times()->cur_collection_start_sec();
-  double elapsed_time_ms = (end_time_sec - start_time_sec)*1000.0;
+  double elapsed_time_ms = (end_time_sec - start_time_sec) * 1000.0;
   _analytics->report_concurrent_mark_remark_times_ms(elapsed_time_ms);
   record_pause(G1GCPauseType::Remark, start_time_sec, end_time_sec);
 }
