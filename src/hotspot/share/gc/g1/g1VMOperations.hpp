@@ -108,4 +108,12 @@ public:
   void work() override;
 };
 
+// Macro to execute a abortion check
+#define CHECK_SHUTDOWN()                               \
+  do {                                                 \
+    if (G1CollectedHeap::heap()->is_shutting_down()) { \
+      return;                                          \
+    }                                                  \
+  } while (false)
+
 #endif // SHARE_GC_G1_G1VMOPERATIONS_HPP

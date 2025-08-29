@@ -23,6 +23,7 @@
  */
 
 #include "gc/shared/concurrentGCThread.hpp"
+#include "logging/log.hpp"
 #include "runtime/atomic.hpp"
 #include "runtime/init.hpp"
 #include "runtime/jniHandles.hpp"
@@ -59,6 +60,7 @@ void ConcurrentGCThread::stop() {
   // Signal thread to terminate
   Atomic::release_store_fence(&_should_terminate, true);
 
+  log_info(gc) ("ConcurrentGCThread::stop() Triggered");
   stop_service();
 
   // Wait for thread to terminate
