@@ -175,6 +175,76 @@ uint G1Policy::calculate_desired_eden_length_by_mmu() const {
   return (uint) ceil(alloc_rate_ms * when_ms);
 }
 
+uint G1Policy::search_for_optimal_regions(uint num_regions_to_expand) {
+
+  const bool for_young_only_phase = collector_state()->in_young_only_phase();
+  const size_t pending_cards = _analytics->predict_pending_cards(for_young_only_phase);
+  const size_t card_rs_length = _analytics->predict_card_rs_length(for_young_only_phase);
+  const size_t code_root_rs_length = _analytics->predict_code_root_rs_length(for_young_only_phase);
+
+  uint cur_num_committed = _g1h->num_committed_regions();
+
+  uint num_committed_after_expand = num_regions_to_expand + _g1h->num_committed_regions();
+  uint num_free_regions = _g1h->num_free_regions();
+
+  G1YoungGenSizer young_gen_sizer = _young_gen_sizer;
+  young_gen_sizer.heap_size_changed(num_committed_after_expand);
+
+  const uint young_desired_length = calculate_young_desired_length(pending_cards, card_rs_length, code_root_rs_length, young_gen_sizer);
+
+  uint max_commit = num_regions_to_expand;
+  // TODO: probably need to compensate for survivors
+  uint min_commit = (young_desired_length > num_free_regions) ?
+                    young_desired_length - num_free_regions : 0;
+
+  if (min_commit >= num_regions_to_expand) {
+    return num_regions_to_expand;
+  }
+
+
+  // TODO: can we get same young length with the minimum.
+  num_committed_after_expand = min_commit + _g1h->num_committed_regions();
+  young_gen_sizer.heap_size_changed(num_committed_after_expand);
+  uint scaled_young_length = calculate_young_desired_length(pending_cards, card_rs_length, code_root_rs_length, young_gen_sizer);
+
+  if (scaled_young_length >= young_desired_length) {
+    return min_commit;
+  }
+
+  // TODO: Binary search for minimal number of regions to commit
+  while ((max_commit - min_commit) > 1) {
+    uint mid_point = min_commit + ((max_commit - min_commit) / 2);
+    num_committed_after_expand = cur_num_committed + mid_point;
+
+    young_gen_sizer.heap_size_changed(num_committed_after_expand);
+    uint scaled_young_length = calculate_young_desired_length(pending_cards, card_rs_length, code_root_rs_length, young_gen_sizer);
+
+    if (scaled_young_length < young_desired_length) {
+      min_commit = mid_point;
+    } else {
+      max_commit = mid_point;
+    }
+
+    assert(min_commit <= max_commit, "invariant");
+  }
+  return min_commit;
+}
+
+size_t G1Policy::scale_resize_by_young_length_bounds(size_t resize_bytes) {
+  size_t aligned_expand_bytes = os::align_up_vm_page_size(resize_bytes);
+  aligned_expand_bytes = align_up(aligned_expand_bytes, G1HeapRegion::GrainBytes);
+  uint num_regions_to_expand = (uint)(aligned_expand_bytes / G1HeapRegion::GrainBytes);
+
+  uint scaled_regions_to_expand = search_for_optimal_regions(num_regions_to_expand);
+
+  log_debug(gc, ergo, heap) ("Heap resize: scale by young length bounds: num_regions_to_expand %u scaled_regions_to_expand %u num free regions %u",
+                             num_regions_to_expand,
+                             scaled_regions_to_expand,
+                            _g1h->num_free_regions());
+
+  return scaled_regions_to_expand * G1HeapRegion::GrainBytes;
+}
+
 void G1Policy::update_young_length_bounds() {
   assert(!Universe::is_fully_initialized() || SafepointSynchronize::is_at_safepoint(), "must be");
   bool for_young_only_phase = collector_state()->in_young_only_phase();
@@ -225,8 +295,15 @@ void G1Policy::update_young_length_bounds(size_t pending_cards, size_t card_rs_l
 uint G1Policy::calculate_young_desired_length(size_t pending_cards,
                                               size_t card_rs_length,
                                               size_t code_root_rs_length) const {
-  uint min_young_length_by_sizer = _young_gen_sizer.min_desired_young_length();
-  uint max_young_length_by_sizer = _young_gen_sizer.max_desired_young_length();
+  return calculate_young_desired_length(pending_cards, card_rs_length, code_root_rs_length, _young_gen_sizer);
+}
+
+uint G1Policy::calculate_young_desired_length(size_t pending_cards,
+                                              size_t card_rs_length,
+                                              size_t code_root_rs_length,
+                                              const G1YoungGenSizer& young_gen_sizer) const {
+  uint min_young_length_by_sizer = young_gen_sizer.min_desired_young_length();
+  uint max_young_length_by_sizer = young_gen_sizer.max_desired_young_length();
 
   assert(min_young_length_by_sizer >= 1, "invariant");
   assert(max_young_length_by_sizer >= min_young_length_by_sizer, "invariant");
@@ -420,7 +497,7 @@ uint G1Policy::calculate_desired_eden_length_before_young_only(double base_time_
   // makes sense fits within the target pause time.
 
   G1YoungLengthPredictor p(base_time_ms,
-                           _free_regions_at_end_of_collection,
+                           max_eden_length,
                            _mmu_tracker->max_gc_time() * 1000.0,
                            this);
   if (p.will_fit(min_eden_length)) {
