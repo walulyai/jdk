@@ -187,9 +187,11 @@ uint G1Policy::search_for_optimal_regions(uint num_regions_to_expand) {
   uint num_committed_after_expand = num_regions_to_expand + _g1h->num_committed_regions();
   uint num_free_regions = _g1h->num_free_regions();
 
+
   G1YoungGenSizer young_gen_sizer = _young_gen_sizer;
   young_gen_sizer.heap_size_changed(num_committed_after_expand);
 
+  _free_regions_at_end_of_collection = num_free_regions + num_regions_to_expand;
   const uint young_desired_length = calculate_young_desired_length(pending_cards, card_rs_length, code_root_rs_length, young_gen_sizer);
 
   uint max_commit = num_regions_to_expand;
@@ -205,6 +207,7 @@ uint G1Policy::search_for_optimal_regions(uint num_regions_to_expand) {
   // TODO: can we get same young length with the minimum.
   num_committed_after_expand = min_commit + _g1h->num_committed_regions();
   young_gen_sizer.heap_size_changed(num_committed_after_expand);
+  _free_regions_at_end_of_collection = num_free_regions + min_commit;
   uint scaled_young_length = calculate_young_desired_length(pending_cards, card_rs_length, code_root_rs_length, young_gen_sizer);
 
   if (scaled_young_length >= young_desired_length) {
@@ -217,6 +220,7 @@ uint G1Policy::search_for_optimal_regions(uint num_regions_to_expand) {
     num_committed_after_expand = cur_num_committed + mid_point;
 
     young_gen_sizer.heap_size_changed(num_committed_after_expand);
+    _free_regions_at_end_of_collection = num_free_regions + min_commit;
     uint scaled_young_length = calculate_young_desired_length(pending_cards, card_rs_length, code_root_rs_length, young_gen_sizer);
 
     if (scaled_young_length < young_desired_length) {
@@ -497,7 +501,7 @@ uint G1Policy::calculate_desired_eden_length_before_young_only(double base_time_
   // makes sense fits within the target pause time.
 
   G1YoungLengthPredictor p(base_time_ms,
-                           max_eden_length,
+                           _free_regions_at_end_of_collection,
                            _mmu_tracker->max_gc_time() * 1000.0,
                            this);
   if (p.will_fit(min_eden_length)) {
