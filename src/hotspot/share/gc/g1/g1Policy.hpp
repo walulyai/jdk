@@ -207,7 +207,7 @@ private:
   // If no parameters are passed, predict pending cards, card set remset length and
   // code root remset length using the prediction model.
   void update_young_length_bounds();
-  void update_young_length_bounds(size_t pending_cards, size_t card_rs_length, size_t code_root_rs_length);
+  void update_young_length_bounds(size_t pending_cards, size_t card_rs_length, size_t code_root_rs_length, uint num_free_regions);
 
   // Calculate and return the minimum desired eden length based on the MMU target.
   uint calculate_desired_eden_length_by_mmu() const;
@@ -217,29 +217,32 @@ private:
   // (inclusive) within which eden can grow.
   uint calculate_desired_eden_length_by_pause(double base_time_ms,
                                               uint min_eden_length,
-                                              uint max_eden_length) const;
+                                              uint max_eden_length,
+                                              uint num_free_regions) const;
 
   // Calculate the desired eden length that can fit into the pause time
   // goal before young only gcs.
   uint calculate_desired_eden_length_before_young_only(double base_time_ms,
                                                        uint min_eden_length,
-                                                       uint max_eden_length) const;
+                                                       uint max_eden_length,
+                                                       uint num_free_regions) const;
 
   // Calculates the desired eden length before mixed gc so that after adding the
   // minimum amount of old gen regions from the collection set, the eden fits into
   // the pause time goal.
   uint calculate_desired_eden_length_before_mixed(double base_time_ms,
                                                   uint min_eden_length,
-                                                  uint max_eden_length) const;
+                                                  uint max_eden_length,
+                                                  uint num_free_regions) const;
 
   // Calculate desired young length based on current situation without taking actually
   // available free regions into account.
-  uint calculate_young_desired_length(size_t pending_cards, size_t card_rs_length, size_t code_root_rs_length) const;
-  uint calculate_young_desired_length(size_t pending_cards, size_t card_rs_length, size_t code_root_rs_length, const G1YoungGenSizer& young_gen_sizer) const;
+  uint calculate_young_desired_length(size_t pending_cards, size_t card_rs_length, size_t code_root_rs_length, uint num_free_regions) const;
+  uint calculate_young_desired_length(size_t pending_cards, size_t card_rs_length, size_t code_root_rs_length, uint num_free_regions, const G1YoungGenSizer& young_gen_sizer) const;
   // Limit the given desired young length to available free regions.
-  uint calculate_young_target_length(uint desired_young_length) const;
+  uint calculate_young_target_length(uint desired_young_length, uint num_free_regions) const;
 
-  uint search_for_optimal_regions(uint num_regions_to_expand);
+  uint search_for_minimal_commit(uint num_regions_to_expand, uint num_free_regions);
 
   double predict_survivor_regions_evac_time() const;
   double predict_retained_regions_evac_time() const;
@@ -269,7 +272,7 @@ public:
   // during a mixed GC.
   uint calc_max_old_cset_length() const;
 
-  size_t scale_resize_by_young_length_bounds(size_t resize_bytes);
+  size_t update_resize_request_by_young_length_bounds(size_t resize_bytes, uint num_free_regions);
 
 private:
   void abandon_collection_set_candidates();
