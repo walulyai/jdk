@@ -184,13 +184,13 @@ uint G1Policy::search_for_minimal_commit(uint num_regions_to_expand, uint num_fr
 
   const uint cur_num_committed = _g1h->num_committed_regions();
 
-  uint num_committed_after_expand = num_regions_to_expand + cur_num_committed;
-  uint free_regions_after_expand = num_regions_to_expand + num_free_regions;
+  uint num_committed_after_size_change = num_regions_to_expand + cur_num_committed;
+  uint free_regions_after_size_change = num_regions_to_expand + num_free_regions;
 
   G1YoungGenSizer young_gen_sizer = _young_gen_sizer;
-  young_gen_sizer.heap_size_changed(num_committed_after_expand);
+  young_gen_sizer.heap_size_changed(num_committed_after_size_change);
 
-  const uint young_desired_length = calculate_young_desired_length(pending_cards, card_rs_length, code_root_rs_length, free_regions_after_expand, young_gen_sizer);
+  const uint young_desired_length = calculate_young_desired_length(pending_cards, card_rs_length, code_root_rs_length, free_regions_after_size_change, young_gen_sizer);
 
   uint max_commit = num_regions_to_expand;
 
@@ -206,14 +206,14 @@ uint G1Policy::search_for_minimal_commit(uint num_regions_to_expand, uint num_fr
 
   // Can the desired young length be satisfied with the minimum amount of committed
   // regions?
-  num_committed_after_expand = min_commit + cur_num_committed;
-  free_regions_after_expand = min_commit + num_free_regions;
+  num_committed_after_size_change = min_commit + cur_num_committed;
+  free_regions_after_size_change = min_commit + num_free_regions;
 
-  young_gen_sizer.heap_size_changed(num_committed_after_expand);
+  young_gen_sizer.heap_size_changed(num_committed_after_size_change);
   uint desired_young_length_using_min_commit = calculate_young_desired_length(pending_cards,
                                                                               card_rs_length,
                                                                               code_root_rs_length,
-                                                                              free_regions_after_expand,
+                                                                              free_regions_after_size_change,
                                                                               young_gen_sizer);
 
   if (desired_young_length_using_min_commit >= young_desired_length) {
@@ -225,17 +225,17 @@ uint G1Policy::search_for_minimal_commit(uint num_regions_to_expand, uint num_fr
   // This needs a search as there are several nonlinearities in the desired length
   // calculation.
   while ((max_commit - min_commit) > 1) {
-    uint mid_point = min_commit + ((max_commit - min_commit) / 2);
-    num_committed_after_expand = mid_point + cur_num_committed;
-    free_regions_after_expand = mid_point + num_free_regions;
+    uint mid_commit = min_commit + ((max_commit - min_commit) / 2);
+    num_committed_after_size_change = mid_commit + cur_num_committed;
+    free_regions_after_size_change = mid_commit + num_free_regions;
 
-    young_gen_sizer.heap_size_changed(num_committed_after_expand);
-    uint cur_young_desired_length = calculate_young_desired_length(pending_cards, card_rs_length, code_root_rs_length, free_regions_after_expand, young_gen_sizer);
+    young_gen_sizer.heap_size_changed(num_committed_after_size_change);
+    uint cur_young_desired_length = calculate_young_desired_length(pending_cards, card_rs_length, code_root_rs_length, free_regions_after_size_change, young_gen_sizer);
 
     if (cur_young_desired_length < young_desired_length) {
-      min_commit = mid_point;
+      min_commit = mid_commit;
     } else {
-      max_commit = mid_point;
+      max_commit = mid_commit;
     }
 
     assert(min_commit <= max_commit, "invariant");
