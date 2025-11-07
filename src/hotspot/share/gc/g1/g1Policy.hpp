@@ -293,7 +293,7 @@ private:
 
 public:
 
-  G1Policy(STWGCTimer* gc_timer);
+  G1Policy(G1CollectedHeap* g1h, STWGCTimer* gc_timer);
 
   virtual ~G1Policy();
 
@@ -309,7 +309,7 @@ public:
   // This should be called after the heap is resized.
   void record_new_heap_size(uint new_number_of_regions);
 
-  void init(G1CollectedHeap* g1h, G1CollectionSet* collection_set);
+  void init(G1CollectionSet* collection_set);
 
   // Record the start and end of the young gc pause.
   void record_young_gc_pause_start();

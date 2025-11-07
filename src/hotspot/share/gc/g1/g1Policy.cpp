@@ -50,7 +50,7 @@
 #include "utilities/growableArray.hpp"
 #include "utilities/pair.hpp"
 
-G1Policy::G1Policy(STWGCTimer* gc_timer) :
+G1Policy::G1Policy(G1CollectedHeap* g1h, STWGCTimer* gc_timer) :
   _predictor((100 - G1ConfidencePercent) / 100.0),
   _analytics(new G1Analytics(&_predictor)),
   _remset_tracker(),
@@ -63,14 +63,14 @@ G1Policy::G1Policy(STWGCTimer* gc_timer) :
   _young_list_target_length(0),
   _eden_surv_rate_group(new G1SurvRateGroup()),
   _survivor_surv_rate_group(new G1SurvRateGroup()),
-  _reserve_factor((double) G1ReservePercent / 100.0),
+  _reserve_factor(UseNewCode ? 0.0 : (G1ReservePercent / 100.0)),
   _reserve_regions(0),
   _young_gen_sizer(),
   _free_regions_at_end_of_collection(0),
   _pending_cards_from_gc(0),
   _concurrent_start_to_mixed(),
   _collection_set(nullptr),
-  _g1h(nullptr),
+  _g1h(g1h),
   _phase_times_timer(gc_timer),
   _phase_times(nullptr),
   _tenuring_threshold(MaxTenuringThreshold),
@@ -85,8 +85,7 @@ G1Policy::~G1Policy() {
 
 G1CollectorState* G1Policy::collector_state() const { return _g1h->collector_state(); }
 
-void G1Policy::init(G1CollectedHeap* g1h, G1CollectionSet* collection_set) {
-  _g1h = g1h;
+void G1Policy::init(G1CollectionSet* collection_set) {
   _collection_set = collection_set;
 
   assert(Heap_lock->owned_by_self(), "Locking discipline.");
@@ -157,10 +156,13 @@ class G1YoungLengthPredictor {
 
 void G1Policy::record_new_heap_size(uint new_number_of_regions) {
   // re-calculate the necessary reserve
-  double reserve_regions_d = (double) new_number_of_regions * _reserve_factor;
-  // We use ceiling so that if reserve_regions_d is > 0.0 (but
-  // smaller than 1.0) we'll get 1.
-  _reserve_regions = (uint) ceil(reserve_regions_d);
+  guarantee(_g1h->max_num_regions() > 0, "must be");
+  uint region_boundary = (uint)ceil(_g1h->max_num_regions() * (1.0 - _reserve_factor));
+  if (new_number_of_regions > region_boundary) {
+    _reserve_regions = new_number_of_regions - region_boundary;
+  } else {
+    _reserve_regions = 0;
+  }
 
   _young_gen_sizer.heap_size_changed(new_number_of_regions);
 

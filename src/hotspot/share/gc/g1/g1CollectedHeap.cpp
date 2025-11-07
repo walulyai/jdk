@@ -1311,7 +1311,7 @@ G1CollectedHeap::G1CollectedHeap() :
   _survivor(),
   _gc_timer_stw(new STWGCTimer()),
   _gc_tracer_stw(new G1NewTracer()),
-  _policy(new G1Policy(_gc_timer_stw)),
+  _policy(new G1Policy(this, _gc_timer_stw)),
   _heap_sizing_policy(nullptr),
   _collection_set(this, _policy),
   _rem_set(nullptr),
@@ -1572,7 +1572,7 @@ jint G1CollectedHeap::initialize() {
   }
 
   // Perform any initialization actions delegated to the policy.
-  policy()->init(this, &_collection_set);
+  policy()->init(&_collection_set);
 
   jint ecode = initialize_concurrent_refinement();
   if (ecode != JNI_OK) {
