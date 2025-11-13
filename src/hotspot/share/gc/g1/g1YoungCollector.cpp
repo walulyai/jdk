@@ -1098,6 +1098,10 @@ void G1YoungCollector::post_evacuate_collection_set(G1EvacInfo* evacuation_info,
 
   _g1h->gc_epilogue(false);
 
+  _concurrent_operation_is_full_mark = policy()->concurrent_operation_is_full_mark("Revise IHOP", _allocation_word_size);
+
+  policy()->report_phase_stats(_concurrent_operation_is_full_mark, !evacuation_alloc_failed() /* update_stats */);
+
   _g1h->resize_heap_after_young_collection(_allocation_word_size);
 }
 

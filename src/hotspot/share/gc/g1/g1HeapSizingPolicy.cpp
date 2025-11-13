@@ -252,7 +252,7 @@ size_t G1HeapSizingPolicy::young_collection_resize_amount(bool& expand, size_t a
   log_trace(gc, ergo, heap)("Heap resize triggers: long term count: %u "
                             "long term count limit: %u "
                             "short term delta: %1.2f "
-                            "recent recorded short term deltas: %u"
+                            "recent recorded short term deltas: %u "
                             "GC CPU usage deviation counter: %d",
                             _long_term_count,
                             long_term_count_limit(),
@@ -305,8 +305,8 @@ size_t G1HeapSizingPolicy::young_collection_resize_amount(bool& expand, size_t a
       return resize_bytes;
     }
 
-    log_trace(gc, ergo, heap)("expand deltas long %1.2f short %1.2f use long term %u delta %1.2f",
-                              long_term_delta, avg_short_term_delta, use_long_term_delta, delta);
+    log_trace(gc, ergo, heap)("Heap resize expand deltas: long %1.2f short %1.2f use long term %s delta %1.2f",
+                              long_term_delta, avg_short_term_delta, BOOL_TO_STR(use_long_term_delta), delta);
 
     resize_bytes = young_collection_expand_amount(delta);
     // TODO: Add a comment

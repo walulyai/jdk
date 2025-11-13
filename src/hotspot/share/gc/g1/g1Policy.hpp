@@ -328,6 +328,8 @@ public:
                                    bool allocation_failure,
                                    size_t allocation_word_size);
 
+  void report_phase_stats(bool concurrent_operation_is_full_mark, bool update_stats);
+
   // Record the start and end of a full collection.
   void record_full_collection_start();
   void record_full_collection_end(size_t allocation_word_size);

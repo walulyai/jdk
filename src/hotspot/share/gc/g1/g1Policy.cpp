@@ -142,7 +142,9 @@ class G1YoungLengthPredictor {
     // (100 + TargetPLABWastePct) represents the increase in expected bytes during
     // copying due to anticipated waste in the PLABs.
     const double safety_factor = (100.0 / G1ConfidencePercent) * (100 + TargetPLABWastePct) / 100.0;
-    const size_t expected_bytes_to_copy = (size_t)(safety_factor * bytes_to_copy);
+    const size_t all_copied = young_length * G1HeapRegion::GrainBytes * (100 + TargetPLABWastePct) / 100.0;
+
+    const size_t expected_bytes_to_copy = MIN2((size_t)(safety_factor * bytes_to_copy), all_copied);
 
     if (expected_bytes_to_copy > free_bytes) {
       // end condition 3: out-of-space
@@ -194,6 +196,11 @@ uint G1Policy::search_for_minimal_commit(uint num_regions_to_expand, uint num_fr
 
   const uint young_desired_length = calculate_young_desired_length(pending_cards, card_rs_length, code_root_rs_length, free_regions_after_size_change, young_gen_sizer);
 
+  if (young_desired_length == young_gen_sizer.min_desired_young_length()) {
+    // No need to search, you will find same young desired.
+    return num_regions_to_expand;
+  }
+
   uint max_commit = num_regions_to_expand;
 
   // Young_desired_length contains survivors, while the amount of available free regions does not.
@@ -242,6 +249,7 @@ uint G1Policy::search_for_minimal_commit(uint num_regions_to_expand, uint num_fr
 
     assert(min_commit <= max_commit, "invariant");
   }
+
   return min_commit;
 }
 
@@ -902,24 +910,11 @@ double G1Policy::pending_cards_processing_time() const {
 // Anything below that is considered to be zero
 #define MIN_TIMER_GRANULARITY 0.0000001
 
-void G1Policy::record_young_collection_end(bool concurrent_operation_is_full_mark,
-                                           bool allocation_failure,
-                                           size_t allocation_word_size) {
-  G1GCPhaseTimes* p = phase_times();
-
-  double start_time_sec = cur_pause_start_sec();
-  double end_time_sec = Ticks::now().seconds();
-  double pause_time_ms = (end_time_sec - start_time_sec) * 1000.0;
-
+void G1Policy::report_phase_stats(bool concurrent_operation_is_full_mark, bool update_stats) {
   G1GCPauseType this_pause = collector_state()->young_gc_pause_type(concurrent_operation_is_full_mark);
   bool is_young_only_pause = G1GCPauseTypeHelper::is_young_only_pause(this_pause);
 
-  if (G1GCPauseTypeHelper::is_concurrent_start_pause(this_pause)) {
-    record_concurrent_mark_init_end();
-  } else {
-    maybe_start_marking(allocation_word_size);
-  }
-
+  double start_time_sec = cur_pause_start_sec();
   double app_time_ms = (start_time_sec * 1000.0 - _analytics->prev_collection_pause_end_ms());
   if (app_time_ms < MIN_TIMER_GRANULARITY) {
     // This usually happens due to the timer not having the required
@@ -928,9 +923,7 @@ void G1Policy::record_young_collection_end(bool concurrent_operation_is_full_mar
     app_time_ms = 1.0;
   }
 
-  // Evacuation failures skew the timing too much to be considered for some statistics updates.
-  // We make the assumption that these are rare.
-  bool update_stats = !allocation_failure;
+  G1GCPhaseTimes* p = phase_times();
 
   size_t const total_cards_scanned = p->sum_thread_work_items(G1GCPhaseTimes::ScanHR, G1GCPhaseTimes::ScanHRScannedCards) +
                                      p->sum_thread_work_items(G1GCPhaseTimes::OptScanHR, G1GCPhaseTimes::ScanHRScannedCards);
@@ -1031,8 +1024,6 @@ void G1Policy::record_young_collection_end(bool concurrent_operation_is_full_mar
                                                             _collection_set->initial_old_region_length());
     }
 
-    _analytics->report_constant_other_time_ms(constant_other_time_ms(pause_time_ms));
-
     _analytics->report_pending_cards(pending_cards_from_refinement_table, is_young_only_pause);
 
     _analytics->report_card_rs_length(total_cards_scanned - total_non_young_rs_cards, is_young_only_pause);
@@ -1052,6 +1043,43 @@ void G1Policy::record_young_collection_end(bool concurrent_operation_is_full_mar
                           yield_duration_ms,
                           phase_times()->sum_thread_work_items(G1GCPhaseTimes::MergePSS, G1GCPhaseTimes::MergePSSPendingCards),
                           phase_times()->sum_thread_work_items(G1GCPhaseTimes::MergePSS, G1GCPhaseTimes::MergePSSToYoungGenCards));
+  }
+}
+
+void G1Policy::record_young_collection_end(bool concurrent_operation_is_full_mark,
+                                           bool allocation_failure,
+                                           size_t allocation_word_size) {
+  G1GCPhaseTimes* p = phase_times();
+
+  double start_time_sec = cur_pause_start_sec();
+  double end_time_sec = Ticks::now().seconds();
+  double pause_time_ms = (end_time_sec - start_time_sec) * 1000.0;
+
+  G1GCPauseType this_pause = collector_state()->young_gc_pause_type(concurrent_operation_is_full_mark);
+  bool is_young_only_pause = G1GCPauseTypeHelper::is_young_only_pause(this_pause);
+
+  if (G1GCPauseTypeHelper::is_concurrent_start_pause(this_pause)) {
+    record_concurrent_mark_init_end();
+  } else {
+    maybe_start_marking(allocation_word_size);
+  }
+
+  double app_time_ms = (start_time_sec * 1000.0 - _analytics->prev_collection_pause_end_ms());
+  if (app_time_ms < MIN_TIMER_GRANULARITY) {
+    // This usually happens due to the timer not having the required
+    // granularity. Some Linuxes are the usual culprits.
+    // We'll just set it to something (arbitrarily) small.
+    app_time_ms = 1.0;
+  }
+
+  // Evacuation failures skew the timing too much to be considered for some statistics updates.
+  // We make the assumption that these are rare.
+  bool update_stats = !allocation_failure;
+
+  if (update_stats) {
+
+    _analytics->report_constant_other_time_ms(constant_other_time_ms(pause_time_ms));
+
   }
 
   record_pause(this_pause, start_time_sec, end_time_sec, allocation_failure);
