@@ -309,8 +309,8 @@ size_t G1HeapSizingPolicy::young_collection_resize_amount(bool& expand, size_t a
                               long_term_delta, avg_short_term_delta, BOOL_TO_STR(use_long_term_delta), delta);
 
     resize_bytes = young_collection_expand_amount(delta);
-    // TODO: Add a comment
-    resize_bytes = _g1h->policy()->update_resize_request_by_young_length_bounds(resize_bytes, _g1h->num_free_regions());
+
+    resize_bytes = _g1h->policy()->update_resize_request_by_young_length_bounds(resize_bytes);
 
     reset_cpu_usage_tracking_data();
   } else if ((_gc_cpu_usage_deviation_counter <= -count_threshold_for_shrink) ||

@@ -59,6 +59,7 @@ G1Policy::G1Policy(G1CollectedHeap* g1h, STWGCTimer* gc_timer) :
   _ihop_control(create_ihop_control(&_old_gen_alloc_tracker, &_predictor)),
   _policy_counters(new GCPolicyCounters("GarbageFirst", 1, 2)),
   _cur_pause_start_sec(0.0),
+  _eden_limit_reason(G1EdenSizingLimit::Time),
   _young_list_desired_length(0),
   _young_list_target_length(0),
   _eden_surv_rate_group(new G1SurvRateGroup()),
@@ -194,7 +195,9 @@ uint G1Policy::search_for_minimal_commit(uint num_regions_to_expand, uint num_fr
   G1YoungGenSizer young_gen_sizer = _young_gen_sizer;
   young_gen_sizer.heap_size_changed(num_committed_after_size_change);
 
-  const uint young_desired_length = calculate_young_desired_length(pending_cards, card_rs_length, code_root_rs_length, free_regions_after_size_change, young_gen_sizer);
+  G1YoungSizingMetrics young_sizing_metrics {pending_cards, card_rs_length, code_root_rs_length, free_regions_after_size_change};
+
+  const uint young_desired_length = calculate_young_desired_length(young_sizing_metrics, young_gen_sizer);
 
   if (young_desired_length == young_gen_sizer.min_desired_young_length()) {
     // No need to search, you will find same young desired.
@@ -218,11 +221,10 @@ uint G1Policy::search_for_minimal_commit(uint num_regions_to_expand, uint num_fr
   num_committed_after_size_change = min_commit + cur_num_committed;
   free_regions_after_size_change = min_commit + num_free_regions;
 
+  young_sizing_metrics._num_free_regions = free_regions_after_size_change;
+
   young_gen_sizer.heap_size_changed(num_committed_after_size_change);
-  uint desired_young_length_using_min_commit = calculate_young_desired_length(pending_cards,
-                                                                              card_rs_length,
-                                                                              code_root_rs_length,
-                                                                              free_regions_after_size_change,
+  uint desired_young_length_using_min_commit = calculate_young_desired_length(young_sizing_metrics,
                                                                               young_gen_sizer);
 
   if (desired_young_length_using_min_commit >= young_desired_length) {
@@ -238,8 +240,10 @@ uint G1Policy::search_for_minimal_commit(uint num_regions_to_expand, uint num_fr
     num_committed_after_size_change = mid_commit + cur_num_committed;
     free_regions_after_size_change = mid_commit + num_free_regions;
 
+    young_sizing_metrics._num_free_regions = free_regions_after_size_change;
+
     young_gen_sizer.heap_size_changed(num_committed_after_size_change);
-    uint cur_young_desired_length = calculate_young_desired_length(pending_cards, card_rs_length, code_root_rs_length, free_regions_after_size_change, young_gen_sizer);
+    uint cur_young_desired_length = calculate_young_desired_length(young_sizing_metrics, young_gen_sizer);
 
     if (cur_young_desired_length < young_desired_length) {
       min_commit = mid_commit;
@@ -253,12 +257,26 @@ uint G1Policy::search_for_minimal_commit(uint num_regions_to_expand, uint num_fr
   return min_commit;
 }
 
-size_t G1Policy::update_resize_request_by_young_length_bounds(size_t resize_bytes, uint num_free_regions) {
+size_t G1Policy::update_resize_request_by_young_length_bounds(size_t resize_bytes) {
   size_t aligned_expand_bytes = os::align_up_vm_page_size(resize_bytes);
   aligned_expand_bytes = align_up(aligned_expand_bytes, G1HeapRegion::GrainBytes);
   uint num_regions_to_expand = (uint)(aligned_expand_bytes / G1HeapRegion::GrainBytes);
 
-  uint resize_regions = search_for_minimal_commit(num_regions_to_expand, num_free_regions);
+  uint num_free_regions = _free_regions_at_end_of_collection;
+  uint resize_regions = num_regions_to_expand;
+  // Optionally reduce the requested expansion.
+  //
+  // We search for a smaller commit size only when:
+  //  (1) the heap is already at least half of max capacity, and
+  //      - When the heap is small (< 50% of max), we expand eagerly to reach astable size.
+  //  (2) the previous Eden sizing was Time-limited (not Space-limited).
+  //      - If Eden sizing was Space-limited, the application needs more memory, so we
+  //        keep the full expansion request.
+  //      - If sizing was Time-limited, we may meet pause-time goals with less
+  //        memory, so we try to commit only the minimal required number of regions.
+  if ((_g1h->capacity() > _g1h->max_capacity() / 2) && _eden_limit_reason == G1EdenSizingLimit::Time) {
+    resize_regions = search_for_minimal_commit(num_regions_to_expand, num_free_regions);
+  }
 
   log_debug(gc, ergo, heap) ("Heap resize: Adjust by young length limits: num_regions_to_expand %u scaled_regions_to_expand %u num_free_regions %u",
                              num_regions_to_expand,
@@ -271,21 +289,27 @@ size_t G1Policy::update_resize_request_by_young_length_bounds(size_t resize_byte
 void G1Policy::update_young_length_bounds() {
   assert(!Universe::is_fully_initialized() || SafepointSynchronize::is_at_safepoint(), "must be");
   bool for_young_only_phase = collector_state()->in_young_only_phase();
-  update_young_length_bounds(_analytics->predict_pending_cards(for_young_only_phase),
-                             _analytics->predict_card_rs_length(for_young_only_phase),
-                             _analytics->predict_code_root_rs_length(for_young_only_phase),
-                             _free_regions_at_end_of_collection);
+
+  G1YoungSizingMetrics young_sizing_metrics {_analytics->predict_pending_cards(for_young_only_phase),
+                                             _analytics->predict_card_rs_length(for_young_only_phase),
+                                             _analytics->predict_code_root_rs_length(for_young_only_phase),
+                                             _free_regions_at_end_of_collection,
+                                             {}};
+
+  update_young_length_bounds(young_sizing_metrics);
+
+  _eden_limit_reason = young_sizing_metrics._eden_sizing._limit_reason;
 }
 
-void G1Policy::update_young_length_bounds(size_t pending_cards, size_t card_rs_length, size_t code_root_rs_length, uint num_free_regions) {
+void G1Policy::update_young_length_bounds(G1YoungSizingMetrics& young_sizing_metrics) {
   uint old_young_list_target_length = young_list_target_length();
 
-  uint new_young_list_desired_length = calculate_young_desired_length(pending_cards, card_rs_length, code_root_rs_length, num_free_regions);
-  uint new_young_list_target_length = calculate_young_target_length(new_young_list_desired_length, num_free_regions);
+  uint new_young_list_desired_length = calculate_young_desired_length(young_sizing_metrics);
+  uint new_young_list_target_length = calculate_young_target_length(new_young_list_desired_length, young_sizing_metrics._num_free_regions);
 
   log_trace(gc, ergo, heap)("Young list length update: pending cards %zu card_rs_length %zu old target %u desired: %u target: %u",
-                            pending_cards,
-                            card_rs_length,
+                            young_sizing_metrics._pending_cards,
+                            young_sizing_metrics._card_rs_length,
                             old_young_list_target_length,
                             new_young_list_desired_length,
                             new_young_list_target_length);
@@ -316,17 +340,11 @@ void G1Policy::update_young_length_bounds(size_t pending_cards, size_t card_rs_l
 // value smaller than what is already allocated or what can actually be allocated.
 // This return value is only an expectation.
 //
-uint G1Policy::calculate_young_desired_length(size_t pending_cards,
-                                              size_t card_rs_length,
-                                              size_t code_root_rs_length,
-                                              uint num_free_regions) const {
-  return calculate_young_desired_length(pending_cards, card_rs_length, code_root_rs_length, num_free_regions, _young_gen_sizer);
+uint G1Policy::calculate_young_desired_length(G1YoungSizingMetrics &young_sizing_metrics) const {
+  return calculate_young_desired_length(young_sizing_metrics, _young_gen_sizer);
 }
 
-uint G1Policy::calculate_young_desired_length(size_t pending_cards,
-                                              size_t card_rs_length,
-                                              size_t code_root_rs_length,
-                                              uint num_free_regions,
+uint G1Policy::calculate_young_desired_length(G1YoungSizingMetrics &young_sizing_metrics,
                                               const G1YoungGenSizer& young_gen_sizer) const {
   uint min_young_length_by_sizer = young_gen_sizer.min_desired_young_length();
   uint max_young_length_by_sizer = young_gen_sizer.max_desired_young_length();
@@ -360,18 +378,21 @@ uint G1Policy::calculate_young_desired_length(size_t pending_cards,
   if (use_adaptive_young_list_length()) {
     desired_eden_length_by_mmu = calculate_desired_eden_length_by_mmu();
 
-    double base_time_ms = predict_base_time_ms(pending_cards, card_rs_length, code_root_rs_length);
+    double base_time_ms = predict_base_time_ms(young_sizing_metrics._pending_cards,
+                                               young_sizing_metrics._card_rs_length,
+                                               young_sizing_metrics._code_root_rs_length);
+
     double retained_time_ms = predict_retained_regions_evac_time();
     double total_time_ms = base_time_ms + retained_time_ms;
 
     log_trace(gc, ergo, heap)("Predicted total base time: total %f base_time %f retained_time %f",
                               total_time_ms, base_time_ms, retained_time_ms);
 
-    desired_eden_length_by_pause =
-      calculate_desired_eden_length_by_pause(total_time_ms,
-                                             absolute_min_young_length - survivor_length,
-                                             absolute_max_young_length - survivor_length,
-                                             num_free_regions);
+    young_sizing_metrics._eden_sizing._base_time_ms = total_time_ms;
+    young_sizing_metrics._eden_sizing._min_length = absolute_min_young_length - survivor_length;
+    young_sizing_metrics._eden_sizing._max_length = absolute_max_young_length - survivor_length;
+
+    desired_eden_length_by_pause = calculate_desired_eden_length_by_pause(young_sizing_metrics);
 
     // Incorporate MMU concerns; assume that it overrides the pause time
     // goal, as the default value has been chosen to effectively disable it.
@@ -499,27 +520,20 @@ uint G1Policy::calculate_young_target_length(uint desired_young_length, uint num
   return target_young_length;
 }
 
-uint G1Policy::calculate_desired_eden_length_by_pause(double base_time_ms,
-                                                      uint min_eden_length,
-                                                      uint max_eden_length,
-                                                      uint num_free_regions) const {
+uint G1Policy::calculate_desired_eden_length_by_pause(G1YoungSizingMetrics &young_sizing_metrics) const {
   if (!next_gc_should_be_mixed()) {
-    return calculate_desired_eden_length_before_young_only(base_time_ms,
-                                                           min_eden_length,
-                                                           max_eden_length,
-                                                           num_free_regions);
+    return calculate_desired_eden_length_before_young_only(young_sizing_metrics);
   } else {
-    return calculate_desired_eden_length_before_mixed(base_time_ms,
-                                                      min_eden_length,
-                                                      max_eden_length,
-                                                      num_free_regions);
+    return calculate_desired_eden_length_before_mixed(young_sizing_metrics);
   }
 }
 
-uint G1Policy::calculate_desired_eden_length_before_young_only(double base_time_ms,
-                                                               uint min_eden_length,
-                                                               uint max_eden_length,
-                                                               uint num_free_regions) const {
+uint G1Policy::calculate_desired_eden_length_before_young_only(G1YoungSizingMetrics &young_sizing_metrics) const {
+  double base_time_ms  = young_sizing_metrics._eden_sizing._base_time_ms;
+  uint min_eden_length = young_sizing_metrics._eden_sizing._min_length;
+  uint max_eden_length = young_sizing_metrics._eden_sizing._max_length;
+  uint num_free_regions = young_sizing_metrics._num_free_regions;
+
   assert(use_adaptive_young_list_length(), "pre-condition");
 
   assert(min_eden_length <= max_eden_length, "must be %u %u", min_eden_length, max_eden_length);
@@ -587,16 +601,28 @@ uint G1Policy::calculate_desired_eden_length_before_young_only(double base_time_
     // Even the minimum length doesn't fit into the pause time
     // target, return it as the result nevertheless.
   }
+
+  // Check whether adding one more Eden region would still satisfy the pause target.
+  // If so, the current sizing was limited by available Space rather than by Time.
+  if (SafepointSynchronize::is_at_safepoint()) {
+    size_t bytes_to_copy = 0;
+    uint eden_length_plus_one = min_eden_length + 1;
+    double target_pause_time_ms = _mmu_tracker->max_gc_time() * 1000.0;
+    const double copy_time_ms = predict_eden_copy_time_ms(eden_length_plus_one, &bytes_to_copy);
+    const double young_other_time_ms = analytics()->predict_young_other_time_ms(eden_length_plus_one);
+    const double pause_time_ms = base_time_ms + copy_time_ms + young_other_time_ms;
+    if (pause_time_ms < target_pause_time_ms) {
+      young_sizing_metrics._eden_sizing._limit_reason = G1EdenSizingLimit::Space;
+    }
+  }
+
   return min_eden_length;
 }
 
-uint G1Policy::calculate_desired_eden_length_before_mixed(double base_time_ms,
-                                                          uint min_eden_length,
-                                                          uint max_eden_length,
-                                                          uint num_free_regions) const {
+uint G1Policy::calculate_desired_eden_length_before_mixed(G1YoungSizingMetrics &young_sizing_metrics) const {
   uint min_marking_candidates = MIN2(calc_min_old_cset_length(candidates()->last_marking_candidates_length()),
                                      candidates()->from_marking_groups().num_regions());
-  double predicted_region_evac_time_ms = base_time_ms;
+  double predicted_region_evac_time_ms = young_sizing_metrics._eden_sizing._base_time_ms;
   uint selected_candidates = 0;
   for (G1CSetCandidateGroup* gr : candidates()->from_marking_groups()) {
     if (selected_candidates >= min_marking_candidates) {
@@ -606,10 +632,8 @@ uint G1Policy::calculate_desired_eden_length_before_mixed(double base_time_ms,
     selected_candidates += gr->length();
   }
 
-  return calculate_desired_eden_length_before_young_only(predicted_region_evac_time_ms,
-                                                         min_eden_length,
-                                                         max_eden_length,
-                                                         num_free_regions);
+  young_sizing_metrics._eden_sizing._base_time_ms = predicted_region_evac_time_ms;
+  return calculate_desired_eden_length_before_young_only(young_sizing_metrics);
 }
 
 double G1Policy::predict_survivor_regions_evac_time() const {
@@ -665,7 +689,8 @@ G1GCPhaseTimes* G1Policy::phase_times() const {
 void G1Policy::revise_young_list_target_length(size_t pending_cards, size_t card_rs_length, size_t code_root_rs_length) {
   guarantee(use_adaptive_young_list_length(), "should not call this otherwise" );
 
-  update_young_length_bounds(pending_cards, card_rs_length, code_root_rs_length, _free_regions_at_end_of_collection);
+  G1YoungSizingMetrics young_sizing_metris{pending_cards, card_rs_length, code_root_rs_length, _free_regions_at_end_of_collection, {}};
+  update_young_length_bounds(young_sizing_metris);
 }
 
 void G1Policy::record_full_collection_start() {
