@@ -195,7 +195,7 @@ uint G1Policy::search_for_minimal_commit(uint num_regions_to_expand, uint num_fr
   G1YoungGenSizer young_gen_sizer = _young_gen_sizer;
   young_gen_sizer.heap_size_changed(num_committed_after_size_change);
 
-  G1YoungSizingMetrics young_sizing_metrics {pending_cards, card_rs_length, code_root_rs_length, free_regions_after_size_change};
+  G1YoungSizingMetrics young_sizing_metrics {pending_cards, card_rs_length, code_root_rs_length, free_regions_after_size_change, {}};
 
   const uint young_desired_length = calculate_young_desired_length(young_sizing_metrics, young_gen_sizer);
 
