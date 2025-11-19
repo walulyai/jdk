@@ -55,17 +55,10 @@ class G1SurvivorRegions;
 class GCPolicyCounters;
 class STWGCTimer;
 
-enum class G1EdenSizingLimit {
-  Time,
-  Space
-};
-
 struct G1EdenSizingMetrics {
   double _base_time_ms = 0.0;
   uint _min_length = 0;
   uint _max_length = 0;
-
-  G1EdenSizingLimit _limit_reason = G1EdenSizingLimit::Time;
 };
 
 struct G1YoungSizingMetrics {
@@ -99,9 +92,6 @@ class G1Policy: public CHeapObj<mtGC> {
   GCPolicyCounters* _policy_counters;
 
   double _cur_pause_start_sec;
-
-  // Record what constrained the Eden sizing decision (Space or Time).
-  G1EdenSizingLimit _eden_limit_reason;
 
   // Desired young gen length without taking actually available free regions into
   // account.
@@ -255,7 +245,7 @@ private:
   // Limit the given desired young length to available free regions.
   uint calculate_young_target_length(uint desired_young_length, uint num_free_regions) const;
 
-  uint search_for_minimal_commit(uint num_regions_to_expand, uint num_free_regions);
+  uint search_for_minimal_commit(uint num_regions_to_expand);
 
   double predict_survivor_regions_evac_time() const;
   double predict_retained_regions_evac_time() const;

@@ -59,7 +59,6 @@ G1Policy::G1Policy(G1CollectedHeap* g1h, STWGCTimer* gc_timer) :
   _ihop_control(create_ihop_control(&_old_gen_alloc_tracker, &_predictor)),
   _policy_counters(new GCPolicyCounters("GarbageFirst", 1, 2)),
   _cur_pause_start_sec(0.0),
-  _eden_limit_reason(G1EdenSizingLimit::Time),
   _young_list_desired_length(0),
   _young_list_target_length(0),
   _eden_surv_rate_group(new G1SurvRateGroup()),
@@ -180,7 +179,17 @@ uint G1Policy::calculate_desired_eden_length_by_mmu() const {
   return (uint) ceil(alloc_rate_ms * when_ms);
 }
 
-uint G1Policy::search_for_minimal_commit(uint num_regions_to_expand, uint num_free_regions) {
+uint G1Policy::search_for_minimal_commit(uint num_regions_to_expand) {
+  // Optionally reduce the requested expansion.
+  //
+  // We search for a smaller commit size only when the heap is already at least half of max capacity
+  // When the heap is small (< 50% of max), we expand eagerly to reach a stable size.
+
+  if ((_g1h->capacity() < _g1h->max_capacity() / 2)) {
+    return num_regions_to_expand;
+  }
+
+  uint num_free_regions = _g1h->num_free_regions();
 
   const bool for_young_only_phase = collector_state()->in_young_only_phase();
   const size_t pending_cards = _analytics->predict_pending_cards(for_young_only_phase);
@@ -262,21 +271,8 @@ size_t G1Policy::update_resize_request_by_young_length_bounds(size_t resize_byte
   aligned_expand_bytes = align_up(aligned_expand_bytes, G1HeapRegion::GrainBytes);
   uint num_regions_to_expand = (uint)(aligned_expand_bytes / G1HeapRegion::GrainBytes);
 
-  uint num_free_regions = _free_regions_at_end_of_collection;
-  uint resize_regions = num_regions_to_expand;
-  // Optionally reduce the requested expansion.
-  //
-  // We search for a smaller commit size only when:
-  //  (1) the heap is already at least half of max capacity, and
-  //      - When the heap is small (< 50% of max), we expand eagerly to reach astable size.
-  //  (2) the previous Eden sizing was Time-limited (not Space-limited).
-  //      - If Eden sizing was Space-limited, the application needs more memory, so we
-  //        keep the full expansion request.
-  //      - If sizing was Time-limited, we may meet pause-time goals with less
-  //        memory, so we try to commit only the minimal required number of regions.
-  if ((_g1h->capacity() > _g1h->max_capacity() / 2) && _eden_limit_reason == G1EdenSizingLimit::Time) {
-    resize_regions = search_for_minimal_commit(num_regions_to_expand, num_free_regions);
-  }
+
+  uint resize_regions = search_for_minimal_commit(num_regions_to_expand);
 
   log_debug(gc, ergo, heap) ("Heap resize: Adjust by young length limits: num_regions_to_expand %u scaled_regions_to_expand %u num_free_regions %u",
                              num_regions_to_expand,
@@ -297,8 +293,6 @@ void G1Policy::update_young_length_bounds() {
                                              {}};
 
   update_young_length_bounds(young_sizing_metrics);
-
-  _eden_limit_reason = young_sizing_metrics._eden_sizing._limit_reason;
 }
 
 void G1Policy::update_young_length_bounds(G1YoungSizingMetrics& young_sizing_metrics) {
@@ -600,20 +594,6 @@ uint G1Policy::calculate_desired_eden_length_before_young_only(G1YoungSizingMetr
   } else {
     // Even the minimum length doesn't fit into the pause time
     // target, return it as the result nevertheless.
-  }
-
-  // Check whether adding one more Eden region would still satisfy the pause target.
-  // If so, the current sizing was limited by available Space rather than by Time.
-  if (SafepointSynchronize::is_at_safepoint()) {
-    size_t bytes_to_copy = 0;
-    uint eden_length_plus_one = min_eden_length + 1;
-    double target_pause_time_ms = _mmu_tracker->max_gc_time() * 1000.0;
-    const double copy_time_ms = predict_eden_copy_time_ms(eden_length_plus_one, &bytes_to_copy);
-    const double young_other_time_ms = analytics()->predict_young_other_time_ms(eden_length_plus_one);
-    const double pause_time_ms = base_time_ms + copy_time_ms + young_other_time_ms;
-    if (pause_time_ms < target_pause_time_ms) {
-      young_sizing_metrics._eden_sizing._limit_reason = G1EdenSizingLimit::Space;
-    }
   }
 
   return min_eden_length;
