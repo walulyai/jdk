@@ -274,7 +274,7 @@ size_t G1Policy::update_resize_request_by_young_length_bounds(size_t resize_byte
 
   uint resize_regions = search_for_minimal_commit(num_regions_to_expand);
 
-  log_debug(gc, ergo, heap) ("Heap resize: Adjust by young length limits: num_regions_to_expand %u scaled_regions_to_expand %u num_free_regions %u",
+  log_debug(gc, ergo, heap) ("Heap resize: Adjust by young length limits: requested_regions_to_expand %u regions_to_expand %u num_free_regions %u",
                              num_regions_to_expand,
                              resize_regions,
                             _g1h->num_free_regions());
