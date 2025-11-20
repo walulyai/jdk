@@ -141,7 +141,7 @@ class G1YoungLengthPredictor {
     // of the calculation: the lower the confidence, the more headroom.
     // (100 + TargetPLABWastePct) represents the increase in expected bytes during
     // copying due to anticipated waste in the PLABs.
-    const double safety_factor = (100.0 / G1ConfidencePercent) * (100 + TargetPLABWastePct) / 100.0;
+    const double safety_factor = (100 + TargetPLABWastePct) / 100.0;
     const size_t all_copied = young_length * G1HeapRegion::GrainBytes * (100 + TargetPLABWastePct) / 100.0;
 
     const size_t expected_bytes_to_copy = MIN2((size_t)(safety_factor * bytes_to_copy), all_copied);
@@ -184,10 +184,6 @@ uint G1Policy::search_for_minimal_commit(uint num_regions_to_expand) {
   //
   // We search for a smaller commit size only when the heap is already at least half of max capacity
   // When the heap is small (< 50% of max), we expand eagerly to reach a stable size.
-
-  if ((_g1h->capacity() < _g1h->max_capacity() / 2)) {
-    return num_regions_to_expand;
-  }
 
   uint num_free_regions = _g1h->num_free_regions();
 
