@@ -141,7 +141,7 @@ class G1YoungLengthPredictor {
     // of the calculation: the lower the confidence, the more headroom.
     // (100 + TargetPLABWastePct) represents the increase in expected bytes during
     // copying due to anticipated waste in the PLABs.
-    const double safety_factor = (100 + TargetPLABWastePct) / 100.0;
+    const double safety_factor = (100.0 / G1ConfidencePercent) * (100 + TargetPLABWastePct) / 100.0;
     const size_t all_copied = young_length * G1HeapRegion::GrainBytes * (100 + TargetPLABWastePct) / 100.0;
 
     const size_t expected_bytes_to_copy = MIN2((size_t)(safety_factor * bytes_to_copy), all_copied);
