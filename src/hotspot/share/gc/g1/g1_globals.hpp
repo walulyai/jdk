@@ -377,6 +377,10 @@
           "Also schedule all available optional groups for evacuation "     \
           "regardless of timing.")                                          \
                                                                             \
+  product(bool, G1ResizeAfterFullGC, false, DIAGNOSTIC,                     \
+          "If enabled, resizes the heap after a Full GC based on "          \
+          "MinHeapFreeRatio and MaxHeapFreeRatio values.")                  \
+                                                                            \
   GC_G1_EVACUATION_FAILURE_FLAGS(develop,                                   \
                     develop_pd,                                             \
                     product,                                                \

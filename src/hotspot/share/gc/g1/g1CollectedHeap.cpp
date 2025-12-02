@@ -845,7 +845,9 @@ void G1CollectedHeap::prepare_for_mutator_after_full_collection(size_t allocatio
   assert(num_free_regions() == 0, "we should not have added any free regions");
   rebuild_region_sets(false /* free_list_only */);
   abort_refinement();
-  resize_heap_after_full_collection(allocation_word_size);
+  if (G1ResizeAfterFullGC) {
+    resize_heap_after_full_collection(allocation_word_size);
+  }
 
   // Rebuild the code root lists for each region
   rebuild_code_roots();

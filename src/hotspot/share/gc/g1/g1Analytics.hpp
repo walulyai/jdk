@@ -196,8 +196,7 @@ public:
   size_t predict_pending_cards(bool for_young_only_phase) const;
 
   // Add a new GC of the given duration and end time to the record.
-  void update_recent_gc_times(double end_time_sec, double gc_time_ms);
-  void update_gc_time_ratios(double end_time_sec, double pause_time_ms);
+  void update_gc_time_ratios(double end_time_sec, double pause_time_ms, bool is_user_requested_gc);
 };
 
 #endif // SHARE_GC_G1_G1ANALYTICS_HPP

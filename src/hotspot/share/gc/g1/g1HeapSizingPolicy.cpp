@@ -305,8 +305,8 @@ size_t G1HeapSizingPolicy::young_collection_resize_amount(bool& expand, size_t a
       return resize_bytes;
     }
 
-    log_trace(gc, ergo, heap)("expand deltas long %1.2f short %1.2f use long term %u delta %1.2f",
-                              long_term_delta, avg_short_term_delta, use_long_term_delta, delta);
+    log_trace(gc, ergo, heap)("Heap resize triggers: Expand deltas: long-term-delta %1.2f short-term-delta %1.2f use long-term-delta %s delta %1.2f",
+                              long_term_delta, avg_short_term_delta, BOOL_TO_STR(use_long_term_delta), delta);
 
     resize_bytes = young_collection_expand_amount(delta);
 
@@ -322,8 +322,8 @@ size_t G1HeapSizingPolicy::young_collection_resize_amount(bool& expand, size_t a
       return resize_bytes;
     }
 
-    log_trace(gc, ergo, heap)("expand deltas long %1.2f short %1.2f use long term %u delta %1.2f",
-                              long_term_delta, avg_short_term_delta, use_long_term_delta, delta);
+    log_trace(gc, ergo, heap)("Heap resize triggers: Shrink deltas: long-term-delta %1.2f avg-short-term-delta %1.2f use long-term-delta %s delta %1.2f",
+                              long_term_delta, avg_short_term_delta, BOOL_TO_STR(use_long_term_delta), delta);
 
     resize_bytes = young_collection_shrink_amount(delta, allocation_word_size);
 
