@@ -823,21 +823,15 @@ private:
   template<bool scan> void process_grey_task_entry(G1TaskQueueEntry task_entry, bool stolen);
 
   static bool should_be_sliced(oop obj);
-  // Start processing the given objArrayOop by scanning the header and pushing its
-  // continuation.
-  size_t scan_array(oop obj);
+  // Start processing the given objArrayOop by first pushing its continuations and
+  // then scanning the first chunk including the header.
+  size_t start_partial_objArray(oop obj);
   // Process the given continuation. Returns the number of words scanned.
-  size_t scan_partial_array(const G1TaskQueueEntry& task, bool stolen);
-  // Process (apply the closure) on the given continuation of the given objArray.
-  inline size_t scan_array(objArrayOop obj, MemRegion mr);
+  size_t do_partial_objArray(const G1TaskQueueEntry& task, bool stolen);
   // Apply the closure on the given area of the objArray. Return the number of words
   // scanned.
   inline size_t scan_objArray(objArrayOop obj, MemRegion mr);
 public:
-
-  G1CMTaskQueue* task_queue() const { return _task_queue; }
-
-  PartialArraySplitter* partial_array_splitter() { return &_partial_array_splitter; }
   // Resets the task; should be called right at the beginning of a marking phase.
   void reset(G1CMBitMap* mark_bitmap);
   // Clears all the fields that correspond to a claimed region.

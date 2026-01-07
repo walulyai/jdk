@@ -29,7 +29,6 @@
 
 #include "gc/g1/g1CollectedHeap.inline.hpp"
 #include "gc/g1/g1ConcurrentMarkBitMap.inline.hpp"
-#include "gc/g1/g1ConcurrentMarkObjArrayProcessor.inline.hpp"
 #include "gc/g1/g1HeapRegion.hpp"
 #include "gc/g1/g1HeapRegionRemSet.inline.hpp"
 #include "gc/g1/g1OopClosures.inline.hpp"
@@ -166,11 +165,11 @@ inline void G1CMTask::process_grey_task_entry(G1TaskQueueEntry task_entry, bool 
 
   if (scan) {
     if (task_entry.is_partial_array_state()) {
-      _words_scanned += scan_partial_array(task_entry, stolen);
+      _words_scanned += do_partial_objArray(task_entry, stolen);
     } else {
       oop obj = task_entry.to_oop();
       if (should_be_sliced(obj)) {
-        _words_scanned += scan_array(obj);
+        _words_scanned += start_partial_objArray(obj);
       } else {
         _words_scanned += obj->oop_iterate_size(_cm_oop_closure);
       }
@@ -181,10 +180,6 @@ inline void G1CMTask::process_grey_task_entry(G1TaskQueueEntry task_entry, bool 
 
 inline bool G1CMTask::should_be_sliced(oop obj) {
   return obj->is_objArray() && ((objArrayOop)obj)->size() >= 2 * ObjArrayMarkingStride;
-}
-
-inline size_t G1CMTask::scan_array(objArrayOop obj, MemRegion mr) {
-  return scan_objArray(obj, mr);
 }
 
 inline size_t G1CMTask::scan_objArray(objArrayOop obj, MemRegion mr) {

@@ -2234,7 +2234,7 @@ void G1CMTask::drain_local_queue(bool partially) {
   }
 }
 
-size_t G1CMTask::scan_array(oop obj) {
+size_t G1CMTask::start_partial_objArray(oop obj) {
   assert(should_be_sliced(obj), "Must be an array object %d and large %zu", obj->is_objArray(), obj->size());
   size_t obj_size_in_words = obj->size();
   objArrayOop obj_array = objArrayOop(obj);
@@ -2245,7 +2245,7 @@ size_t G1CMTask::scan_array(oop obj) {
   return scan_objArray(obj_array, mr);
 }
 
-size_t G1CMTask::scan_partial_array(const G1TaskQueueEntry& task, bool stolen) {
+size_t G1CMTask::do_partial_objArray(const G1TaskQueueEntry& task, bool stolen) {
   PartialArrayState* state = task.to_partial_array_state();
   // Access state before release by claim().
   objArrayOop obj = objArrayOop(state->source());
