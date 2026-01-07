@@ -2242,7 +2242,7 @@ size_t G1CMTask::scan_array(oop obj) {
 
   HeapWord* start = cast_from_oop<HeapWord*>(obj);
   MemRegion mr(start, initial_chunk_size);
-  return scan_array(obj_array, mr);
+  return scan_objArray(obj_array, mr);
 }
 
 size_t G1CMTask::scan_partial_array(const G1TaskQueueEntry& task, bool stolen) {
@@ -2258,7 +2258,7 @@ size_t G1CMTask::scan_partial_array(const G1TaskQueueEntry& task, bool stolen) {
   HeapWord* end = base + claim._end;
 
   MemRegion mr(start, end);
-  return scan_array(obj, mr);
+  return scan_objArray(obj, mr);
 }
 
 void G1CMTask::drain_global_stack(bool partially) {
@@ -2794,7 +2794,6 @@ G1CMTask::G1CMTask(uint worker_id,
                    G1ConcurrentMark* cm,
                    G1CMTaskQueue* task_queue,
                    G1RegionMarkStats* mark_stats) :
-  _objArray_processor(this),
   _worker_id(worker_id),
   _g1h(G1CollectedHeap::heap()),
   _cm(cm),

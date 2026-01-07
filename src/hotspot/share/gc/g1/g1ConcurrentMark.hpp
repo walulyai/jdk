@@ -26,7 +26,6 @@
 #define SHARE_GC_G1_G1CONCURRENTMARK_HPP
 
 #include "gc/g1/g1ConcurrentMarkBitMap.hpp"
-#include "gc/g1/g1ConcurrentMarkObjArrayProcessor.hpp"
 #include "gc/g1/g1HeapRegionSet.hpp"
 #include "gc/g1/g1HeapVerifier.hpp"
 #include "gc/g1/g1RegionMarkStatsCache.hpp"
@@ -55,7 +54,7 @@ class G1RegionToSpaceMapper;
 class G1SurvivorRegions;
 class ThreadClosure;
 
-
+typedef ScannerTask G1TaskQueueEntry;
 typedef GenericTaskQueue<G1TaskQueueEntry, mtGC> G1CMTaskQueue;
 typedef GenericTaskQueueSet<G1CMTaskQueue, mtGC> G1CMTaskQueueSet;
 
@@ -704,8 +703,6 @@ private:
     refs_reached_period           = 1024,
   };
 
-  G1CMObjArrayProcessor       _objArray_processor;
-
   uint                        _worker_id;
   G1CollectedHeap*            _g1h;
   G1ConcurrentMark*           _cm;
@@ -833,14 +830,14 @@ private:
   size_t scan_partial_array(const G1TaskQueueEntry& task, bool stolen);
   // Process (apply the closure) on the given continuation of the given objArray.
   inline size_t scan_array(objArrayOop obj, MemRegion mr);
+  // Apply the closure on the given area of the objArray. Return the number of words
+  // scanned.
+  inline size_t scan_objArray(objArrayOop obj, MemRegion mr);
 public:
 
   G1CMTaskQueue* task_queue() const { return _task_queue; }
 
   PartialArraySplitter* partial_array_splitter() { return &_partial_array_splitter; }
-  // Apply the closure on the given area of the objArray. Return the number of words
-  // scanned.
-  inline size_t scan_objArray(objArrayOop obj, MemRegion mr);
   // Resets the task; should be called right at the beginning of a marking phase.
   void reset(G1CMBitMap* mark_bitmap);
   // Clears all the fields that correspond to a claimed region.
