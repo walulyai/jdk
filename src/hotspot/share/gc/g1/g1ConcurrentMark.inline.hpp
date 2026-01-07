@@ -95,7 +95,7 @@ inline void G1CMMarkStack::iterate(Fn fn) const {
     guarantee(num_chunks <= _chunks_in_chunk_list, "Found %zu oop chunks which is more than there should be", num_chunks);
 
     for (size_t i = 0; i < EntriesPerChunk; ++i) {
-      if (cur->data[i].is_null()) {
+      if (cur->data[i].to_oop() == nullptr) {
         break;
       }
       fn(cur->data[i]);
@@ -107,13 +107,13 @@ inline void G1CMMarkStack::iterate(Fn fn) const {
 #endif
 
 // It scans an object and visits its children.
-inline void G1CMTask::scan_task_entry(G1TaskQueueEntry task_entry) { process_grey_task_entry<true>(task_entry); }
+inline void G1CMTask::scan_task_entry(G1TaskQueueEntry task_entry, bool stolen) { process_grey_task_entry<true>(task_entry, stolen); }
 
 inline void G1CMTask::push(G1TaskQueueEntry task_entry) {
-  assert(task_entry.is_array_slice() || _g1h->is_in_reserved(task_entry.obj()), "invariant");
-  assert(task_entry.is_array_slice() || !_g1h->is_on_master_free_list(
-              _g1h->heap_region_containing(task_entry.obj())), "invariant");
-  assert(task_entry.is_array_slice() || _mark_bitmap->is_marked(cast_from_oop<HeapWord*>(task_entry.obj())), "invariant");
+  assert(task_entry.is_partial_array_state() || _g1h->is_in_reserved(task_entry.to_oop()), "invariant");
+  assert(task_entry.is_partial_array_state() || !_g1h->is_on_master_free_list(
+              _g1h->heap_region_containing(task_entry.to_oop())), "invariant");
+  assert(task_entry.is_partial_array_state() || _mark_bitmap->is_marked(cast_from_oop<HeapWord*>(task_entry.to_oop())), "invariant");
 
   if (!_task_queue->push(task_entry)) {
     // The local task queue looks full. We need to push some entries
@@ -159,24 +159,32 @@ inline bool G1CMTask::is_below_finger(oop obj, HeapWord* global_finger) const {
 }
 
 template<bool scan>
-inline void G1CMTask::process_grey_task_entry(G1TaskQueueEntry task_entry) {
-  assert(scan || (task_entry.is_oop() && task_entry.obj()->is_typeArray()), "Skipping scan of grey non-typeArray");
-  assert(task_entry.is_array_slice() || _mark_bitmap->is_marked(cast_from_oop<HeapWord*>(task_entry.obj())),
+inline void G1CMTask::process_grey_task_entry(G1TaskQueueEntry task_entry, bool stolen) {
+  assert(scan || (!task_entry.is_partial_array_state() && task_entry.to_oop()->is_typeArray()), "Skipping scan of grey non-typeArray");
+  assert(task_entry.is_partial_array_state() || _mark_bitmap->is_marked(cast_from_oop<HeapWord*>(task_entry.to_oop())),
          "Any stolen object should be a slice or marked");
 
   if (scan) {
-    if (task_entry.is_array_slice()) {
-      _words_scanned += _objArray_processor.process_slice(task_entry.slice());
+    if (task_entry.is_partial_array_state()) {
+      _words_scanned += _objArray_processor.scan_partial_array(task_entry, stolen);
     } else {
-      oop obj = task_entry.obj();
+      oop obj = task_entry.to_oop();
       if (G1CMObjArrayProcessor::should_be_sliced(obj)) {
-        _words_scanned += _objArray_processor.process_obj(obj);
+        _words_scanned += _objArray_processor.scan_array(obj);
       } else {
         _words_scanned += obj->oop_iterate_size(_cm_oop_closure);;
       }
     }
   }
   check_limits();
+}
+
+inline bool G1CMTask::should_be_sliced(oop obj) {
+  return obj->is_objArray() && ((objArrayOop)obj)->size() >= 2 * ObjArrayMarkingStride;
+}
+
+inline size_t G1CMTask::scan_array(objArrayOop obj, MemRegion mr) {
+  return scan_objArray(obj, mr);
 }
 
 inline size_t G1CMTask::scan_objArray(objArrayOop obj, MemRegion mr) {
@@ -265,7 +273,7 @@ inline bool G1CMTask::make_reference_grey(oop obj) {
   // be pushed on the stack. So, some duplicate work, but no
   // correctness problems.
   if (is_below_finger(obj, global_finger)) {
-    G1TaskQueueEntry entry = G1TaskQueueEntry::from_oop(obj);
+    G1TaskQueueEntry entry(obj);
     if (obj->is_typeArray()) {
       // Immediately process arrays of primitive types, rather
       // than pushing on the mark stack.  This keeps us from
@@ -277,7 +285,7 @@ inline bool G1CMTask::make_reference_grey(oop obj) {
       // by only doing a bookkeeping update and avoiding the
       // actual scan of the object - a typeArray contains no
       // references, and the metadata is built-in.
-      process_grey_task_entry<false>(entry);
+      process_grey_task_entry<false>(entry, false /* stolen */);
     } else {
       push(entry);
     }

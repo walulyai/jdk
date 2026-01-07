@@ -25,7 +25,10 @@
 #ifndef SHARE_GC_G1_G1CONCURRENTMARKOBJARRAYPROCESSOR_HPP
 #define SHARE_GC_G1_G1CONCURRENTMARKOBJARRAYPROCESSOR_HPP
 
+#include "gc/shared/taskqueue.hpp"
 #include "oops/oopsHierarchy.hpp"
+
+typedef ScannerTask G1TaskQueueEntry;
 
 class G1CMTask;
 
@@ -38,11 +41,8 @@ private:
   // Reference to the task for doing the actual work.
   G1CMTask* _task;
 
-  // Push the continuation at the given address onto the mark stack.
-  void push_array_slice(HeapWord* addr);
-
   // Process (apply the closure) on the given continuation of the given objArray.
-  size_t process_array_slice(objArrayOop const obj, HeapWord* start_from, size_t remaining);
+  size_t scan_array(objArrayOop obj, MemRegion mr);
 public:
   static bool should_be_sliced(oop obj);
 
@@ -50,10 +50,10 @@ public:
   }
 
   // Process the given continuation. Returns the number of words scanned.
-  size_t process_slice(HeapWord* slice);
+  size_t scan_partial_array(const G1TaskQueueEntry& task, bool stolen);
   // Start processing the given objArrayOop by scanning the header and pushing its
   // continuation.
-  size_t process_obj(oop obj);
+  size_t scan_array(oop obj);
 };
 
 #endif // SHARE_GC_G1_G1CONCURRENTMARKOBJARRAYPROCESSOR_HPP

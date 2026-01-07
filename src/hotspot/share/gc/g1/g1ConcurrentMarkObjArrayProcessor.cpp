@@ -27,54 +27,39 @@
 #include "gc/g1/g1ConcurrentMarkObjArrayProcessor.inline.hpp"
 #include "gc/g1/g1HeapRegion.inline.hpp"
 #include "gc/shared/gc_globals.hpp"
+#include "gc/shared/partialArraySplitter.inline.hpp"
+#include "gc/shared/partialArrayState.hpp"
 #include "memory/memRegion.hpp"
 #include "utilities/globalDefinitions.hpp"
 
-void G1CMObjArrayProcessor::push_array_slice(HeapWord* what) {
-  _task->push(G1TaskQueueEntry::from_slice(what));
-}
-
-size_t G1CMObjArrayProcessor::process_array_slice(objArrayOop obj, HeapWord* start_from, size_t remaining) {
-  size_t words_to_scan = MIN2(remaining, (size_t)ObjArrayMarkingStride);
-
-  if (remaining > ObjArrayMarkingStride) {
-    push_array_slice(start_from + ObjArrayMarkingStride);
-  }
-
-  // Then process current area.
-  MemRegion mr(start_from, words_to_scan);
+size_t G1CMObjArrayProcessor::scan_array(objArrayOop obj, MemRegion mr) {
   return _task->scan_objArray(obj, mr);
 }
 
-size_t G1CMObjArrayProcessor::process_obj(oop obj) {
+size_t G1CMObjArrayProcessor::scan_array(oop obj) {
   assert(should_be_sliced(obj), "Must be an array object %d and large %zu", obj->is_objArray(), obj->size());
+  size_t obj_size_in_words = obj->size();
+  objArrayOop obj_array = objArrayOop(obj);
+  size_t initial_chunk_size = _task->partial_array_splitter()->start(_task->task_queue(), obj_array, nullptr, obj_size_in_words);
 
-  return process_array_slice(objArrayOop(obj), cast_from_oop<HeapWord*>(obj), objArrayOop(obj)->size());
+  HeapWord* start = cast_from_oop<HeapWord*>(obj);
+  MemRegion mr(start, initial_chunk_size);
+  return scan_array(obj_array, mr);
 }
 
-size_t G1CMObjArrayProcessor::process_slice(HeapWord* slice) {
+size_t G1CMObjArrayProcessor::scan_partial_array(const G1TaskQueueEntry& task, bool stolen) {
+  PartialArrayState* state = task.to_partial_array_state();
+  // Access state before release by claim().
+  objArrayOop obj = objArrayOop(state->source());
+  PartialArraySplitter::Claim claim =
+    _task->partial_array_splitter()->claim(state, _task->task_queue(), stolen);
+    // _partial_array_splitter.claim(state, _task->task_queue(), stolen);
 
-  // Find the start address of the objArrayOop.
-  // Shortcut the BOT access if the given address is from a humongous object. The BOT
-  // slide is fast enough for "smaller" objects in non-humongous regions, but is slower
-  // than directly using heap region table.
-  G1CollectedHeap* g1h = G1CollectedHeap::heap();
-  G1HeapRegion* r = g1h->heap_region_containing(slice);
+  HeapWord* base = cast_from_oop<HeapWord*>(obj);
 
-  HeapWord* const start_address = r->is_humongous() ?
-                                  r->humongous_start_region()->bottom() :
-                                  r->block_start(slice);
+  HeapWord* start = base + claim._start;
+  HeapWord* end = base + claim._end;
 
-  assert(cast_to_oop(start_address)->is_objArray(), "Address " PTR_FORMAT " does not refer to an object array ", p2i(start_address));
-  assert(start_address < slice,
-         "Object start address " PTR_FORMAT " must be smaller than decoded address " PTR_FORMAT,
-         p2i(start_address),
-         p2i(slice));
-
-  objArrayOop objArray = objArrayOop(cast_to_oop(start_address));
-
-  size_t already_scanned = pointer_delta(slice, start_address);
-  size_t remaining = objArray->size() - already_scanned;
-
-  return process_array_slice(objArray, slice, remaining);
+  MemRegion mr(start, end);
+  return scan_array(obj, mr);
 }
