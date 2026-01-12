@@ -641,6 +641,10 @@ public:
     return (raw_value() & PartialArrayTag) != 0;
   }
 
+  bool is_null() const {
+    return _p == nullptr;
+  }
+
   oop* to_oop_ptr() const {
     return static_cast<oop*>(decode(OopTag));
   }

@@ -94,7 +94,7 @@ inline void G1CMMarkStack::iterate(Fn fn) const {
     guarantee(num_chunks <= _chunks_in_chunk_list, "Found %zu oop chunks which is more than there should be", num_chunks);
 
     for (size_t i = 0; i < EntriesPerChunk; ++i) {
-      if (cur->data[i].to_oop() == nullptr) {
+      if (cur->data[i].is_null()) {
         break;
       }
       fn(cur->data[i]);

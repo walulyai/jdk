@@ -2190,7 +2190,7 @@ bool G1CMTask::get_entries_from_global_stack() {
   // We did actually pop at least one entry.
   for (size_t i = 0; i < G1CMMarkStack::EntriesPerChunk; ++i) {
     G1TaskQueueEntry task_entry = buffer[i];
-    if (task_entry.to_oop() == nullptr) {
+    if (task_entry.is_null()) {
       break;
     }
     assert(task_entry.is_partial_array_state() || oopDesc::is_oop(task_entry.to_oop()), "Element " PTR_FORMAT " must be an array slice or oop", p2i(task_entry.to_oop()));
