@@ -657,11 +657,21 @@ void G1ConcurrentMark::set_concurrency_and_phase(uint active_tasks, bool concurr
   }
 }
 
+void G1ConcurrentMark::print_partial_array_task_stats() {
+  auto get_stats = [&](uint i) {
+    return _tasks[i]->partial_array_task_stats();
+  };
+  PartialArrayTaskStats::log_set(_max_num_tasks, get_stats, "G1ConcurrentMark Partial Array Task Stats");
+}
+
 void G1ConcurrentMark::reset_at_marking_complete() {
   // We set the global marking state to some default values when we're
   // not doing marking.
   reset_marking_for_restart();
   _num_active_tasks = 0;
+  TASKQUEUE_STATS_ONLY(_task_queues->print_and_reset_taskqueue_stats("G1ConcurrentMark Oop Queue");)
+
+  TASKQUEUE_STATS_ONLY(print_partial_array_task_stats();)
 }
 
 G1ConcurrentMark::~G1ConcurrentMark() {
@@ -2238,21 +2248,30 @@ size_t G1CMTask::start_partial_objArray(oop obj) {
   assert(should_be_sliced(obj), "Must be an array object %d and large %zu", obj->is_objArray(), obj->size());
   size_t obj_size_in_words = obj->size();
   objArrayOop obj_array = objArrayOop(obj);
-  log_debug(gc, marking) ("G1CMTask::start_partial_objArray obj_size_in_words %zu (%zu) object length %d (%d) stride %d ( %d ObjArrayMarkingStride) LogBytesPerHeapOop %d heapOopSize %d BytesPerHeapOop %d BytesPerWord %d",
-                          obj_size_in_words, obj_size_in_words / (int)ObjArrayMarkingStride, obj_array->length(),
-                          obj_array->length() / (int)ObjArrayMarkingStride,
-                          ((BytesPerWord / BytesPerHeapOop) * (int)ObjArrayMarkingStride),
-                          (int)ObjArrayMarkingStride,
-                          LogBytesPerHeapOop,
-                          heapOopSize,
-                          BytesPerHeapOop,
-                          BytesPerWord
-                      );
   size_t initial_chunk_size = _partial_array_splitter.start(_task_queue, obj_array, nullptr, obj_size_in_words);
 
   HeapWord* start = cast_from_oop<HeapWord*>(obj);
   MemRegion mr(start, initial_chunk_size);
   return scan_objArray(obj_array, mr);
+}
+
+size_t G1CMTask::start_partial_objArray2(oop obj) {
+  assert(should_be_sliced(obj), "Must be an array object %d and large %zu", obj->is_objArray(), obj->size());
+
+  objArrayOop obj_array = objArrayOop(obj);
+  size_t array_length = obj_array->length();
+
+  size_t initial_chunk_size = _partial_array_splitter.start(_task_queue, obj_array, nullptr, array_length);
+
+  // Mark objArray klass metadata
+  if (_cm_oop_closure->do_metadata()) {
+    _cm_oop_closure->do_klass(obj_array->klass());
+  }
+
+  scan_objArray(obj_array, 0, initial_chunk_size);
+
+  // Include object header size
+  return objArrayOopDesc::object_size(checked_cast<int>(initial_chunk_size));
 }
 
 size_t G1CMTask::do_partial_objArray(const G1TaskQueueEntry& task, bool stolen) {
@@ -2269,6 +2288,18 @@ size_t G1CMTask::do_partial_objArray(const G1TaskQueueEntry& task, bool stolen) 
 
   MemRegion mr(start, end);
   return scan_objArray(obj, mr);
+}
+
+size_t G1CMTask::do_partial_objArray2(const G1TaskQueueEntry& task, bool stolen) {
+  PartialArrayState* state = task.to_partial_array_state();
+  // Access state before release by claim().
+  objArrayOop obj = objArrayOop(state->source());
+
+  PartialArraySplitter::Claim claim =
+    _partial_array_splitter.claim(state, _task_queue, stolen);
+
+  scan_objArray(obj, claim._start, claim._end);
+  return heap_word_size((claim._end - claim._start) * heapOopSize);
 }
 
 void G1CMTask::drain_global_stack(bool partially) {
@@ -2809,7 +2840,7 @@ G1CMTask::G1CMTask(uint worker_id,
   _cm(cm),
   _mark_bitmap(nullptr),
   _task_queue(task_queue),
-  _partial_array_splitter(cm->partial_array_state_manager(), cm->max_num_tasks(), ObjArrayMarkingStride),
+  _partial_array_splitter(cm->partial_array_state_manager(), cm->max_num_tasks(), (UseNewCode) ? 2 * ObjArrayMarkingStride : ObjArrayMarkingStride),
   _mark_stats_cache(mark_stats, G1RegionMarkStatsCache::RegionMarkStatsCacheSize),
   _calls(0),
   _time_target_ms(0.0),

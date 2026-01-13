@@ -446,6 +446,8 @@ class G1ConcurrentMark : public CHeapObj<mtGC> {
   // structures are initialized to a sensible and predictable state.
   void reset_at_marking_complete();
 
+  void print_partial_array_task_stats();
+
   // Called to indicate how many threads are currently active.
   void set_concurrency(uint active_tasks);
 
@@ -828,14 +830,23 @@ private:
   size_t start_partial_objArray(oop obj);
   // Process the given continuation. Returns the number of words scanned.
   size_t do_partial_objArray(const G1TaskQueueEntry& task, bool stolen);
+  size_t start_partial_objArray2(oop obj);
+  // Process the given continuation. Returns the number of words scanned.
+  size_t do_partial_objArray2(const G1TaskQueueEntry& task, bool stolen);
   // Apply the closure on the given area of the objArray. Return the number of words
   // scanned.
   inline size_t scan_objArray(objArrayOop obj, MemRegion mr);
+
+  inline void scan_objArray(objArrayOop obj, size_t start, size_t end);
 public:
   // Resets the task; should be called right at the beginning of a marking phase.
   void reset(G1CMBitMap* mark_bitmap);
   // Clears all the fields that correspond to a claimed region.
   void clear_region_fields();
+
+  PartialArrayTaskStats* partial_array_task_stats() {
+    return _partial_array_splitter.stats();
+  }
 
   // The main method of this class which performs a marking step
   // trying not to exceed the given duration. However, it might exit
