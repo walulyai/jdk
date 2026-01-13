@@ -111,11 +111,7 @@ void ObjArrayKlass::oop_oop_iterate_range(objArrayOop a, OopClosureType* closure
 // Placed here to resolve include cycle between objArrayKlass.inline.hpp and objArrayOop.inline.hpp
 template <typename OopClosureType>
 void objArrayOopDesc::oop_iterate_range(OopClosureType* blk, int start, int end) {
-  if (UseCompressedOops) {
-    ((ObjArrayKlass*)klass())->oop_oop_iterate_range<narrowOop>(this, blk, start, end);
-  } else {
-    ((ObjArrayKlass*)klass())->oop_oop_iterate_range<oop>(this, blk, start, end);
-  }
+  OopIteratorClosureDispatch::oop_oop_iterate_range(blk, this, ObjArrayKlass::cast(klass()), start, end);
 }
 
 #endif // SHARE_OOPS_OBJARRAYKLASS_INLINE_HPP

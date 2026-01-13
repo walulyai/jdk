@@ -314,6 +314,7 @@ class OopIteratorClosureDispatch {
   template <typename OopClosureType> static void oop_oop_iterate(OopClosureType* cl, oop obj, Klass* klass);
   template <typename OopClosureType> static void oop_oop_iterate(OopClosureType* cl, oop obj, Klass* klass, MemRegion mr);
   template <typename OopClosureType> static void oop_oop_iterate_backwards(OopClosureType* cl, oop obj, Klass* klass);
+  template <typename OopClosureType> static void oop_oop_iterate_range(OopClosureType* cl, objArrayOop obj, ObjArrayKlass* klass, int start, int end);
 };
 
 #endif // SHARE_MEMORY_ITERATOR_HPP
