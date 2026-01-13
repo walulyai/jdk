@@ -2238,8 +2238,16 @@ size_t G1CMTask::start_partial_objArray(oop obj) {
   assert(should_be_sliced(obj), "Must be an array object %d and large %zu", obj->is_objArray(), obj->size());
   size_t obj_size_in_words = obj->size();
   objArrayOop obj_array = objArrayOop(obj);
-  log_debug(gc, marking) ("G1CMTask::start_partial_objArray obj_size_in_words %zu (%zu) object length %d (%d) ",
-                          obj_size_in_words, obj_size_in_words / (int)ObjArrayMarkingStride, obj_array->length(), obj_array->length() / (int)ObjArrayMarkingStride);
+  log_debug(gc, marking) ("G1CMTask::start_partial_objArray obj_size_in_words %zu (%zu) object length %d (%d) stride %d ( %d ObjArrayMarkingStride) LogBytesPerHeapOop %d heapOopSize %d BytesPerHeapOop %d BytesPerWord %d",
+                          obj_size_in_words, obj_size_in_words / (int)ObjArrayMarkingStride, obj_array->length(),
+                          obj_array->length() / (int)ObjArrayMarkingStride,
+                          ((BytesPerWord / BytesPerHeapOop) * (int)ObjArrayMarkingStride),
+                          (int)ObjArrayMarkingStride,
+                          LogBytesPerHeapOop,
+                          heapOopSize,
+                          BytesPerHeapOop,
+                          BytesPerWord
+                      );
   size_t initial_chunk_size = _partial_array_splitter.start(_task_queue, obj_array, nullptr, obj_size_in_words);
 
   HeapWord* start = cast_from_oop<HeapWord*>(obj);
