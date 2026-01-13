@@ -53,6 +53,7 @@
 #include "gc/shared/gcVMOperations.hpp"
 #include "gc/shared/partialArraySplitter.inline.hpp"
 #include "gc/shared/partialArrayState.hpp"
+#include "gc/shared/partialArrayTaskStats.hpp"
 #include "gc/shared/referencePolicy.hpp"
 #include "gc/shared/suspendibleThreadSet.hpp"
 #include "gc/shared/taskqueue.inline.hpp"
@@ -81,6 +82,7 @@
 #include "utilities/formatBuffer.hpp"
 #include "utilities/growableArray.hpp"
 #include "utilities/powerOfTwo.hpp"
+
 
 G1CMIsAliveClosure::G1CMIsAliveClosure() : _cm(nullptr) { }
 
@@ -657,12 +659,14 @@ void G1ConcurrentMark::set_concurrency_and_phase(uint active_tasks, bool concurr
   }
 }
 
+#if TASKQUEUE_STATS
 void G1ConcurrentMark::print_partial_array_task_stats() {
   auto get_stats = [&](uint i) {
     return _tasks[i]->partial_array_task_stats();
   };
   PartialArrayTaskStats::log_set(_max_num_tasks, get_stats, "G1ConcurrentMark Partial Array Task Stats");
 }
+#endif
 
 void G1ConcurrentMark::reset_at_marking_complete() {
   // We set the global marking state to some default values when we're
@@ -2840,7 +2844,7 @@ G1CMTask::G1CMTask(uint worker_id,
   _cm(cm),
   _mark_bitmap(nullptr),
   _task_queue(task_queue),
-  _partial_array_splitter(cm->partial_array_state_manager(), cm->max_num_tasks(), (UseNewCode) ? 2 * ObjArrayMarkingStride : ObjArrayMarkingStride),
+  _partial_array_splitter(cm->partial_array_state_manager(), cm->max_num_tasks(), (UseNewCode) ? ObjArrayMarkingStride : (BytesPerWord/ BytesPerHeapOop) * ObjArrayMarkingStride),
   _mark_stats_cache(mark_stats, G1RegionMarkStatsCache::RegionMarkStatsCacheSize),
   _calls(0),
   _time_target_ms(0.0),

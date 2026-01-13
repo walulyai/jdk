@@ -166,17 +166,17 @@ inline void G1CMTask::process_grey_task_entry(G1TaskQueueEntry task_entry, bool 
   if (scan) {
     if (task_entry.is_partial_array_state()) {
       if (UseNewCode) {
-        _words_scanned += do_partial_objArray2(task_entry, stolen);
-      } else {
         _words_scanned += do_partial_objArray(task_entry, stolen);
+      } else {
+        _words_scanned += do_partial_objArray2(task_entry, stolen);
       }
     } else {
       oop obj = task_entry.to_oop();
       if (should_be_sliced(obj)) {
         if (UseNewCode) {
-          _words_scanned += start_partial_objArray2(obj);
-        } else {
           _words_scanned += start_partial_objArray(obj);
+        } else {
+          _words_scanned += start_partial_objArray2(obj);
         }
       } else {
         _words_scanned += obj->oop_iterate_size(_cm_oop_closure);

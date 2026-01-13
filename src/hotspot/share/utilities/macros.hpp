@@ -364,7 +364,7 @@
 #ifdef ASSERT
 #define TASKQUEUE_STATS 1
 #else
-#define TASKQUEUE_STATS 1
+#define TASKQUEUE_STATS 0
 #endif // ASSERT
 #endif // TASKQUEUE_STATS
 #if TASKQUEUE_STATS

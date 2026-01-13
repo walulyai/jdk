@@ -32,6 +32,7 @@
 #include "gc/shared/gcCause.hpp"
 #include "gc/shared/partialArraySplitter.hpp"
 #include "gc/shared/partialArrayState.hpp"
+#include "gc/shared/partialArrayTaskStats.hpp"
 #include "gc/shared/taskqueue.hpp"
 #include "gc/shared/taskTerminator.hpp"
 #include "gc/shared/verifyOption.hpp"
@@ -446,8 +447,6 @@ class G1ConcurrentMark : public CHeapObj<mtGC> {
   // structures are initialized to a sensible and predictable state.
   void reset_at_marking_complete();
 
-  void print_partial_array_task_stats();
-
   // Called to indicate how many threads are currently active.
   void set_concurrency(uint active_tasks);
 
@@ -844,9 +843,13 @@ public:
   // Clears all the fields that correspond to a claimed region.
   void clear_region_fields();
 
+#if TASKQUEUE_STATS
+  void print_partial_array_task_stats();
+
   PartialArrayTaskStats* partial_array_task_stats() {
     return _partial_array_splitter.stats();
   }
+#endif
 
   // The main method of this class which performs a marking step
   // trying not to exceed the given duration. However, it might exit
