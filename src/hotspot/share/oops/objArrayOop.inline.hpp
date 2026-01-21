@@ -54,11 +54,7 @@ inline void objArrayOopDesc::obj_at_put(int index, oop value) {
 
 template <typename OopClosureType>
 void objArrayOopDesc::oop_iterate_elements_range(OopClosureType* blk, int start, int end) {
-  if (UseCompressedOops) {
-    ((ObjArrayKlass*)klass())->oop_oop_iterate_elements_range<narrowOop>(this, blk, start, end);
-  } else {
-    ((ObjArrayKlass*)klass())->oop_oop_iterate_elements_range<oop>(this, blk, start, end);
-  }
+  OopIteratorClosureDispatch::oop_oop_iterate_range(blk, this, ObjArrayKlass::cast(klass()), start, end);
 }
 
 #endif // SHARE_OOPS_OBJARRAYOOP_INLINE_HPP
