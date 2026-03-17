@@ -46,7 +46,29 @@ size_t PartialArraySplitter::start(Queue* queue,
     TASKQUEUE_STATS_ONLY(_stats.inc_split(););
     TASKQUEUE_STATS_ONLY(_stats.inc_pushed(step._ncreate);)
     PartialArrayState* state =
-      _allocator.allocate(source, destination, step._index, length, step._ncreate);
+      _allocator.allocate(source, destination, step._index, length, _stepper.chunk_size(), step._ncreate);
+    for (uint i = 0; i < step._ncreate; ++i) {
+      queue->push(ScannerTask(state));
+    }
+  } else {
+    assert(step._index == length, "invariant");
+  }
+  return step._index;
+}
+
+template<typename Queue>
+size_t PartialArraySplitter::start(Queue* queue,
+                                   objArrayOop source,
+                                   objArrayOop destination,
+                                   size_t length,
+                                  size_t chunk_size) {
+  PartialArrayTaskStepper::Step step = _stepper.start(length, chunk_size);
+  // Push initial partial scan tasks.
+  if (step._ncreate > 0) {
+    TASKQUEUE_STATS_ONLY(_stats.inc_split(););
+    TASKQUEUE_STATS_ONLY(_stats.inc_pushed(step._ncreate);)
+    PartialArrayState* state =
+      _allocator.allocate(source, destination, step._index, length, chunk_size, step._ncreate);
     for (uint i = 0; i < step._ncreate; ++i) {
       queue->push(ScannerTask(state));
     }
@@ -75,9 +97,10 @@ PartialArraySplitter::claim(PartialArrayState* state, Queue* queue, bool stolen)
       queue->push(ScannerTask(state));
     }
   }
+  size_t chunk_size = state->chunk_size();
   // Release state, decrementing refcount, now that we're done with it.
   _allocator.release(state);
-  return Claim{step._index, step._index + _stepper.chunk_size()};
+  return Claim{step._index, step._index + chunk_size};
 }
 
 #endif // SHARE_GC_SHARED_PARTIALARRAYSPLITTER_INLINE_HPP

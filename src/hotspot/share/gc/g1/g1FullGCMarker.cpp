@@ -52,6 +52,29 @@ G1FullGCMarker::~G1FullGCMarker() {
   assert(is_task_queue_empty(), "Must be empty at this point");
 }
 
+static size_t adjust_stride(size_t array_len, uint num_threads) {
+  const size_t min_stride = 256;
+  const size_t max_stride = ObjArrayMarkingStride;
+
+  if (array_len <= min_stride) {
+    return array_len;
+  }
+
+  if (num_threads == 1) {
+    return max_stride;
+  }
+
+  assert(array_len > min_stride, "We only split large arrays");
+
+  // ideal balance
+  size_t stride = (size_t)ceil((double)array_len / num_threads);
+
+  // round up to multiple of 256
+  stride = (stride + 255) & ~size_t(255);
+
+  return clamp(stride, min_stride, max_stride);
+}
+
 void G1FullGCMarker::process_partial_array(PartialArrayState* state, bool stolen) {
   // Access state before release by claim().
   objArrayOop obj_array = objArrayOop(state->source());
@@ -64,8 +87,11 @@ void G1FullGCMarker::start_partial_array_processing(objArrayOop obj) {
   mark_closure()->do_klass(obj->klass());
   // Don't push empty arrays to avoid unnecessary work.
   size_t array_length = obj->length();
-  if (array_length > 0) {
-    size_t initial_chunk_size = _partial_array_splitter.start(task_queue(), obj, nullptr, array_length);
+  size_t stride = adjust_stride(array_length, _collector->workers());
+  size_t initial_chunk_size = _partial_array_splitter.start(task_queue(), obj, nullptr, array_length, stride);
+  if (initial_chunk_size > 0) {
+    log_trace(gc) ("start_partial_array_processing: array_length: %zu num workers %u stride %zu initial_chunk_size %zu",
+                array_length, _collector->workers(), stride, initial_chunk_size);
     process_array_chunk(obj, 0, initial_chunk_size);
   }
 }
