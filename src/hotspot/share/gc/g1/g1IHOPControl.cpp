@@ -81,7 +81,7 @@ G1IHOPControl::G1IHOPControl(double ihop_percent,
     _predictor(predictor),
     _marking_times_s(10, 0.05),
     _old_gen_alloc_rate_s(10, 0.05),
-    _last_desired_young_gen_size(0) {
+    _expected_young_gen_at_first_mixed_gc(0) {
   assert(_initial_ihop_percent >= 0.0 && _initial_ihop_percent <= 100.0,
          "IHOP percent out of range: %.3f", ihop_percent);
   assert(!_is_adaptive || _predictor != nullptr, "precondition");
@@ -103,7 +103,7 @@ void G1IHOPControl::update_allocation_info(double allocation_time_s, size_t desi
   _last_allocation_time_s = allocation_time_s;
   double alloc_rate = _old_gen_alloc_tracker->last_period_old_gen_growth() / allocation_time_s;
   _old_gen_alloc_rate_s.add(alloc_rate);
-  _last_desired_young_gen_size = desired_young_gen_size;
+  _expected_young_gen_at_first_mixed_gc = desired_young_gen_size;
 }
 
 void G1IHOPControl::update_marking_length(double marking_length_s) {
@@ -119,14 +119,14 @@ size_t G1IHOPControl::old_gen_threshold_for_conc_mark_start() {
     return (size_t)(_initial_ihop_percent * _target_occupancy / 100.0);
   }
 
-  double pred_marking_time = predict(&_marking_times_s);
-  double pred_rate = predict(&_old_gen_alloc_rate_s);
-  size_t pred_bytes = (size_t)(pred_marking_time * pred_rate);
+  // Estimate the heap capacity required during the concurrent mark cycle,
+  // including the predicted promotions to the old generation and the expected
+  // young generation size at the first mixed GC after the mark cycle.
+  double time_needed_for_marking = predict(&_marking_times_s);
+  double old_gen_alloc_rate = predict(&_old_gen_alloc_rate_s);
+  size_t old_gen_alloc_bytes = (size_t)(time_needed_for_marking * old_gen_alloc_rate);
 
-  // Estimated heap capacity required during the concurrent mark cycle,
-  // including predicted promotions to the old generation and the
-  // desired young generation size
-  size_t predicted_needed = pred_bytes + _last_desired_young_gen_size;
+  size_t predicted_needed = old_gen_alloc_bytes + _expected_young_gen_at_first_mixed_gc;
 
   // Target heap occupancy after accounting for heap waste and reserved space
   size_t target_occupancy = adjusted_target_occupancy();
@@ -164,7 +164,7 @@ void G1IHOPControl::print_log(size_t non_young_occupancy) {
                       percent_of(cur_conc_mark_start_threshold, actual_threshold),
                       actual_threshold / M,
                       non_young_occupancy / M,
-                      _last_desired_young_gen_size / M,
+                      _expected_young_gen_at_first_mixed_gc / M,
                       predict(&_old_gen_alloc_rate_s) / M,
                       predict(&_marking_times_s) * 1000.0,
                       have_enough_data_for_prediction() ? "true" : "false");
@@ -183,7 +183,7 @@ void G1IHOPControl::send_trace_event(G1NewTracer* tracer, size_t non_young_occup
     tracer->report_adaptive_ihop_statistics(old_gen_threshold_for_conc_mark_start(),
                                             adjusted_target_occupancy(),
                                             non_young_occupancy,
-                                            _last_desired_young_gen_size,
+                                            _expected_young_gen_at_first_mixed_gc,
                                             predict(&_old_gen_alloc_rate_s),
                                             predict(&_marking_times_s),
                                             have_enough_data_for_prediction());

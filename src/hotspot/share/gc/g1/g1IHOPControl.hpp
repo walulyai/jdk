@@ -68,7 +68,7 @@ class G1IHOPControl : public CHeapObj<mtGC> {
   // Since we cannot know what young gen sizes are used in the future, we will just
   // use the current one. We expect that this one will be one with a fairly large size,
   // as there is no marking or mixed gc that could impact its size too much.
-  size_t _last_desired_young_gen_size;
+  size_t _expected_young_gen_at_first_mixed_gc;
 
   // Get a new prediction bounded below by zero from the given sequence.
   double predict(const TruncatedSeq* seq) const;
