@@ -53,8 +53,7 @@ public:
   // The _ncreate is the number of tasks to enqueue to continue processing the
   // array.  If _ncreate is zero then _index will be length.
   inline Step start(size_t length) const;
-  
-  // TODO: 
+
   inline Step start(size_t length, size_t chunk_size) const;
 
   // Atomically increment state's index by chunk_size() to claim the next
