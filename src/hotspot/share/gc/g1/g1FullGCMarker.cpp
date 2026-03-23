@@ -57,10 +57,11 @@ static size_t adjust_stride(size_t array_len, uint num_threads) {
   const size_t max_stride = ObjArrayMarkingStride;
 
   if (array_len <= min_stride) {
-    return array_len;
+    return min_stride;
   }
 
-  if (num_threads == 1) {
+  // If max_stride already gives at least one chunk per thread, use it
+  if (num_threads == 1 || (array_len + max_stride - 1) / max_stride >= num_threads) {
     return max_stride;
   }
 
@@ -87,13 +88,14 @@ void G1FullGCMarker::start_partial_array_processing(objArrayOop obj) {
   mark_closure()->do_klass(obj->klass());
   // Don't push empty arrays to avoid unnecessary work.
   size_t array_length = obj->length();
+
+  if (array_length == 0) {
+    return;
+  }
+
   size_t stride = adjust_stride(array_length, _collector->workers());
   size_t initial_chunk_size = _partial_array_splitter.start(task_queue(), obj, nullptr, array_length, stride);
-  if (initial_chunk_size > 0) {
-    log_debug(gc) ("start_partial_array_processing: array_length: %zu num workers %u stride %zu initial_chunk_size %zu",
-                array_length, _collector->workers(), stride, initial_chunk_size);
-    process_array_chunk(obj, 0, initial_chunk_size);
-  }
+  process_array_chunk(obj, 0, initial_chunk_size);
 }
 
 void G1FullGCMarker::complete_marking(G1ScannerTasksQueueSet* task_queues,

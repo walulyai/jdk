@@ -40,20 +40,7 @@ size_t PartialArraySplitter::start(Queue* queue,
                                    objArrayOop source,
                                    objArrayOop destination,
                                    size_t length) {
-  PartialArrayTaskStepper::Step step = _stepper.start(length);
-  // Push initial partial scan tasks.
-  if (step._ncreate > 0) {
-    TASKQUEUE_STATS_ONLY(_stats.inc_split(););
-    TASKQUEUE_STATS_ONLY(_stats.inc_pushed(step._ncreate);)
-    PartialArrayState* state =
-      _allocator.allocate(source, destination, step._index, length, _stepper.chunk_size(), step._ncreate);
-    for (uint i = 0; i < step._ncreate; ++i) {
-      queue->push(ScannerTask(state));
-    }
-  } else {
-    assert(step._index == length, "invariant");
-  }
-  return step._index;
+  return start(queue, source, destination, length, _stepper.chunk_size());
 }
 
 template<typename Queue>
@@ -61,7 +48,8 @@ size_t PartialArraySplitter::start(Queue* queue,
                                    objArrayOop source,
                                    objArrayOop destination,
                                    size_t length,
-                                  size_t chunk_size) {
+                                   size_t chunk_size) {
+  precond(chunk_size > 0);
   PartialArrayTaskStepper::Step step = _stepper.start(length, chunk_size);
   // Push initial partial scan tasks.
   if (step._ncreate > 0) {
