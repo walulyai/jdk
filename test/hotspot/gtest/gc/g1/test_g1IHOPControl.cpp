@@ -40,7 +40,7 @@ static void test_update(G1IHOPControl* ctrl,
   test_update_allocation_tracker(alloc_tracker, alloc_amount);
   for (int i = 0; i < 100; i++) {
     ctrl->update_allocation_info(alloc_time, young_size);
-    ctrl->update_marking_cycle_info(mark_time, 0, 0);
+    ctrl->update_marking_cycle_info(mark_time, alloc_amount / alloc_time, 0);
   }
 }
 
@@ -141,7 +141,15 @@ TEST_VM(G1IHOPControl, adaptive_simple) {
     ASSERT_EQ(initial_threshold, threshold) << "on step " << i;
   }
 
-  test_update(&ctrl, &alloc_tracker, alloc_time1, alloc_amount1, young_size, marking_time1);
+  // test_update(&ctrl, &alloc_tracker, alloc_time1, alloc_amount1, young_size, marking_time1);
+  // FIXME: One more to take us over the edge.
+  concurrent_start_to_mixed.record_concurrent_start_end(0.0);
+
+  test_update_allocation_tracker(&alloc_tracker, alloc_amount1);
+  ctrl.update_allocation_info(alloc_time1, young_size);
+  ctrl.update_marking_cycle_info(marking_time1, 0, 0);
+
+  concurrent_start_to_mixed.record_mixed_gc_start(0.0);
 
   threshold = ctrl.old_gen_threshold_for_conc_mark_start();
 
@@ -154,7 +162,14 @@ TEST_VM(G1IHOPControl, adaptive_simple) {
   const size_t settled_ihop2 = target_size
           - (young_size + alloc_amount2 / alloc_time2 * marking_time2);
 
-  test_update(&ctrl, &alloc_tracker, alloc_time2, alloc_amount2, young_size, marking_time2);
+  // FIXME: One more to take us over the edge.
+  concurrent_start_to_mixed.record_concurrent_start_end(0.0);
+
+  test_update_allocation_tracker(&alloc_tracker, alloc_amount1);
+  ctrl.update_allocation_info(alloc_time1, young_size);
+  ctrl.update_marking_cycle_info(marking_time1, 0, 0);
+
+  concurrent_start_to_mixed.record_mixed_gc_start(0.0);
 
   threshold = ctrl.old_gen_threshold_for_conc_mark_start();
 

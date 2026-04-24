@@ -77,10 +77,6 @@ public:
   // Calculates and resets stats after a collection.
   void reset_after_gc(size_t humongous_bytes_after_gc, bool is_concurrent_start);
 
-  void record_concurrent_start_end(size_t humongous_bytes_after_gc, size_t target_at_start) {
-
-  }
-
   size_t peak_humongous_bytes() const { return _mark_cycle._peak_humongous_bytes; }
   size_t non_humongous_bytes() const { return  _mark_cycle._non_humongous_bytes; }
 };
