@@ -515,7 +515,11 @@
     <Field type="ulong" contentType="bytes" name="ihopTargetOccupancy" label="IHOP Target Occupancy" description="Internal target old generation occupancy to reach at the start of mixed GC" />
     <Field type="ulong" contentType="bytes" name="currentOccupancy" label="Current Occupancy" description="Current old generation occupancy" />
     <Field type="ulong" contentType="bytes" name="additionalBufferSize" label="Additional Buffer" description="Additional buffer size" experimental="true" />
-    <Field type="double" contentType="bytes-per-second" name="predictedAllocationRate" label="Predicted Allocation Rate" description="Current predicted allocation rate for the mutator in bytes/second" />
+     <Field type="double" contentType="bytes-per-second" name="predictedAllocationRate" label="Predicted Allocation Rate" description="Current predicted allocation rate for the mutator in bytes/second" />
+    <Field type="double" contentType="bytes-per-second" name="predictedOldGenNonHumongousAllocationRate" label="Predicted Old-Gen Non-Humongous Allocation Rate"
+      description="Predicted allocation rate of non-humongous objects into the old generation, in bytes per second" />
+    <Field type="ulong" contentType="bytes" name="peakHumongousAllocation" label="Peak Humongous Allocation"
+      description="Maximum bytes allocated for humongous objects during the last marking cycle" experimental="true" />
     <Field type="long" contentType="millis" name="predictedMarkingDuration" label="Predicted Marking Duration"
       description="Current predicted time from the end of the last concurrent start to the first mixed GC" />
     <Field type="boolean" name="predictionActive" label="Prediction Active" description="Indicates whether the adaptive IHOP prediction is active" />

@@ -53,9 +53,9 @@ void G1OldGenAllocationTracker::reset_after_gc(size_t humongous_bytes_after_gc, 
     _mark_cycle._humongous_bytes_at_start = humongous_bytes_after_gc;
     _mark_cycle._non_humongous_bytes = 0;
     _mark_cycle._peak_humongous_bytes = 0;
-  }
 
-  if (_conc_start_to_mixed_tracker->is_active()) {
+    log_debug(gc, ihop) ("Update _mark_cycle: is_concurrent_start");
+  } else if (_conc_start_to_mixed_tracker->is_active()) {
     _mark_cycle._non_humongous_bytes += _allocated_bytes_since_last_gc;
     // TODO: add appropriate comments
     const size_t previous_increment = _humongous_bytes_after_last_gc > _mark_cycle._humongous_bytes_at_start ?

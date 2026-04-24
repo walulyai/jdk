@@ -109,11 +109,11 @@ void G1IHOPControl::update_allocation_info(double allocation_time_s, size_t expe
 }
 
 void G1IHOPControl::update_marking_cycle_info(double cycle_duration_s,
-                                              double non_humongous_alloc_rate,
+                                              double old_non_humongous_rate,
                                               size_t peak_humongous_allocated) {
   assert(cycle_duration_s >= 0.0, "Invalid marking duration: %.3f", cycle_duration_s);
   _marking_start_to_mixed_time_s.add(cycle_duration_s);
-  _old_non_humongous_alloc_rate.add(non_humongous_alloc_rate);
+  _old_non_humongous_alloc_rate.add(old_non_humongous_rate);
   _peak_humongous_allocated_in_mark_cycle.add(peak_humongous_allocated);
 }
 
@@ -181,7 +181,7 @@ void G1IHOPControl::print_log(size_t non_young_occupancy) {
 
   size_t effective_target = effective_target_occupancy();
   log_debug(gc, ihop)("Adaptive IHOP information (value update), prediction active: %s, old-gen threshold: %zuB (%1.2f%%), internal target occupancy: %zuB, "
-                      "old-gen occupancy: %zuB, additional buffer size: %zuB, predicted old-gen allocation rate: %1.2fB/s, predicted peak humongous %1.2fB"
+                      "old-gen occupancy: %zuB, additional buffer size: %zuB, predicted old-gen non-humongous allocation rate: %1.2fB/s, predicted peak humongous %1.2fB"
                       "predicted marking phase length: %1.2fms",
                       BOOL_TO_STR(have_enough_data_for_prediction()),
                       old_gen_mark_start_threshold,
@@ -208,7 +208,9 @@ void G1IHOPControl::send_trace_event(G1NewTracer* tracer, size_t non_young_occup
                                             effective_target_occupancy(),
                                             non_young_occupancy,
                                             _expected_young_gen_at_first_mixed_gc,
+                                            predict(&_old_gen_alloc_rate),
                                             predict(&_old_non_humongous_alloc_rate),
+                                            predict(&_peak_humongous_allocated_in_mark_cycle),
                                             predict(&_marking_start_to_mixed_time_s),
                                             have_enough_data_for_prediction());
   }

@@ -90,7 +90,6 @@ TEST_VM(G1IHOPControl, static_simple) {
   // Whatever we pass, the IHOP value must stay the same.
   test_update(&ctrl, &alloc_tracker, 2, 10, 10, 3);
   threshold = ctrl.old_gen_threshold_for_conc_mark_start();
-
   EXPECT_EQ(initial_ihop, threshold);
 
   test_update(&ctrl, &alloc_tracker, 12, 10, 10, 3);
