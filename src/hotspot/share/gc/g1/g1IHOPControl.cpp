@@ -109,12 +109,14 @@ void G1IHOPControl::update_allocation_info(double allocation_time_s, size_t expe
 }
 
 void G1IHOPControl::update_marking_cycle_info(double cycle_duration_s,
-                                              double old_non_humongous_rate,
-                                              size_t peak_humongous_allocated) {
+                                              size_t non_humongous_bytes,
+                                              size_t peak_humongous_bytes) {
   assert(cycle_duration_s >= 0.0, "Invalid marking duration: %.3f", cycle_duration_s);
+
+  double non_humongous_rate =  non_humongous_bytes / cycle_duration_s;
   _marking_start_to_mixed_time_s.add(cycle_duration_s);
-  _old_non_humongous_alloc_rate.add(old_non_humongous_rate);
-  _peak_humongous_allocated_in_mark_cycle.add(peak_humongous_allocated);
+  _old_non_humongous_alloc_rate.add(non_humongous_rate);
+  _peak_humongous_allocated_in_mark_cycle.add(peak_humongous_bytes);
 }
 
 // Determine the old generation occupancy threshold at which to start
@@ -149,6 +151,12 @@ size_t G1IHOPControl::old_gen_threshold_for_conc_mark_start() {
   size_t reserve_for_young_regions = _expected_young_gen_at_first_mixed_gc;
 
   size_t target_heap_occupancy = effective_target_occupancy();
+
+  printf("Target: %zu reserve_for_young_regions %zu old_non_humongous_alloc_bytes %zu marking_start_to_mixed_time %1.4f\n",
+          target_heap_occupancy,
+          reserve_for_young_regions,
+          old_non_humongous_alloc_bytes,
+          marking_start_to_mixed_time);
 
   size_t needed_for_allocations_during_mark_cycle = reserve_for_young_regions +
                                                     old_non_humongous_alloc_bytes +

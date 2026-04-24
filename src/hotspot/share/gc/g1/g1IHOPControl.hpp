@@ -116,8 +116,8 @@ class G1IHOPControl : public CHeapObj<mtGC> {
   // the first mixed gc.
 
   void update_marking_cycle_info(double cycle_duration_s,
-                                 double old_non_humongous_rate,
-                                 size_t peak_humongous_allocated);
+                                 size_t non_humongous_bytes,
+                                 size_t peak_humongous_bytes);
 
   // Get the current non-young occupancy at which concurrent marking should start.
   size_t old_gen_threshold_for_conc_mark_start();

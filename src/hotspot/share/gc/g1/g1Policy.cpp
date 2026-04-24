@@ -1035,9 +1035,9 @@ bool G1Policy::update_ihop_prediction(double mutator_time_s,
            "Concurrent start to mixed time must be larger than zero but is %.3f",
            marking_to_mixed_time);
     if (marking_to_mixed_time > min_valid_time) {
-      double old_non_humongous_rate = _old_gen_alloc_tracker.non_humongous_bytes() / (double)marking_to_mixed_time;
-
-      _ihop_control->update_marking_cycle_info(marking_to_mixed_time, old_non_humongous_rate, _old_gen_alloc_tracker.peak_humongous_bytes());
+      _ihop_control->update_marking_cycle_info(marking_to_mixed_time,
+                                               _old_gen_alloc_tracker.non_humongous_bytes(),
+                                               _old_gen_alloc_tracker.peak_humongous_bytes());
       report = true;
     }
   }
