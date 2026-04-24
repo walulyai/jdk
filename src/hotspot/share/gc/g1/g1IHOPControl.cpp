@@ -39,7 +39,7 @@ bool G1IHOPControl::have_enough_data_for_prediction() const {
   assert(_is_adaptive, "precondition");
 
   return ((size_t)_marking_start_to_mixed_time_s.num() >= G1AdaptiveIHOPNumInitialSamples) &&
-         ((size_t)_old_gen_alloc_rate.num() >= G1AdaptiveIHOPNumInitialSamples);
+         ((size_t)_old_non_humongous_alloc_rate.num() >= G1AdaptiveIHOPNumInitialSamples);
 }
 
 double G1IHOPControl::last_marking_start_to_mixed_time_s() const {
@@ -81,6 +81,8 @@ G1IHOPControl::G1IHOPControl(double ihop_percent,
     _predictor(predictor),
     _marking_start_to_mixed_time_s(10, 0.05),
     _old_gen_alloc_rate(10, 0.05),
+    _old_non_humongous_alloc_rate(10, 0.05),
+    _peak_humongous_allocated_in_mark_cycle(10, 0.05),
     _expected_young_gen_at_first_mixed_gc(0) {
   assert(_initial_ihop_percent >= 0.0 && _initial_ihop_percent <= 100.0,
          "IHOP percent out of range: %.3f", ihop_percent);
@@ -106,17 +108,19 @@ void G1IHOPControl::update_allocation_info(double allocation_time_s, size_t expe
   _expected_young_gen_at_first_mixed_gc = expected_young_gen_size;
 }
 
-void G1IHOPControl::add_marking_start_to_mixed_length(double length_s) {
-  assert(length_s >= 0.0, "Invalid marking length: %.3f", length_s);
-  _marking_start_to_mixed_time_s.add(length_s);
+void G1IHOPControl::update_marking_cycle_info(double cycle_duration_s,
+                                              double non_humongous_alloc_rate,
+                                              size_t peak_humongous_allocated) {
+  assert(cycle_duration_s >= 0.0, "Invalid marking duration: %.3f", cycle_duration_s);
+  _marking_start_to_mixed_time_s.add(cycle_duration_s);
+  _old_non_humongous_alloc_rate.add(non_humongous_alloc_rate);
+  _peak_humongous_allocated_in_mark_cycle.add(peak_humongous_allocated);
 }
 
 // Determine the old generation occupancy threshold at which to start
 // concurrent marking such that reclamation (first Mixed GC) begins
 // before the heap reaches a critical occupancy level.
 size_t G1IHOPControl::old_gen_threshold_for_conc_mark_start() {
-  guarantee(_target_occupancy > 0, "Target occupancy must be initialized");
-
   if (!_is_adaptive || !have_enough_data_for_prediction()) {
     return (size_t)(_initial_ihop_percent * _target_occupancy / 100.0);
   }
@@ -128,9 +132,12 @@ size_t G1IHOPControl::old_gen_threshold_for_conc_mark_start() {
   //   - Young gen will occupy a certain size at the first Mixed GC:
   //       expected_young_gen_at_first_mixed_gc
   double marking_start_to_mixed_time = predict(&_marking_start_to_mixed_time_s);
-  double old_gen_alloc_rate = predict(&_old_gen_alloc_rate);
-  size_t old_gen_alloc_bytes = (size_t)(marking_start_to_mixed_time * old_gen_alloc_rate);
+  double old_non_humongous_alloc_rate = predict(&_old_non_humongous_alloc_rate);
+  size_t old_non_humongous_alloc_bytes = (size_t)(marking_start_to_mixed_time * old_non_humongous_alloc_rate);
 
+  size_t peak_humongous_reserve = predict(&_peak_humongous_allocated_in_mark_cycle);
+
+  // FIXME: fix the comment
   // Therefore, the total heap occupancy at the first Mixed GC is:
   //   current_old_gen + old_gen_growth + expected_young_gen_at_first_mixed_gc
   //
@@ -139,12 +146,18 @@ size_t G1IHOPControl::old_gen_threshold_for_conc_mark_start() {
   //   mark_start_threshold = target_heap_occupancy -
   //                          (old_gen_growth + expected_young_gen_at_first_mixed_gc)
 
-  size_t predicted_needed = old_gen_alloc_bytes + _expected_young_gen_at_first_mixed_gc;
+  size_t reserve_for_young_regions = _expected_young_gen_at_first_mixed_gc;
+
   size_t target_heap_occupancy = effective_target_occupancy();
 
-  return predicted_needed < target_heap_occupancy
-         ? target_heap_occupancy - predicted_needed
-         : 0;
+  size_t needed_for_allocations_during_mark_cycle = reserve_for_young_regions +
+                                                    old_non_humongous_alloc_bytes +
+                                                    peak_humongous_reserve;
+
+  size_t threshold = needed_for_allocations_during_mark_cycle < target_heap_occupancy ?
+                      target_heap_occupancy - needed_for_allocations_during_mark_cycle :
+                      0;
+  return threshold;
 }
 
 void G1IHOPControl::print_log(size_t non_young_occupancy) {
@@ -168,7 +181,7 @@ void G1IHOPControl::print_log(size_t non_young_occupancy) {
 
   size_t effective_target = effective_target_occupancy();
   log_debug(gc, ihop)("Adaptive IHOP information (value update), prediction active: %s, old-gen threshold: %zuB (%1.2f%%), internal target occupancy: %zuB, "
-                      "old-gen occupancy: %zuB, additional buffer size: %zuB, predicted old-gen allocation rate: %1.2fB/s, "
+                      "old-gen occupancy: %zuB, additional buffer size: %zuB, predicted old-gen allocation rate: %1.2fB/s, predicted peak humongous %1.2fB"
                       "predicted marking phase length: %1.2fms",
                       BOOL_TO_STR(have_enough_data_for_prediction()),
                       old_gen_mark_start_threshold,
@@ -176,7 +189,8 @@ void G1IHOPControl::print_log(size_t non_young_occupancy) {
                       effective_target,
                       non_young_occupancy,
                       _expected_young_gen_at_first_mixed_gc,
-                      predict(&_old_gen_alloc_rate),
+                      predict(&_old_non_humongous_alloc_rate),
+                      predict(&_peak_humongous_allocated_in_mark_cycle),
                       predict(&_marking_start_to_mixed_time_s) * 1000.0);
 }
 
@@ -194,7 +208,7 @@ void G1IHOPControl::send_trace_event(G1NewTracer* tracer, size_t non_young_occup
                                             effective_target_occupancy(),
                                             non_young_occupancy,
                                             _expected_young_gen_at_first_mixed_gc,
-                                            predict(&_old_gen_alloc_rate),
+                                            predict(&_old_non_humongous_alloc_rate),
                                             predict(&_marking_start_to_mixed_time_s),
                                             have_enough_data_for_prediction());
   }

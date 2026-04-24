@@ -25,6 +25,7 @@
 #ifndef SHARE_VM_GC_G1_G1OLDGENALLOCATIONTRACKER_HPP
 #define SHARE_VM_GC_G1_G1OLDGENALLOCATIONTRACKER_HPP
 
+#include "gc/g1/g1ConcurrentStartToMixedTimeTracker.hpp"
 #include "gc/g1/g1HeapRegion.hpp"
 #include "memory/allocation.hpp"
 
@@ -45,11 +46,24 @@ class G1OldGenAllocationTracker : public CHeapObj<mtGC> {
   // Humongous allocations during last mutator period.
   size_t _allocated_humongous_bytes_since_last_gc;
 
-public:
-  G1OldGenAllocationTracker();
+  // FIXME: add appropriate comment
+  struct MarkCycleAllocations {
+    size_t _non_humongous_bytes = 0;
+    size_t _humongous_bytes_at_start = 0;
+    size_t _peak_humongous_bytes = 0;
+  } _mark_cycle;
 
-  void add_allocated_bytes_since_last_gc(size_t bytes) { _allocated_bytes_since_last_gc += bytes; }
-  void add_allocated_humongous_bytes_since_last_gc(size_t bytes) { _allocated_humongous_bytes_since_last_gc += bytes; }
+  G1ConcurrentStartToMixedTimeTracker* _conc_start_to_mixed_tracker;
+
+public:
+  G1OldGenAllocationTracker(G1ConcurrentStartToMixedTimeTracker* conc_start_to_mixed_tracker);
+
+  void add_allocated_bytes_since_last_gc(size_t bytes) {
+    _allocated_bytes_since_last_gc += bytes;
+  }
+  void add_allocated_humongous_bytes_since_last_gc(size_t bytes) {
+    _allocated_humongous_bytes_since_last_gc += bytes;
+  }
 
   // Record a humongous allocation in a collection pause. This allocation
   // is accounted to the previous mutator period.
@@ -61,7 +75,14 @@ public:
   size_t last_period_old_gen_growth() const { return _last_period_old_gen_growth; };
 
   // Calculates and resets stats after a collection.
-  void reset_after_gc(size_t humongous_bytes_after_gc);
+  void reset_after_gc(size_t humongous_bytes_after_gc, bool is_concurrent_start);
+
+  void record_concurrent_start_end(size_t humongous_bytes_after_gc, size_t target_at_start) {
+
+  }
+
+  size_t peak_humongous_bytes() const { return _mark_cycle._peak_humongous_bytes; }
+  size_t non_humongous_bytes() const { return  _mark_cycle._non_humongous_bytes; }
 };
 
 #endif // SHARE_VM_GC_G1_G1OLDGENALLOCATIONTRACKER_HPP

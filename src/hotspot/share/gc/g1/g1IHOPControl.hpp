@@ -63,6 +63,8 @@ class G1IHOPControl : public CHeapObj<mtGC> {
   TruncatedSeq _marking_start_to_mixed_time_s;
   // Old generation allocation rate in bytes per second.
   TruncatedSeq _old_gen_alloc_rate;
+  TruncatedSeq _old_non_humongous_alloc_rate;
+  TruncatedSeq _peak_humongous_allocated_in_mark_cycle;
 
   // The most recent unrestrained size of the young gen. This is used as an additional
   // factor in the calculation of the threshold, as the threshold is based on
@@ -112,10 +114,15 @@ class G1IHOPControl : public CHeapObj<mtGC> {
 
   // Update the time spent in the mutator beginning from the end of concurrent start to
   // the first mixed gc.
-  void add_marking_start_to_mixed_length(double length_s);
+
+  void update_marking_cycle_info(double cycle_duration_s,
+                                 double non_humongous_alloc_rate,
+                                 size_t peak_humongous_allocated);
 
   // Get the current non-young occupancy at which concurrent marking should start.
   size_t old_gen_threshold_for_conc_mark_start();
+
+  size_t target_occupancy() const { return _target_occupancy; }
 
   void report_statistics(G1NewTracer* tracer, size_t non_young_occupancy);
 };

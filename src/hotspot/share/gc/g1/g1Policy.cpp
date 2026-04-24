@@ -55,7 +55,8 @@ G1Policy::G1Policy(STWGCTimer* gc_timer) :
   _analytics(new G1Analytics(&_predictor)),
   _remset_tracker(),
   _mmu_tracker(new G1MMUTracker(GCPauseIntervalMillis / 1000.0, MaxGCPauseMillis / 1000.0)),
-  _old_gen_alloc_tracker(),
+  _concurrent_start_to_mixed(),
+  _old_gen_alloc_tracker(&_concurrent_start_to_mixed),
   _ihop_control(create_ihop_control(&_old_gen_alloc_tracker, &_predictor)),
   _policy_counters(new GCPolicyCounters("GarbageFirst", 1, 2)),
   _cur_pause_start_sec(0.0),
@@ -68,7 +69,6 @@ G1Policy::G1Policy(STWGCTimer* gc_timer) :
   _young_gen_sizer(),
   _free_regions_at_end_of_collection(0),
   _pending_cards_from_gc(0),
-  _concurrent_start_to_mixed(),
   _collection_set(nullptr),
   _g1h(nullptr),
   _phase_times_timer(gc_timer),
@@ -582,7 +582,8 @@ void G1Policy::record_full_collection_end(size_t allocation_word_size) {
   _survivor_surv_rate_group->reset();
   update_young_length_bounds();
 
-  _old_gen_alloc_tracker.reset_after_gc(_g1h->humongous_regions_count() * G1HeapRegion::GrainBytes);
+  _old_gen_alloc_tracker.reset_after_gc(_g1h->humongous_regions_count() * G1HeapRegion::GrainBytes,
+                                        false /* is_concurrent_start */);
 
   double start_time_sec = cur_pause_start_sec();
   record_pause(Pause::Full, start_time_sec, end_sec);
@@ -673,6 +674,9 @@ void G1Policy::record_pause_start_time() {
 
 void G1Policy::record_young_collection_start() {
   record_pause_start_time();
+  if (collector_state()->is_in_mixed_phase()) {
+    _concurrent_start_to_mixed.record_mixed_gc_start(cur_pause_start_sec());
+  }
   // We only need to do this here as the policy will only be applied
   // to the GC we're about to start. so, no point is calculating this
   // every time we calculate / recalculate the target young length.
@@ -930,8 +934,6 @@ void G1Policy::record_young_collection_end(bool concurrent_operation_is_full_mar
                           phase_times()->sum_thread_work_items(G1GCPhaseTimes::MergePSS, G1GCPhaseTimes::MergePSSToYoungGenCards));
   }
 
-  record_pause(this_pause, start_time_sec, end_time_sec);
-
   if (G1CollectorState::is_prepare_mixed_pause(this_pause)) {
     assert(!G1CollectorState::is_concurrent_start_pause(this_pause),
            "The young GC before mixed is not allowed to be concurrent start GC");
@@ -962,7 +964,9 @@ void G1Policy::record_young_collection_end(bool concurrent_operation_is_full_mar
 
   _free_regions_at_end_of_collection = _g1h->num_free_regions();
 
-  _old_gen_alloc_tracker.reset_after_gc(_g1h->humongous_regions_count() * G1HeapRegion::GrainBytes);
+  _old_gen_alloc_tracker.reset_after_gc(_g1h->humongous_regions_count() * G1HeapRegion::GrainBytes,
+                                        this_pause == Pause::ConcurrentStartFull);
+  record_pause(this_pause, start_time_sec, end_time_sec);
   // Do not update dynamic IHOP due to G1 periodic collection as it is highly likely
   // that in this case we are not running in a "normal" operating mode.
   if (_g1h->gc_cause() != GCCause::_g1_periodic_collection) {
@@ -1031,7 +1035,9 @@ bool G1Policy::update_ihop_prediction(double mutator_time_s,
            "Concurrent start to mixed time must be larger than zero but is %.3f",
            marking_to_mixed_time);
     if (marking_to_mixed_time > min_valid_time) {
-      _ihop_control->add_marking_start_to_mixed_length(marking_to_mixed_time);
+      size_t old_non_humongous_rate = _old_gen_alloc_tracker.non_humongous_bytes() / (double)marking_to_mixed_time;
+
+      _ihop_control->update_marking_cycle_info(marking_to_mixed_time, old_non_humongous_rate, _old_gen_alloc_tracker.peak_humongous_bytes());
       report = true;
     }
   }

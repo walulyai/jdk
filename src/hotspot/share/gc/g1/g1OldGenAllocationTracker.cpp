@@ -23,17 +23,19 @@
  */
 
 #include "gc/g1/g1OldGenAllocationTracker.hpp"
+#include "gc/g1/g1HeapRegion.inline.hpp"
 #include "logging/log.hpp"
 
-G1OldGenAllocationTracker::G1OldGenAllocationTracker() :
+G1OldGenAllocationTracker::G1OldGenAllocationTracker(G1ConcurrentStartToMixedTimeTracker* tracker) :
   _last_period_old_gen_bytes(0),
   _last_period_old_gen_growth(0),
   _humongous_bytes_after_last_gc(0),
   _allocated_bytes_since_last_gc(0),
-  _allocated_humongous_bytes_since_last_gc(0) {
+  _allocated_humongous_bytes_since_last_gc(0),
+  _conc_start_to_mixed_tracker(tracker) {
 }
 
-void G1OldGenAllocationTracker::reset_after_gc(size_t humongous_bytes_after_gc) {
+void G1OldGenAllocationTracker::reset_after_gc(size_t humongous_bytes_after_gc, bool is_concurrent_start) {
   // Calculate actual increase in old, taking eager reclaim into consideration.
   size_t last_period_humongous_increase = 0;
   if (humongous_bytes_after_gc > _humongous_bytes_after_last_gc) {
@@ -46,6 +48,36 @@ void G1OldGenAllocationTracker::reset_after_gc(size_t humongous_bytes_after_gc) 
 
   // Calculate and record needed values.
   _last_period_old_gen_bytes = _allocated_bytes_since_last_gc + _allocated_humongous_bytes_since_last_gc;
+
+  if (is_concurrent_start) {
+    _mark_cycle._humongous_bytes_at_start = humongous_bytes_after_gc;
+    _mark_cycle._non_humongous_bytes = 0;
+    _mark_cycle._peak_humongous_bytes = 0;
+  }
+
+  if (_conc_start_to_mixed_tracker->is_active()) {
+    _mark_cycle._non_humongous_bytes += _allocated_bytes_since_last_gc;
+    // TODO: add appropriate comments
+    const size_t previous_increment = _humongous_bytes_after_last_gc > _mark_cycle._humongous_bytes_at_start ?
+                                      _humongous_bytes_after_last_gc - _mark_cycle._humongous_bytes_at_start : 0;
+    const size_t max_humongous_before_gc = previous_increment + _allocated_humongous_bytes_since_last_gc;
+
+      log_debug(gc, ihop) ("Update old gen: _allocated_bytes_since_last_gc %zuMB, _allocated_humongous_bytes_since_last_gc %zuMB _non_humongous_bytes %zuMB _last_period_old_gen_bytes %zuMB",
+                            _allocated_bytes_since_last_gc / M,
+                            _allocated_humongous_bytes_since_last_gc / M,
+                            _mark_cycle._non_humongous_bytes / M,
+                            _last_period_old_gen_bytes / M
+                          );
+      log_debug(gc, ihop) ("Update peaks before %zu [%zu - %zu] after %zu allocated %zu max %zu",
+                _humongous_bytes_after_last_gc / G1HeapRegion::GrainBytes ,
+                (_mark_cycle._humongous_bytes_at_start/ G1HeapRegion::GrainBytes), (_humongous_bytes_after_last_gc / G1HeapRegion::GrainBytes),
+                humongous_bytes_after_gc / G1HeapRegion::GrainBytes,
+                _allocated_humongous_bytes_since_last_gc / G1HeapRegion::GrainBytes,
+                max_humongous_before_gc / G1HeapRegion::GrainBytes);
+
+    _mark_cycle._peak_humongous_bytes = MAX2(max_humongous_before_gc, _mark_cycle._peak_humongous_bytes);
+  }
+
   _humongous_bytes_after_last_gc = humongous_bytes_after_gc;
 
   log_debug(gc, alloc, stats)("Old generation allocation in the last mutator period, "

@@ -70,6 +70,7 @@ class G1Policy: public CHeapObj<mtGC> {
   G1RemSetTrackingPolicy _remset_tracker;
   G1MMUTracker* _mmu_tracker;
 
+  G1ConcurrentStartToMixedTimeTracker _concurrent_start_to_mixed;
   // Tracking the allocation in the old generation between
   // two GCs.
   G1OldGenAllocationTracker _old_gen_alloc_tracker;
@@ -111,8 +112,6 @@ class G1Policy: public CHeapObj<mtGC> {
   // Tracks the approximate number of cards found as to-collection-set by either the
   // garbage collection or the most recent refinement sweep.
   size_t _to_collection_set_cards;
-
-  G1ConcurrentStartToMixedTimeTracker _concurrent_start_to_mixed;
 
   bool should_update_surv_rate_group_predictors();
 

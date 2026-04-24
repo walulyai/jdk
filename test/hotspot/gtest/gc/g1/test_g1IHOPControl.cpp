@@ -30,7 +30,7 @@
 static void test_update_allocation_tracker(G1OldGenAllocationTracker* alloc_tracker,
                                            size_t alloc_amount) {
   alloc_tracker->add_allocated_bytes_since_last_gc(alloc_amount);
-  alloc_tracker->reset_after_gc((size_t)0);
+  alloc_tracker->reset_after_gc((size_t)0, false);
 }
 
 static void test_update(G1IHOPControl* ctrl,
@@ -40,7 +40,7 @@ static void test_update(G1IHOPControl* ctrl,
   test_update_allocation_tracker(alloc_tracker, alloc_amount);
   for (int i = 0; i < 100; i++) {
     ctrl->update_allocation_info(alloc_time, young_size);
-    ctrl->add_marking_start_to_mixed_length(mark_time);
+    ctrl->update_marking_cycle_info(mark_time, 0, 0);
   }
 }
 
@@ -54,10 +54,10 @@ static void test_update_humongous(G1IHOPControl* ctrl,
                                   double mark_time) {
   alloc_tracker->add_allocated_bytes_since_last_gc(alloc_amount_non_hum);
   alloc_tracker->add_allocated_humongous_bytes_since_last_gc(alloc_amount_hum);
-  alloc_tracker->reset_after_gc(humongous_bytes_after_last_gc);
+  alloc_tracker->reset_after_gc(humongous_bytes_after_last_gc, false);
   for (int i = 0; i < 100; i++) {
     ctrl->update_allocation_info(alloc_time, young_size);
-    ctrl->add_marking_start_to_mixed_length(mark_time);
+    ctrl->update_marking_cycle_info(mark_time, 0, 0);
   }
 }
 
@@ -70,7 +70,8 @@ TEST_VM(G1IHOPControl, static_simple) {
   const bool is_adaptive = false;
   const size_t initial_ihop = 45;
 
-  G1OldGenAllocationTracker alloc_tracker;
+  G1ConcurrentStartToMixedTimeTracker concurrent_start_to_mixed;
+  G1OldGenAllocationTracker alloc_tracker(&concurrent_start_to_mixed);
   G1IHOPControl ctrl(initial_ihop, &alloc_tracker, is_adaptive, nullptr, 0, 0);
   ctrl.update_target_occupancy(100);
 
@@ -82,7 +83,7 @@ TEST_VM(G1IHOPControl, static_simple) {
   threshold = ctrl.old_gen_threshold_for_conc_mark_start();
   EXPECT_EQ(initial_ihop, threshold);
 
-  ctrl.add_marking_start_to_mixed_length(1000.0);
+  ctrl.update_marking_cycle_info(1000.0, 0, 0);
   threshold = ctrl.old_gen_threshold_for_conc_mark_start();
   EXPECT_EQ(initial_ihop, threshold);
 
@@ -113,7 +114,8 @@ TEST_VM(G1IHOPControl, adaptive_simple) {
   // The final IHOP value is always
   // target_size - (young_size + alloc_amount/alloc_time * marking_time)
 
-  G1OldGenAllocationTracker alloc_tracker;
+  G1ConcurrentStartToMixedTimeTracker concurrent_start_to_mixed;
+  G1OldGenAllocationTracker alloc_tracker(&concurrent_start_to_mixed);
   G1Predictions pred(0.95);
   G1IHOPControl ctrl(initial_threshold, &alloc_tracker, is_adaptive, &pred, 0, 0);
   ctrl.update_target_occupancy(target_size);
@@ -133,7 +135,7 @@ TEST_VM(G1IHOPControl, adaptive_simple) {
   for (size_t i = 0; i < G1AdaptiveIHOPNumInitialSamples - 1; i++) {
     test_update_allocation_tracker(&alloc_tracker, alloc_amount1);
     ctrl.update_allocation_info(alloc_time1, young_size);
-    ctrl.add_marking_start_to_mixed_length(marking_time1);
+    ctrl.update_marking_cycle_info(marking_time1, 0, 0);
     // Not enough data yet.
     threshold = ctrl.old_gen_threshold_for_conc_mark_start();
 
@@ -191,7 +193,8 @@ TEST_VM(G1IHOPControl, adaptive_humongous) {
   const double duration = 10.0;
   const size_t marking_time = 2;
 
-  G1OldGenAllocationTracker alloc_tracker;
+  G1ConcurrentStartToMixedTimeTracker concurrent_start_to_mixed;
+  G1OldGenAllocationTracker alloc_tracker(&concurrent_start_to_mixed);
   G1Predictions pred(0.95);
   G1IHOPControl ctrl(initial_threshold, &alloc_tracker, is_adaptive, &pred, 0, 0);
   ctrl.update_target_occupancy(target_size);
