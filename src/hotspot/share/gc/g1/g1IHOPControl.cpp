@@ -97,25 +97,25 @@ void G1IHOPControl::report_statistics(G1NewTracer* new_tracer, size_t non_young_
   send_trace_event(new_tracer, non_young_occupancy, last_period_old_gen_bytes);
 }
 
-void G1IHOPControl::record_last_mutator_period(double mutatator_time_s,
+void G1IHOPControl::record_last_mutator_period(double mutator_time_s,
                                                size_t old_gen_growth_bytes,
                                                size_t expected_young_gen_size) {
-  assert(mutatator_time_s > 0, "Invalid allocation time: %.3f", mutatator_time_s);
-  double alloc_rate = old_gen_growth_bytes / mutatator_time_s;
+  assert(mutator_time_s > 0, "Invalid allocation time: %.3f", mutator_time_s);
+  double alloc_rate = old_gen_growth_bytes / mutator_time_s;
   _old_gen_alloc_rate.add(alloc_rate);
-  _last_allocation_time_s = mutatator_time_s;
+  _last_allocation_time_s = mutator_time_s;
   _expected_young_gen_at_first_mixed_gc = expected_young_gen_size;
 }
 
 void G1IHOPControl::record_concurrent_cycle(double marking_start_to_mixed_time_s,
                                             size_t non_humongous_bytes,
-                                            size_t peak_humongous_bytes) {
+                                            size_t peak_extra_humongous_reserve_bytes) {
   assert(marking_start_to_mixed_time_s > 0.0, "Invalid concurrent cycle duration: %.3f", marking_start_to_mixed_time_s);
 
   double non_humongous_rate =  non_humongous_bytes / marking_start_to_mixed_time_s;
   _marking_start_to_mixed_time_s.add(marking_start_to_mixed_time_s);
   _old_non_humongous_alloc_rate.add(non_humongous_rate);
-  _peak_humongous_allocated_in_mark_cycle.add(peak_humongous_bytes);
+  _peak_humongous_allocated_in_mark_cycle.add(peak_extra_humongous_reserve_bytes);
 }
 
 // Determine the old generation occupancy threshold at which to start

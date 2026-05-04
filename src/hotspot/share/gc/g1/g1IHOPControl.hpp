@@ -25,7 +25,6 @@
 #ifndef SHARE_GC_G1_G1IHOPCONTROL_HPP
 #define SHARE_GC_G1_G1IHOPCONTROL_HPP
 
-#include "gc/g1/g1OldGenAllocationTracker.hpp"
 #include "memory/allocation.hpp"
 #include "utilities/numberSeq.hpp"
 
@@ -85,8 +84,8 @@ class G1IHOPControl : public CHeapObj<mtGC> {
   // algorithm needs to consider restrictions by the environment.
   size_t effective_target_occupancy() const;
 
- void print_log(size_t non_young_occupancy, size_t last_period_old_gen_bytes);
- void send_trace_event(G1NewTracer* tracer, size_t non_young_occupancy, size_t last_period_old_gen_bytes);
+  void print_log(size_t non_young_occupancy, size_t last_period_old_gen_bytes);
+  void send_trace_event(G1NewTracer* tracer, size_t non_young_occupancy, size_t last_period_old_gen_bytes);
 
  public:
   G1IHOPControl(double ihop_percent,
@@ -108,7 +107,7 @@ class G1IHOPControl : public CHeapObj<mtGC> {
   // Contents include young gen at that point, and the memory required for evacuating
   // the collection set in that first mixed gc (including waste caused by PLAB
   // allocation etc.).
-  void record_last_mutator_period(double mutatator_time_s,
+  void record_last_mutator_period(double mutator_time_s,
                                   size_t old_gen_growth_bytes,
                                   size_t expected_young_gen_size);
 
@@ -117,7 +116,7 @@ class G1IHOPControl : public CHeapObj<mtGC> {
 
   void record_concurrent_cycle(double marking_start_to_mixed_time_s,
                                size_t non_humongous_bytes,
-                               size_t peak_humongous_bytes);
+                               size_t peak_extra_humongous_reserve_bytes);
 
   // Get the current non-young occupancy at which concurrent marking should start.
   size_t old_gen_threshold_for_conc_mark_start();

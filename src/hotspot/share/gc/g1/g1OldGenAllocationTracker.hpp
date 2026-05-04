@@ -50,7 +50,7 @@ class G1OldGenAllocationTracker : public CHeapObj<mtGC> {
   struct ConcurrentCycleAllocations {
     size_t _non_humongous_bytes = 0;
     size_t _humongous_bytes_at_start = 0;
-    size_t _peak_humongous_bytes = 0;
+    intptr_t _peak_extra_humongous_reserve_bytes = 0;
   } _conc_cycle;
 
   G1ConcurrentStartToMixedTimeTracker* _conc_start_to_mixed_tracker;
@@ -72,12 +72,16 @@ public:
   }
 
   size_t last_period_old_gen_bytes() const { return _last_period_old_gen_bytes; }
-  size_t last_period_old_gen_growth() const { return _last_period_old_gen_growth; };
+  size_t last_period_old_gen_growth() const { return _last_period_old_gen_growth; }
 
   // Calculates and resets stats after a collection.
   void reset_after_gc(size_t humongous_bytes_after_gc, bool is_concurrent_start);
 
-  size_t peak_humongous_bytes() const { return _conc_cycle._peak_humongous_bytes; }
+  size_t peak_extra_humongous_reserve_bytes() const {
+    precond(_conc_cycle._peak_extra_humongous_reserve_bytes >= 0);
+    return (size_t)_conc_cycle._peak_extra_humongous_reserve_bytes;
+  }
+
   size_t non_humongous_bytes() const { return  _conc_cycle._non_humongous_bytes; }
 };
 

@@ -1034,7 +1034,7 @@ bool G1Policy::update_ihop_prediction(double mutator_time_s,
     if (marking_to_mixed_time > min_valid_time) {
       _ihop_control->record_concurrent_cycle(marking_to_mixed_time,
                                                _old_gen_alloc_tracker.non_humongous_bytes(),
-                                               _old_gen_alloc_tracker.peak_humongous_bytes());
+                                               _old_gen_alloc_tracker.peak_extra_humongous_reserve_bytes());
       report = true;
     }
   }

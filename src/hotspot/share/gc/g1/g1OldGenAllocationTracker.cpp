@@ -51,16 +51,16 @@ void G1OldGenAllocationTracker::reset_after_gc(size_t humongous_bytes_after_gc, 
   if (is_concurrent_start) {
     _conc_cycle._humongous_bytes_at_start = humongous_bytes_after_gc;
     _conc_cycle._non_humongous_bytes = 0;
-    _conc_cycle._peak_humongous_bytes = 0;
+    _conc_cycle._peak_extra_humongous_reserve_bytes = 0;
   } else if (_conc_start_to_mixed_tracker->is_active()) {
     _conc_cycle._non_humongous_bytes += _allocated_bytes_since_last_gc;
 
-    const size_t previous_increment = _humongous_bytes_after_last_gc > _conc_cycle._humongous_bytes_at_start ?
-                                      _humongous_bytes_after_last_gc - _conc_cycle._humongous_bytes_at_start : 0;
+    const intptr_t delta_after_previous_gc = checked_cast<intptr_t>(_humongous_bytes_after_last_gc) -
+                                             checked_cast<intptr_t>(_conc_cycle._humongous_bytes_at_start);
 
-    const size_t max_humongous_before_gc = previous_increment + _allocated_humongous_bytes_since_last_gc;
+    const intptr_t delta_before_this_gc = delta_after_previous_gc + checked_cast<intptr_t>(_allocated_humongous_bytes_since_last_gc);
 
-    _conc_cycle._peak_humongous_bytes = MAX2(max_humongous_before_gc, _conc_cycle._peak_humongous_bytes);
+    _conc_cycle._peak_extra_humongous_reserve_bytes = MAX2(delta_before_this_gc, _conc_cycle._peak_extra_humongous_reserve_bytes);
   }
 
   _humongous_bytes_after_last_gc = humongous_bytes_after_gc;
