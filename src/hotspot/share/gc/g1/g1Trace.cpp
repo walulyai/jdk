@@ -115,7 +115,7 @@ void G1NewTracer::report_adaptive_ihop_statistics(size_t threshold,
                                                   size_t current_occupancy,
                                                   size_t additional_buffer_size,
                                                   double predicted_allocation_rate,
-                                                  double predicted_old_gen_non_humongous_allocation_rate,
+                                                  double predicted_old_non_hum_alloc_rate,
                                                   size_t predicted_peak_humongous_allocated,
                                                   double predicted_marking_length,
                                                   bool prediction_active) {
@@ -124,7 +124,7 @@ void G1NewTracer::report_adaptive_ihop_statistics(size_t threshold,
                                 current_occupancy,
                                 additional_buffer_size,
                                 predicted_allocation_rate,
-                                predicted_old_gen_non_humongous_allocation_rate,
+                                predicted_old_non_hum_alloc_rate,
                                 predicted_peak_humongous_allocated,
                                 predicted_marking_length,
                                 prediction_active);
@@ -234,7 +234,7 @@ void G1NewTracer::send_adaptive_ihop_statistics(size_t threshold,
                                                 size_t current_occupancy,
                                                 size_t additional_buffer_size,
                                                 double predicted_allocation_rate,
-                                                double predicted_old_gen_non_humongous_allocation_rate,
+                                                double predicted_old_non_hum_alloc_rate,
                                                 size_t predicted_peak_humongous_allocated,
                                                 double predicted_marking_length,
                                                 bool prediction_active) {
@@ -247,7 +247,7 @@ void G1NewTracer::send_adaptive_ihop_statistics(size_t threshold,
     evt.set_currentOccupancy(current_occupancy);
     evt.set_additionalBufferSize(additional_buffer_size);
     evt.set_predictedAllocationRate(predicted_allocation_rate);
-    evt.set_predictedOldGenNonHumongousAllocationRate(predicted_old_gen_non_humongous_allocation_rate);
+    evt.set_predictedNonHumAllocationRate(predicted_old_non_hum_alloc_rate);
     evt.set_peakHumongousAllocation(predicted_peak_humongous_allocated);
     evt.set_predictedMarkingDuration(predicted_marking_length * MILLIUNITS);
     evt.set_predictionActive(prediction_active);

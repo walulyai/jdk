@@ -58,8 +58,7 @@ class STWGCTimer;
 class G1Policy: public CHeapObj<mtGC> {
   using Pause = G1CollectorState::Pause;
 
-  static G1IHOPControl* create_ihop_control(const G1OldGenAllocationTracker* old_gen_alloc_tracker,
-                                            const G1Predictions* predictor);
+  static G1IHOPControl* create_ihop_control(const G1Predictions* predictor);
   // Update the IHOP control with the necessary statistics. Returns true if there
   // has been a significant update to the prediction.
   bool update_ihop_prediction(double mutator_time_s,

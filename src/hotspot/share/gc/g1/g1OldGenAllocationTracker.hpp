@@ -46,12 +46,12 @@ class G1OldGenAllocationTracker : public CHeapObj<mtGC> {
   // Humongous allocations during last mutator period.
   size_t _allocated_humongous_bytes_since_last_gc;
 
-  // FIXME: add appropriate comment
-  struct MarkCycleAllocations {
+  // Track allocations during a Concurrent cycle [Concurrent Mark Start - First Mixed GC]
+  struct ConcurrentCycleAllocations {
     size_t _non_humongous_bytes = 0;
     size_t _humongous_bytes_at_start = 0;
     size_t _peak_humongous_bytes = 0;
-  } _mark_cycle;
+  } _conc_cycle;
 
   G1ConcurrentStartToMixedTimeTracker* _conc_start_to_mixed_tracker;
 
@@ -77,8 +77,8 @@ public:
   // Calculates and resets stats after a collection.
   void reset_after_gc(size_t humongous_bytes_after_gc, bool is_concurrent_start);
 
-  size_t peak_humongous_bytes() const { return _mark_cycle._peak_humongous_bytes; }
-  size_t non_humongous_bytes() const { return  _mark_cycle._non_humongous_bytes; }
+  size_t peak_humongous_bytes() const { return _conc_cycle._peak_humongous_bytes; }
+  size_t non_humongous_bytes() const { return  _conc_cycle._non_humongous_bytes; }
 };
 
 #endif // SHARE_VM_GC_G1_G1OLDGENALLOCATIONTRACKER_HPP

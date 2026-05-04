@@ -57,7 +57,7 @@ G1Policy::G1Policy(STWGCTimer* gc_timer) :
   _mmu_tracker(new G1MMUTracker(GCPauseIntervalMillis / 1000.0, MaxGCPauseMillis / 1000.0)),
   _concurrent_start_to_mixed(),
   _old_gen_alloc_tracker(&_concurrent_start_to_mixed),
-  _ihop_control(create_ihop_control(&_old_gen_alloc_tracker, &_predictor)),
+  _ihop_control(create_ihop_control(&_predictor)),
   _policy_counters(new GCPolicyCounters("GarbageFirst", 1, 2)),
   _cur_pause_start_sec(0.0),
   _young_list_desired_length(0),
@@ -674,9 +674,6 @@ void G1Policy::record_pause_start_time() {
 
 void G1Policy::record_young_collection_start() {
   record_pause_start_time();
-  /*if (collector_state()->is_in_mixed_phase()) {
-    _concurrent_start_to_mixed.record_mixed_gc_start(cur_pause_start_sec());
-  }*/
   // We only need to do this here as the policy will only be applied
   // to the GC we're about to start. so, no point is calculating this
   // every time we calculate / recalculate the target young length.
@@ -973,7 +970,9 @@ void G1Policy::record_young_collection_end(bool concurrent_operation_is_full_mar
     update_young_length_bounds();
 
     if (update_ihop_prediction(app_time_ms / 1000.0, is_young_only_pause)) {
-      _ihop_control->report_statistics(_g1h->gc_tracer_stw(), _g1h->non_young_occupancy_after_allocation(allocation_word_size));
+      _ihop_control->report_statistics(_g1h->gc_tracer_stw(),
+                                       _g1h->non_young_occupancy_after_allocation(allocation_word_size),
+                                       _old_gen_alloc_tracker.last_period_old_gen_bytes());
     }
   } else {
     // Any garbage collection triggered as periodic collection resets the time-to-mixed
@@ -1008,10 +1007,8 @@ void G1Policy::record_young_collection_end(bool concurrent_operation_is_full_mar
                       pending_cards_time_goal_ms);
 }
 
-G1IHOPControl* G1Policy::create_ihop_control(const G1OldGenAllocationTracker* old_gen_alloc_tracker,
-                                             const G1Predictions* predictor) {
+G1IHOPControl* G1Policy::create_ihop_control(const G1Predictions* predictor) {
   return new G1IHOPControl(InitiatingHeapOccupancyPercent,
-                           old_gen_alloc_tracker,
                            G1UseAdaptiveIHOP,
                            predictor,
                            G1ReservePercent,
@@ -1035,7 +1032,7 @@ bool G1Policy::update_ihop_prediction(double mutator_time_s,
            "Concurrent start to mixed time must be larger than zero but is %.3f",
            marking_to_mixed_time);
     if (marking_to_mixed_time > min_valid_time) {
-      _ihop_control->update_marking_cycle_info(marking_to_mixed_time,
+      _ihop_control->record_concurrent_cycle(marking_to_mixed_time,
                                                _old_gen_alloc_tracker.non_humongous_bytes(),
                                                _old_gen_alloc_tracker.peak_humongous_bytes());
       report = true;
@@ -1052,7 +1049,8 @@ bool G1Policy::update_ihop_prediction(double mutator_time_s,
     // prediction too small and the limit the young gen every time we get to the
     // predicted target occupancy.
     size_t young_gen_size = young_list_desired_length() * G1HeapRegion::GrainBytes;
-    _ihop_control->update_allocation_info(mutator_time_s, young_gen_size);
+    size_t old_gen_alloc_bytes = _old_gen_alloc_tracker.last_period_old_gen_growth();
+    _ihop_control->record_last_mutator_period(mutator_time_s, old_gen_alloc_bytes, young_gen_size);
     report = true;
   }
 
