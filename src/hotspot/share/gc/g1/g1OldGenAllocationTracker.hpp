@@ -27,7 +27,15 @@
 
 #include "gc/g1/g1ConcurrentStartToMixedTimeTracker.hpp"
 #include "gc/g1/g1HeapRegion.hpp"
+#include "logging/log.hpp"
 #include "memory/allocation.hpp"
+
+enum class ConcurrentCycleMode {
+  NotInCycle,
+  StartCycle,
+  InCycle,
+  EndCycle,
+};
 
 // Track allocation details in the old generation.
 class G1OldGenAllocationTracker : public CHeapObj<mtGC> {
@@ -47,16 +55,81 @@ class G1OldGenAllocationTracker : public CHeapObj<mtGC> {
   size_t _allocated_humongous_bytes_since_last_gc;
 
   // Track allocations during a Concurrent cycle [Concurrent Mark Start - First Mixed GC]
-  struct ConcurrentCycleAllocations {
+  class ConcurrentCycleState {
     size_t _non_humongous_bytes = 0;
     size_t _humongous_bytes_at_start = 0;
     intptr_t _peak_extra_humongous_reserve_bytes = 0;
+    bool _active = false;
+
+    void start_cycle(size_t humongous_bytes_after_gc) {
+      precond(!_active);
+      _humongous_bytes_at_start = humongous_bytes_after_gc;
+      _non_humongous_bytes = 0;
+      _peak_extra_humongous_reserve_bytes = 0;
+      _active = true;
+    }
+
+    void record_in_cycle_allocations(size_t non_humongous_allocated_bytes,
+                                     size_t humongous_allocated_bytes,
+                                     size_t humongous_bytes_after_previous_gc,
+                                     size_t humongous_bytes_after_gc) {
+      precond(is_active());
+      _non_humongous_bytes += non_humongous_allocated_bytes;
+
+      intptr_t delta_after_previous_gc = checked_cast<intptr_t>(humongous_bytes_after_previous_gc) -
+                                         checked_cast<intptr_t>(_humongous_bytes_at_start);
+
+      intptr_t delta_before_this_gc = delta_after_previous_gc +
+                                      checked_cast<intptr_t>(humongous_allocated_bytes);
+
+      if (delta_before_this_gc > 0) {
+        _peak_extra_humongous_reserve_bytes = MAX2(_peak_extra_humongous_reserve_bytes, delta_before_this_gc);
+      }
+    }
+
+    void end_cycle() {
+      precond(_active);
+      _active = false;
+    }
+
+    bool is_active() const { return _active; }
+
+  public:
+    void record_mutator_period(ConcurrentCycleMode mode,
+                               size_t non_humongous_allocated_bytes,
+                               size_t humongous_allocated_bytes,
+                               size_t humongous_bytes_after_previous_gc,
+                               size_t humongous_bytes_after_gc) {
+      if (mode == ConcurrentCycleMode::StartCycle) {
+        start_cycle(humongous_bytes_after_gc);
+      } else if (mode == ConcurrentCycleMode::InCycle || mode == ConcurrentCycleMode::EndCycle) {
+        record_in_cycle_allocations(non_humongous_allocated_bytes,
+                                    humongous_allocated_bytes,
+                                    humongous_bytes_after_previous_gc,
+                                    humongous_bytes_after_gc);
+        if (mode == ConcurrentCycleMode::EndCycle) {
+          end_cycle();
+        }
+      } else {
+        precond(!is_active());
+      }
+    }
+
+    void abort_cycle() {
+      _active = false;
+    }
+
+    size_t peak_extra_humongous_reserve_bytes() const {
+      return checked_cast<size_t>(_peak_extra_humongous_reserve_bytes);
+    }
+
+    size_t non_humongous_bytes() const {
+      return _non_humongous_bytes;
+    }
   } _conc_cycle;
 
-  G1ConcurrentStartToMixedTimeTracker* _conc_start_to_mixed_tracker;
-
 public:
-  G1OldGenAllocationTracker(G1ConcurrentStartToMixedTimeTracker* conc_start_to_mixed_tracker);
+  G1OldGenAllocationTracker();
 
   void add_allocated_bytes_since_last_gc(size_t bytes) {
     _allocated_bytes_since_last_gc += bytes;
@@ -71,18 +144,20 @@ public:
     _humongous_bytes_after_last_gc += bytes;
   }
 
+
   size_t last_period_old_gen_bytes() const { return _last_period_old_gen_bytes; }
   size_t last_period_old_gen_growth() const { return _last_period_old_gen_growth; }
 
   // Calculates and resets stats after a collection.
-  void reset_after_gc(size_t humongous_bytes_after_gc, bool is_concurrent_start);
+  void reset_after_gc(size_t humongous_bytes_after_gc, ConcurrentCycleMode cycle_mode);
 
   size_t peak_extra_humongous_reserve_bytes() const {
-    precond(_conc_cycle._peak_extra_humongous_reserve_bytes >= 0);
-    return (size_t)_conc_cycle._peak_extra_humongous_reserve_bytes;
+    return _conc_cycle.peak_extra_humongous_reserve_bytes();
   }
 
-  size_t non_humongous_bytes() const { return  _conc_cycle._non_humongous_bytes; }
+  size_t non_humongous_bytes() const { return _conc_cycle.non_humongous_bytes(); }
+
+  void abort_concurrent_cycle() { _conc_cycle.abort_cycle(); }
 };
 
 #endif // SHARE_VM_GC_G1_G1OLDGENALLOCATIONTRACKER_HPP

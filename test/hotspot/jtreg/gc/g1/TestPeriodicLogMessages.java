@@ -42,7 +42,7 @@ public class TestPeriodicLogMessages {
     public static void main(String[] args) throws Exception {
         OutputAnalyzer output = ProcessTools.executeLimitedTestJava("-XX:+UseG1GC",
                                                                     "-XX:G1PeriodicGCInterval=0",
-                                                                    "-Xlog:gc+init,gc+periodic=debug",
+                                                                    "-Xlog:gc+init,gc+periodic=debug,gc=info",
                                                                     "-Xmx10M",
                                                                     GCTest.class.getName());
 
@@ -52,7 +52,7 @@ public class TestPeriodicLogMessages {
 
         output = ProcessTools.executeLimitedTestJava("-XX:+UseG1GC",
                                                      "-XX:G1PeriodicGCInterval=100",
-                                                     "-Xlog:gc+init,gc+periodic=debug",
+                                                     "-Xlog:gc+init,gc+periodic=debug,gc=info",
                                                      "-Xmx10M",
                                                      GCTest.class.getName());
 

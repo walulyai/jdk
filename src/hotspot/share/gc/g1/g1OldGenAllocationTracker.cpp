@@ -25,16 +25,15 @@
 #include "gc/g1/g1OldGenAllocationTracker.hpp"
 #include "logging/log.hpp"
 
-G1OldGenAllocationTracker::G1OldGenAllocationTracker(G1ConcurrentStartToMixedTimeTracker* tracker) :
+G1OldGenAllocationTracker::G1OldGenAllocationTracker() :
   _last_period_old_gen_bytes(0),
   _last_period_old_gen_growth(0),
   _humongous_bytes_after_last_gc(0),
   _allocated_bytes_since_last_gc(0),
-  _allocated_humongous_bytes_since_last_gc(0),
-  _conc_start_to_mixed_tracker(tracker) {
+  _allocated_humongous_bytes_since_last_gc(0) {
 }
 
-void G1OldGenAllocationTracker::reset_after_gc(size_t humongous_bytes_after_gc, bool is_concurrent_start) {
+void G1OldGenAllocationTracker::reset_after_gc(size_t humongous_bytes_after_gc, ConcurrentCycleMode cycle_mode) {
   // Calculate actual increase in old, taking eager reclaim into consideration.
   size_t last_period_humongous_increase = 0;
   if (humongous_bytes_after_gc > _humongous_bytes_after_last_gc) {
@@ -48,20 +47,11 @@ void G1OldGenAllocationTracker::reset_after_gc(size_t humongous_bytes_after_gc, 
   // Calculate and record needed values.
   _last_period_old_gen_bytes = _allocated_bytes_since_last_gc + _allocated_humongous_bytes_since_last_gc;
 
-  if (is_concurrent_start) {
-    _conc_cycle._humongous_bytes_at_start = humongous_bytes_after_gc;
-    _conc_cycle._non_humongous_bytes = 0;
-    _conc_cycle._peak_extra_humongous_reserve_bytes = 0;
-  } else if (_conc_start_to_mixed_tracker->is_active()) {
-    _conc_cycle._non_humongous_bytes += _allocated_bytes_since_last_gc;
-
-    const intptr_t delta_after_previous_gc = checked_cast<intptr_t>(_humongous_bytes_after_last_gc) -
-                                             checked_cast<intptr_t>(_conc_cycle._humongous_bytes_at_start);
-
-    const intptr_t delta_before_this_gc = delta_after_previous_gc + checked_cast<intptr_t>(_allocated_humongous_bytes_since_last_gc);
-
-    _conc_cycle._peak_extra_humongous_reserve_bytes = MAX2(delta_before_this_gc, _conc_cycle._peak_extra_humongous_reserve_bytes);
-  }
+  _conc_cycle.record_mutator_period(cycle_mode,
+                                    _allocated_bytes_since_last_gc,
+                                    _allocated_humongous_bytes_since_last_gc,
+                                    _humongous_bytes_after_last_gc,
+                                    humongous_bytes_after_gc);
 
   _humongous_bytes_after_last_gc = humongous_bytes_after_gc;
 
