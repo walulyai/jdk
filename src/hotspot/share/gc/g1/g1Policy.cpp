@@ -55,7 +55,7 @@ G1Policy::G1Policy(STWGCTimer* gc_timer) :
   _analytics(new G1Analytics(&_predictor)),
   _remset_tracker(),
   _mmu_tracker(new G1MMUTracker(GCPauseIntervalMillis / 1000.0, MaxGCPauseMillis / 1000.0)),
-  _concurrent_start_to_mixed(),
+  _concurrent_cycle_tracker(),
   _old_gen_alloc_tracker(),
   _ihop_control(create_ihop_control(&_predictor)),
   _policy_counters(new GCPolicyCounters("GarbageFirst", 1, 2)),
@@ -565,20 +565,6 @@ void G1Policy::record_full_collection_start() {
   _collection_set->abandon_all_candidates();
 }
 
-static ConcurrentCycleMode compute_concurrent_cycle_state(G1CollectorState::Pause this_pause, bool cycle_was_active) {
-  if (this_pause == G1CollectorState::Pause::ConcurrentStartFull) {
-    return ConcurrentCycleMode::StartCycle;
-  } else if (cycle_was_active && this_pause == G1CollectorState::Pause::Full) {
-    return ConcurrentCycleMode::EndCycle;
-  } else if (cycle_was_active && G1CollectorState::is_mixed_pause(this_pause)) {
-    return ConcurrentCycleMode::EndCycle;
-  } else if (cycle_was_active) {
-    return ConcurrentCycleMode::InCycle;
-  } else {
-    return ConcurrentCycleMode::NotInCycle;
-  }
-}
-
 void G1Policy::record_full_collection_end(size_t allocation_word_size) {
   // Consider this like a collection pause for the purposes of allocation
   // since last pause.
@@ -596,12 +582,10 @@ void G1Policy::record_full_collection_end(size_t allocation_word_size) {
   _survivor_surv_rate_group->reset();
   update_young_length_bounds();
 
-  ConcurrentCycleMode cycle_mode = compute_concurrent_cycle_state(Pause::Full, _concurrent_start_to_mixed.is_active());
-
-  _old_gen_alloc_tracker.reset_after_gc(_g1h->humongous_regions_count() * G1HeapRegion::GrainBytes,
-                                        cycle_mode);
-
   double start_time_sec = cur_pause_start_sec();
+  MutatorPeriodStatsBytes period_starts = _old_gen_alloc_tracker.end_mutator_period(_g1h->humongous_regions_count() * G1HeapRegion::GrainBytes);
+  _concurrent_cycle_tracker.record_mutator_period(Pause::Full, start_time_sec, end_sec, period_starts);
+
   record_pause(Pause::Full, start_time_sec, end_sec);
 }
 
@@ -979,9 +963,9 @@ void G1Policy::record_young_collection_end(bool concurrent_operation_is_full_mar
 
   bool is_periodic = _g1h->gc_cause() != GCCause::_g1_periodic_collection;
 
-  ConcurrentCycleMode cycle_mode = compute_concurrent_cycle_state(this_pause, _concurrent_start_to_mixed.is_active());
+  MutatorPeriodStatsBytes period_starts = _old_gen_alloc_tracker.end_mutator_period(_g1h->humongous_regions_count() * G1HeapRegion::GrainBytes);
+  _concurrent_cycle_tracker.record_mutator_period(this_pause, start_time_sec, end_time_sec, period_starts);
 
-  _old_gen_alloc_tracker.reset_after_gc(_g1h->humongous_regions_count() * G1HeapRegion::GrainBytes, cycle_mode);
   record_pause(this_pause, start_time_sec, end_time_sec);
   // Do not update dynamic IHOP due to G1 periodic collection as it is highly likely
   // that in this case we are not running in a "normal" operating mode.
@@ -1044,15 +1028,16 @@ bool G1Policy::update_ihop_prediction(double mutator_time_s,
 
   bool report = false;
 
-  if (!this_gc_was_young_only && _concurrent_start_to_mixed.has_result()) {
-    double marking_to_mixed_time = _concurrent_start_to_mixed.get_and_reset_last_marking_time();
+  if (!this_gc_was_young_only && _concurrent_cycle_tracker.has_completed_cycle()) {
+    ConcurrentCycleStats cycle_stats = _concurrent_cycle_tracker.get_and_reset_cycle_stats();
+    double marking_to_mixed_time = cycle_stats._cycle_duration_s;
     assert(marking_to_mixed_time > 0.0,
            "Concurrent start to mixed time must be larger than zero but is %.3f",
            marking_to_mixed_time);
     if (marking_to_mixed_time > min_valid_time) {
       _ihop_control->record_concurrent_cycle(marking_to_mixed_time,
-                                               _old_gen_alloc_tracker.non_humongous_bytes(),
-                                               _old_gen_alloc_tracker.peak_extra_humongous_reserve_bytes());
+                                             cycle_stats._non_hum_allocated_bytes,
+                                             cycle_stats._peak_extra_humongous_allocated);
       report = true;
     }
   }
@@ -1402,51 +1387,12 @@ void G1Policy::record_pause(Pause gc_type,
 
   update_gc_pause_time_ratios(gc_type, start, end);
 
-  update_time_to_mixed_tracking(gc_type, start, end);
-
   double elapsed_gc_cpu_time = _analytics->gc_cpu_time_ms();
   _analytics->set_gc_cpu_time_at_pause_end_ms(elapsed_gc_cpu_time);
 }
 
-void G1Policy::update_time_to_mixed_tracking(Pause gc_type,
-                                             double start,
-                                             double end) {
-  // Manage the mutator time tracking from concurrent start to first mixed gc.
-  switch (gc_type) {
-    case Pause::Full:
-      abort_time_to_mixed_tracking();
-      break;
-    case Pause::Cleanup:
-    case Pause::Remark:
-    case Pause::Normal:
-    case Pause::PrepareMixed:
-      _concurrent_start_to_mixed.add_pause(end - start);
-      break;
-    case Pause::ConcurrentStartFull:
-      // Do not track time-to-mixed time for periodic collections as they are likely
-      // to be not representative to regular operation as the mutators are idle at
-      // that time. Also only track full concurrent mark cycles.
-      // if (_g1h->gc_cause() != GCCause::_g1_periodic_collection)
-      {
-        _concurrent_start_to_mixed.record_concurrent_start_end(end);
-      }
-      break;
-    case Pause::ConcurrentStartUndo:
-      assert(_g1h->gc_cause() == GCCause::_g1_humongous_allocation,
-             "GC cause must be humongous allocation but is %d",
-             _g1h->gc_cause());
-      break;
-    case Pause::Mixed:
-      _concurrent_start_to_mixed.record_mixed_gc_start(start);
-      break;
-    default:
-      ShouldNotReachHere();
-  }
-}
-
 void G1Policy::abort_time_to_mixed_tracking() {
-  _concurrent_start_to_mixed.reset();
-  _old_gen_alloc_tracker.abort_concurrent_cycle();
+  _concurrent_cycle_tracker.abort_cycle();
 }
 
 bool G1Policy::next_gc_should_be_mixed() const {

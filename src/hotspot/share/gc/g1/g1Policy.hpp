@@ -69,7 +69,7 @@ class G1Policy: public CHeapObj<mtGC> {
   G1RemSetTrackingPolicy _remset_tracker;
   G1MMUTracker* _mmu_tracker;
 
-  G1ConcurrentStartToMixedTimeTracker _concurrent_start_to_mixed;
+  G1ConcurrentCycleTracker _concurrent_cycle_tracker;
   // Tracking the allocation in the old generation between
   // two GCs.
   G1OldGenAllocationTracker _old_gen_alloc_tracker;
@@ -122,6 +122,16 @@ public:
   G1RemSetTrackingPolicy* remset_tracker() { return &_remset_tracker; }
 
   G1OldGenAllocationTracker* old_gen_alloc_tracker() { return &_old_gen_alloc_tracker; }
+
+  void add_allocated_non_hum_bytes(size_t bytes) {
+    _old_gen_alloc_tracker.add_allocated_bytes_since_last_gc(bytes);
+    _concurrent_cycle_tracker.add_allocated_non_hum(bytes);
+  }
+
+  void add_allocated_hum_bytes(size_t bytes) {
+    _old_gen_alloc_tracker.add_allocated_humongous_bytes_since_last_gc(bytes);
+  }
+
 
   void set_region_eden(G1HeapRegion* hr) {
     hr->install_surv_rate_group(_eden_surv_rate_group);
@@ -258,8 +268,6 @@ private:
   void abandon_collection_set_candidates();
   // Sets up marking if proper conditions are met.
   void maybe_start_marking(size_t allocation_word_size);
-  // Manage time-to-mixed tracking.
-  void update_time_to_mixed_tracking(Pause gc_type, double start, double end);
   // Record the given STW pause with the given start and end times (in s).
   void record_pause(Pause gc_type,
                     double start,
