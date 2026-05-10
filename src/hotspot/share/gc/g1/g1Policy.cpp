@@ -1010,7 +1010,7 @@ void G1Policy::record_young_collection_end(bool concurrent_operation_is_full_mar
 }
 
 G1IHOPControl* G1Policy::create_ihop_control(const G1Predictions* predictor) {
-  return new G1IHOPControl(InitiatingHeapOccupancyPercent,
+  return new G1IHOPControl(G1IHOP,
                            G1UseAdaptiveIHOP,
                            predictor,
                            G1ReservePercent,
