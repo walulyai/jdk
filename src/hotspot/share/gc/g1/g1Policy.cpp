@@ -1027,7 +1027,6 @@ bool G1Policy::update_ihop_prediction(double mutator_time_s,
   double const min_valid_time = 1e-6;
 
   bool report = false;
-
   if (!this_gc_was_young_only && _concurrent_cycle_tracker.has_completed_cycle()) {
     ConcurrentCycleStats cycle_stats = _concurrent_cycle_tracker.get_and_reset_cycle_stats();
     double marking_to_mixed_time = cycle_stats._cycle_duration_s;

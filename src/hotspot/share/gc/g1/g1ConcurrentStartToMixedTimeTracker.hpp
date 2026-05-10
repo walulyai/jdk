@@ -30,15 +30,10 @@
 #include "utilities/globalDefinitions.hpp"
 
 struct MutatorPeriodStatsBytes {
-
     size_t _old_gen_growth;
-
     size_t _non_hum_allocated;
-
     size_t _hum_allocated;
-
     size_t _total_hum_before;
-
     size_t _total_hum_after;
 
     MutatorPeriodStatsBytes(size_t old_gen_growth,
@@ -46,18 +41,26 @@ struct MutatorPeriodStatsBytes {
                             size_t hum_allocated,
                             size_t total_hum_before,
                             size_t total_hum_after)
-        : _old_gen_growth(old_gen_growth),
-          _non_hum_allocated(non_hum_allocated),
-          _hum_allocated(hum_allocated),
-          _total_hum_before(total_hum_before),
-          _total_hum_after(total_hum_after) {}
+      : _old_gen_growth(old_gen_growth),
+      _non_hum_allocated(non_hum_allocated),
+      _hum_allocated(hum_allocated),
+      _total_hum_before(total_hum_before),
+      _total_hum_after(total_hum_after)
+    { }
 };
 
 // TODO: add comments on what we consider a Concurrent Cycle
 struct ConcurrentCycleStats {
-  double _cycle_duration_s;
-  size_t _non_hum_allocated_bytes;
-  size_t _peak_extra_humongous_allocated;
+    double _cycle_duration_s;
+    size_t _non_hum_allocated_bytes;
+    size_t _peak_extra_humongous_allocated;
+    ConcurrentCycleStats(double cycle_duration_s,
+                         size_t non_hum_allocated_bytes,
+                         size_t peak_extra_humongous_allocated)
+    : _cycle_duration_s(cycle_duration_s),
+      _non_hum_allocated_bytes(non_hum_allocated_bytes),
+      _peak_extra_humongous_allocated(peak_extra_humongous_allocated)
+    { }
 };
 
 class G1ConcurrentCycleTracker{
@@ -164,7 +167,10 @@ private:
         }
         break;
       case Pause::Mixed:
-        complete_cycle(start, end - start);
+        if (is_active()) {
+          // TODO: we track the first mixed-gc
+          complete_cycle(start, end - start);
+        }
         break;
       default:
         ShouldNotReachHere();
@@ -182,7 +188,7 @@ private:
   }
 
   void abort_cycle() {
-    _state = CycleState::InActive;
+    reset();
   }
 
   bool has_completed_cycle() const {
