@@ -22,13 +22,14 @@
  */
 
 #include "gc/g1/g1CollectedHeap.inline.hpp"
+#include "gc/g1/g1CollectorState.inline.hpp"
 #include "gc/g1/g1IHOPControl.hpp"
 #include "gc/g1/g1OldGenAllocationTracker.hpp"
 #include "gc/g1/g1Predictions.hpp"
 #include "unittest.hpp"
 
 struct GCPauseData {
-	double _mutator_time_s = 0;
+  double _mutator_time_s = 0;
   double _gc_start_time = 0;
   double _gc_pause_time = 0;
   size_t _desired_young = 0;
@@ -54,14 +55,6 @@ struct G1IHOPTestController {
     _ihop_control.update_target_occupancy(target_occupancy);
   }
 
-  void set_post_gc_humongous_state(size_t desired_hum_after_gc) {
-    if (desired_hum_after_gc > _last_humongous_bytes_after_gc) {
-      _alloc_tracker.add_allocated_humongous_bytes_since_last_gc(desired_hum_after_gc - _last_humongous_bytes_after_gc);
-    }
-    _alloc_tracker.end_mutator_period(desired_hum_after_gc);
-    _last_humongous_bytes_after_gc = desired_hum_after_gc;
-  }
-
   void end_mutator_phase(GCPauseData pause_data, G1CollectorState::Pause pause_type) {
 		_last_humongous_bytes_after_gc = pause_data._total_hum_after_gc;
 
@@ -71,13 +64,15 @@ struct G1IHOPTestController {
     MutatorPeriodStatsBytes period_stats = _alloc_tracker.end_mutator_period(pause_data._total_hum_after_gc);
 
     _conc_cycle_tracker.record_mutator_period(pause_type,
+                                              false /* is_periodic_gc */,
                                               pause_data._gc_start_time,
 																							pause_data._gc_start_time + pause_data._gc_pause_time,
 																							period_stats);
-
-    _ihop_control.record_last_mutator_period(pause_data._mutator_time_s,
-																						 _alloc_tracker.last_period_old_gen_growth(),
-																						 pause_data._desired_young);
+    if (G1CollectorState::is_young_only_pause(pause_type)) {
+      _ihop_control.record_last_mutator_period(pause_data._mutator_time_s,
+                                              _alloc_tracker.last_period_old_gen_growth(),
+                                              pause_data._desired_young);
+    }
 	}
 
 

@@ -26,7 +26,7 @@
 #define SHARE_GC_G1_G1POLICY_HPP
 
 #include "gc/g1/g1CollectorState.hpp"
-#include "gc/g1/g1ConcurrentStartToMixedTimeTracker.hpp"
+#include "gc/g1/g1ConcurrentCycleTracker.hpp"
 #include "gc/g1/g1GCPhaseTimes.hpp"
 #include "gc/g1/g1HeapRegionAttr.hpp"
 #include "gc/g1/g1MMUTracker.hpp"
@@ -122,16 +122,6 @@ public:
   G1RemSetTrackingPolicy* remset_tracker() { return &_remset_tracker; }
 
   G1OldGenAllocationTracker* old_gen_alloc_tracker() { return &_old_gen_alloc_tracker; }
-
-  void add_allocated_non_hum_bytes(size_t bytes) {
-    _old_gen_alloc_tracker.add_allocated_bytes_since_last_gc(bytes);
-    _concurrent_cycle_tracker.add_allocated_non_hum(bytes);
-  }
-
-  void add_allocated_hum_bytes(size_t bytes) {
-    _old_gen_alloc_tracker.add_allocated_humongous_bytes_since_last_gc(bytes);
-  }
-
 
   void set_region_eden(G1HeapRegion* hr) {
     hr->install_surv_rate_group(_eden_surv_rate_group);

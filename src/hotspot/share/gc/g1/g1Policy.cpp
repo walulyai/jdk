@@ -584,7 +584,8 @@ void G1Policy::record_full_collection_end(size_t allocation_word_size) {
 
   double start_time_sec = cur_pause_start_sec();
   MutatorPeriodStatsBytes period_starts = _old_gen_alloc_tracker.end_mutator_period(_g1h->humongous_regions_count() * G1HeapRegion::GrainBytes);
-  _concurrent_cycle_tracker.record_mutator_period(Pause::Full, start_time_sec, end_sec, period_starts);
+  bool is_periodic_gc = _g1h->gc_cause() == GCCause::_g1_periodic_collection;
+  _concurrent_cycle_tracker.record_mutator_period(Pause::Full, is_periodic_gc, start_time_sec, end_sec, period_starts);
 
   record_pause(Pause::Full, start_time_sec, end_sec);
 }
@@ -961,10 +962,9 @@ void G1Policy::record_young_collection_end(bool concurrent_operation_is_full_mar
 
   _free_regions_at_end_of_collection = _g1h->num_free_regions();
 
-  bool is_periodic = _g1h->gc_cause() != GCCause::_g1_periodic_collection;
-
   MutatorPeriodStatsBytes period_starts = _old_gen_alloc_tracker.end_mutator_period(_g1h->humongous_regions_count() * G1HeapRegion::GrainBytes);
-  _concurrent_cycle_tracker.record_mutator_period(this_pause, start_time_sec, end_time_sec, period_starts);
+  bool is_periodic_gc = _g1h->gc_cause() == GCCause::_g1_periodic_collection;
+  _concurrent_cycle_tracker.record_mutator_period(this_pause, is_periodic_gc, start_time_sec, end_time_sec, period_starts);
 
   record_pause(this_pause, start_time_sec, end_time_sec);
   // Do not update dynamic IHOP due to G1 periodic collection as it is highly likely

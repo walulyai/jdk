@@ -22,45 +22,47 @@
  *
  */
 
-#ifndef SHARE_GC_G1_G1CONCURRENTSTARTTOMIXEDTIMETRACKER_HPP
-#define SHARE_GC_G1_G1CONCURRENTSTARTTOMIXEDTIMETRACKER_HPP
+#ifndef SHARE_GC_G1_G1CONCURRENTCYCLETRACKER_HPP
+#define SHARE_GC_G1_G1CONCURRENTCYCLETRACKER_HPP
 
 #include "gc/g1/g1CollectorState.hpp"
 #include "utilities/debug.hpp"
 #include "utilities/globalDefinitions.hpp"
 
 struct MutatorPeriodStatsBytes {
-    size_t _old_gen_growth;
-    size_t _non_hum_allocated;
-    size_t _hum_allocated;
-    size_t _total_hum_before;
-    size_t _total_hum_after;
+  size_t _old_gen_growth;
+  size_t _non_hum_allocated;
+  size_t _hum_allocated;
+  size_t _total_hum_before;
+  size_t _total_hum_after;
 
-    MutatorPeriodStatsBytes(size_t old_gen_growth,
-                            size_t non_hum_allocated,
-                            size_t hum_allocated,
-                            size_t total_hum_before,
-                            size_t total_hum_after)
-      : _old_gen_growth(old_gen_growth),
-      _non_hum_allocated(non_hum_allocated),
-      _hum_allocated(hum_allocated),
-      _total_hum_before(total_hum_before),
-      _total_hum_after(total_hum_after)
-    { }
+  MutatorPeriodStatsBytes(size_t old_gen_growth,
+                          size_t non_hum_allocated,
+                          size_t hum_allocated,
+                          size_t total_hum_before,
+                          size_t total_hum_after)
+    : _old_gen_growth(old_gen_growth),
+    _non_hum_allocated(non_hum_allocated),
+    _hum_allocated(hum_allocated),
+    _total_hum_before(total_hum_before),
+    _total_hum_after(total_hum_after)
+  { }
 };
 
-// TODO: add comments on what we consider a Concurrent Cycle
+// The Concurrent Cycle is the interval After the Concurrent-Start-GC until
+// The first Mixed-GC.
 struct ConcurrentCycleStats {
-    double _cycle_duration_s;
-    size_t _non_hum_allocated_bytes;
-    size_t _peak_extra_humongous_allocated;
-    ConcurrentCycleStats(double cycle_duration_s,
-                         size_t non_hum_allocated_bytes,
-                         size_t peak_extra_humongous_allocated)
-    : _cycle_duration_s(cycle_duration_s),
-      _non_hum_allocated_bytes(non_hum_allocated_bytes),
-      _peak_extra_humongous_allocated(peak_extra_humongous_allocated)
-    { }
+  double _cycle_duration_s;
+  size_t _non_hum_allocated_bytes;
+  size_t _peak_extra_humongous_allocated;
+
+  ConcurrentCycleStats(double cycle_duration_s,
+                       size_t non_hum_allocated_bytes,
+                       size_t peak_extra_humongous_allocated)
+  : _cycle_duration_s(cycle_duration_s),
+    _non_hum_allocated_bytes(non_hum_allocated_bytes),
+    _peak_extra_humongous_allocated(peak_extra_humongous_allocated)
+  { }
 };
 
 class G1ConcurrentCycleTracker{
@@ -141,11 +143,15 @@ private:
   }
 
   void record_mutator_period(Pause gc_type,
+                             bool is_periodic_gc,
                              double start,
                              double end,
                              MutatorPeriodStatsBytes period_stats) {
     // Manage the mutator time tracking from concurrent start to first mixed gc.
     update_mutator_stats(end - start, period_stats);
+    if (is_periodic_gc) {
+      reset();
+    }
 
     switch (gc_type) {
       case Pause::Full:
@@ -161,14 +167,13 @@ private:
         // Do not track time-to-mixed time for periodic collections as they are likely
         // to be not representative to regular operation as the mutators are idle at
         // that time. Also only track full concurrent mark cycles.
-        // if (_g1h->gc_cause() != GCCause::_g1_periodic_collection)
-        {
+        if (!is_periodic_gc) {
           record_cycle_start(end, period_stats._total_hum_after);
         }
         break;
       case Pause::Mixed:
         if (is_active()) {
-          // TODO: we track the first mixed-gc
+          // we track the first mixed-gc
           complete_cycle(start, end - start);
         }
         break;
@@ -180,7 +185,7 @@ private:
 
   void complete_cycle(double cycle_end_time, double mixed_gc_duration) {
     precond(is_active());
-    // TODO: add a comment
+    // We record the pause_time before deciding whether to end the concurrent cycle.
     _total_gc_pauses_in_cycle -= mixed_gc_duration;
 
     _cycle_end_time = cycle_end_time;
@@ -271,4 +276,4 @@ public:
   bool has_result() const { return _mixed_start_time > 0.0 && _concurrent_start_end_time > 0.0; }
 };
 
-#endif // SHARE_GC_G1_G1CONCURRENTSTARTTOMIXEDTIMETRACKER_HPP
+#endif // SHARE_GC_G1_G1CONCURRENTCYCLETRACKER_HPP

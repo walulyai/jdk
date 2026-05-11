@@ -25,7 +25,7 @@
 #ifndef SHARE_VM_GC_G1_G1OLDGENALLOCATIONTRACKER_HPP
 #define SHARE_VM_GC_G1_G1OLDGENALLOCATIONTRACKER_HPP
 
-#include "gc/g1/g1ConcurrentStartToMixedTimeTracker.hpp"
+#include "gc/g1/g1ConcurrentCycleTracker.hpp"
 #include "gc/g1/g1HeapRegion.hpp"
 #include "logging/log.hpp"
 #include "memory/allocation.hpp"

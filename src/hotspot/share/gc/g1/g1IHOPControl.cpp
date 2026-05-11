@@ -55,8 +55,8 @@ size_t G1IHOPControl::effective_target_occupancy() const {
   // _heap_waste is the amount of space will never be reclaimed in any
   // heap, so can not be used for allocation during marking and must always be
   // considered.
-  double safe_total_heap_percentage = _heap_waste_percent;
-    // MIN2((double)(_heap_reserve_percent + _heap_waste_percent), 100.0);
+  double safe_total_heap_percentage =
+    MIN2((double)(_heap_reserve_percent + _heap_waste_percent), 100.0);
 
   return (size_t)MIN2(
     G1CollectedHeap::heap()->max_capacity() * (100.0 - safe_total_heap_percentage) / 100.0,
@@ -162,7 +162,7 @@ size_t G1IHOPControl::old_gen_threshold_for_conc_mark_start() const {
   size_t needed_for_concurrent_cycle = reserve_for_young_regions +
                                        old_non_humongous_alloc_bytes +
                                        peak_humongous_reserve;
-  
+
   log_debug(gc, ihop) ("old_gen_threshold_for_conc_mark_start:  old_non_humongous_alloc_bytes %zuM "
                         "peak_humongous_reserve %zuM reserve_for_young_regions %zuM target_heap_occupancy %zuM",
                         old_non_humongous_alloc_bytes / M,
