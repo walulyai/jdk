@@ -152,23 +152,9 @@ size_t G1IHOPControl::old_gen_threshold_for_conc_mark_start() const {
 
   size_t target_heap_occupancy = effective_target_occupancy();
 
-  log_debug(gc, ihop)("reserve_for_young_regions %zu marking_start_to_mixed_time %0.4f old_non_humongous_alloc_rate %0.4f old_non_humongous_alloc_bytes %zu peak_humongous_reserve %zu",
-          reserve_for_young_regions,
-          marking_start_to_mixed_time,
-          old_non_humongous_alloc_rate,
-          old_non_humongous_alloc_bytes,
-          peak_humongous_reserve);
-
   size_t needed_for_concurrent_cycle = reserve_for_young_regions +
                                        old_non_humongous_alloc_bytes +
                                        peak_humongous_reserve;
-
-  log_debug(gc, ihop) ("old_gen_threshold_for_conc_mark_start:  old_non_humongous_alloc_bytes %zuM "
-                        "peak_humongous_reserve %zuM reserve_for_young_regions %zuM target_heap_occupancy %zuM",
-                        old_non_humongous_alloc_bytes / M,
-                        peak_humongous_reserve / M,
-                        reserve_for_young_regions / M,
-                        target_heap_occupancy / M);
 
   size_t threshold = needed_for_concurrent_cycle < target_heap_occupancy ?
                      target_heap_occupancy - needed_for_concurrent_cycle : 0;

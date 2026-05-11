@@ -34,8 +34,8 @@ struct GCPauseData {
   double _gc_pause_time = 0;
   size_t _desired_young = 0;
   size_t _non_hum_alloc_bytes = 0;
-	size_t _hum_alloc_bytes = 0;
-	size_t _total_hum_after_gc = 0;
+  size_t _hum_alloc_bytes = 0;
+  size_t _total_hum_after_gc = 0;
 };
 
 struct G1IHOPTestController {
@@ -43,8 +43,6 @@ struct G1IHOPTestController {
   G1OldGenAllocationTracker _alloc_tracker;
   G1Predictions _pred;
   G1IHOPControl _ihop_control;
-  const double cycle_start_time = 1.0;
-  size_t _last_humongous_bytes_after_gc = 0;
 
   G1IHOPTestController(bool adaptive, size_t ihop, size_t target_occupancy)
    : _conc_cycle_tracker(),
@@ -56,7 +54,6 @@ struct G1IHOPTestController {
   }
 
   void end_mutator_phase(GCPauseData pause_data, G1CollectorState::Pause pause_type) {
-		_last_humongous_bytes_after_gc = pause_data._total_hum_after_gc;
 
 		_alloc_tracker.add_allocated_bytes_since_last_gc(pause_data._non_hum_alloc_bytes);
     _alloc_tracker.add_allocated_humongous_bytes_since_last_gc(pause_data._hum_alloc_bytes);
@@ -74,7 +71,6 @@ struct G1IHOPTestController {
                                               pause_data._desired_young);
     }
 	}
-
 
   void mutator_phase_end_with_conc_start(GCPauseData pause_data) {
     end_mutator_phase(pause_data, G1CollectorState::Pause::ConcurrentStartFull);
@@ -95,24 +91,18 @@ struct G1IHOPTestController {
                                           cycle_stats._peak_extra_humongous_allocated);
   }
 
-  void add_cycle_sample(double mutator_time_s, double cycle_duration_s, size_t desired_young, size_t non_hum_bytes, size_t hum_bytes) {
-    //start_cycle();
-    //record_young_gc(mutator_time_s, young_reserve, non_hum_bytes, hum_bytes, hum_bytes);
-    //end_with_mixed_gc(cycle_duration_s);
-  }
-
   size_t threshold() {
     return _ihop_control.old_gen_threshold_for_conc_mark_start();
   }
 };
 
 static void add_multiple_samples(G1IHOPTestController* ctrl,
-                                  double mutator_time_s,
-                                  double gc_pause_time,
-                                  size_t young_reserve_bytes,
-                                  size_t non_hum_bytes,
-                                  size_t hum_alloc_bytes,
-                                  size_t num_samples) {
+                                 double mutator_time_s,
+                                 double gc_pause_time,
+                                 size_t young_reserve_bytes,
+                                 size_t non_hum_bytes,
+                                 size_t hum_alloc_bytes,
+                                 size_t num_samples) {
   double gc_start_time = mutator_time_s;
   for (size_t i = 0; i < num_samples; i++) {
     ctrl->mutator_phase_end_with_conc_start({
@@ -196,8 +186,8 @@ TEST_VM(G1IHOPControl, allocation_tracker_incr) {
 		25	/* _total_hum_after_gc */
 	});
 
-  EXPECT_EQ(20u, ctrl._conc_cycle_tracker._non_hum_bytes_allocated);
-  EXPECT_EQ(30u, ctrl._conc_cycle_tracker._peak_extra_humongous_reserve_bytes);
+  EXPECT_EQ(20u, ctrl._conc_cycle_tracker.non_hum_bytes_allocated());
+  EXPECT_EQ(30u, ctrl._conc_cycle_tracker.peak_extra_humongous_reserve_bytes());
 
   gc_start_time += (gc_pause_time + mutator_time);
   ctrl.mutator_phase_end_with_normal_gc({
@@ -212,8 +202,8 @@ TEST_VM(G1IHOPControl, allocation_tracker_incr) {
 
   // Peak Humongous should be:
   //  hum_after_gc (from previous gc) + _hum_alloc_bytes
-  EXPECT_EQ(25u, ctrl._conc_cycle_tracker._non_hum_bytes_allocated);
-  EXPECT_EQ(35u, ctrl._conc_cycle_tracker._peak_extra_humongous_reserve_bytes);
+  EXPECT_EQ(25u, ctrl._conc_cycle_tracker.non_hum_bytes_allocated());
+  EXPECT_EQ(35u, ctrl._conc_cycle_tracker.peak_extra_humongous_reserve_bytes());
 }
 
 // @requires UseG1GC
@@ -272,7 +262,7 @@ TEST_VM(G1IHOPControl, adaptive_ihop_non_humongous_only) {
 
   G1IHOPTestController ctrl(true /* adaptive */, initial_ihop, 100 /* target_occupancy */);
 
-  // TODO:
+  // We run 2 mutator periods for each concurrent cycle
   double total_cycle_time = 2;
   add_multiple_samples(&ctrl,
                        1.0 /* mutator_time_s */,

@@ -569,6 +569,7 @@ void G1Policy::record_full_collection_end(size_t allocation_word_size) {
   // Consider this like a collection pause for the purposes of allocation
   // since last pause.
   double end_sec = os::elapsedTime();
+  double start_time_sec = cur_pause_start_sec();
 
   // "Nuke" the heuristics that control the young/mixed GC
   // transitions and make sure we start with young GCs after the Full GC.
@@ -581,11 +582,6 @@ void G1Policy::record_full_collection_end(size_t allocation_word_size) {
   _free_regions_at_end_of_collection = _g1h->num_free_regions();
   _survivor_surv_rate_group->reset();
   update_young_length_bounds();
-
-  double start_time_sec = cur_pause_start_sec();
-  MutatorPeriodStatsBytes period_starts = _old_gen_alloc_tracker.end_mutator_period(_g1h->humongous_regions_count() * G1HeapRegion::GrainBytes);
-  bool is_periodic_gc = _g1h->gc_cause() == GCCause::_g1_periodic_collection;
-  _concurrent_cycle_tracker.record_mutator_period(Pause::Full, is_periodic_gc, start_time_sec, end_sec, period_starts);
 
   record_pause(Pause::Full, start_time_sec, end_sec);
 }
@@ -961,10 +957,6 @@ void G1Policy::record_young_collection_end(bool concurrent_operation_is_full_mar
          "If the last pause has been concurrent start, we should not have been in the marking cycle");
 
   _free_regions_at_end_of_collection = _g1h->num_free_regions();
-
-  MutatorPeriodStatsBytes period_starts = _old_gen_alloc_tracker.end_mutator_period(_g1h->humongous_regions_count() * G1HeapRegion::GrainBytes);
-  bool is_periodic_gc = _g1h->gc_cause() == GCCause::_g1_periodic_collection;
-  _concurrent_cycle_tracker.record_mutator_period(this_pause, is_periodic_gc, start_time_sec, end_time_sec, period_starts);
 
   record_pause(this_pause, start_time_sec, end_time_sec);
   // Do not update dynamic IHOP due to G1 periodic collection as it is highly likely
@@ -1385,6 +1377,11 @@ void G1Policy::record_pause(Pause gc_type,
   }
 
   update_gc_pause_time_ratios(gc_type, start, end);
+
+  MutatorPeriodStatsBytes period_starts = _old_gen_alloc_tracker.end_mutator_period(_g1h->humongous_regions_count() * G1HeapRegion::GrainBytes);
+  bool is_periodic_gc = _g1h->gc_cause() == GCCause::_g1_periodic_collection;
+
+  _concurrent_cycle_tracker.record_mutator_period(gc_type, is_periodic_gc, start, end, period_starts);
 
   double elapsed_gc_cpu_time = _analytics->gc_cpu_time_ms();
   _analytics->set_gc_cpu_time_at_pause_end_ms(elapsed_gc_cpu_time);
