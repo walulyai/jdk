@@ -731,7 +731,11 @@ bool G1Policy::need_to_start_conc_mark(const char* source, size_t allocation_wor
     return false;
   }
 
-  size_t marking_initiating_old_gen_threshold = _ihop_control->old_gen_threshold_for_conc_mark_start();
+  // TODO:
+  bool consider_current_young = G1CollectedHeap::is_humongous(allocation_word_size) &&
+                                !SafepointSynchronize::is_at_safepoint();
+
+  size_t marking_initiating_old_gen_threshold = _ihop_control->old_gen_threshold_for_conc_mark_start(consider_current_young);
   size_t non_young_occupancy = _g1h->non_young_occupancy_after_allocation(allocation_word_size);
 
   bool result = false;

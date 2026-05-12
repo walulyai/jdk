@@ -119,7 +119,7 @@ class G1IHOPControl : public CHeapObj<mtGC> {
                                size_t peak_extra_humongous_reserve_bytes);
 
   // Get the current non-young occupancy at which concurrent marking should start.
-  size_t old_gen_threshold_for_conc_mark_start() const;
+  size_t old_gen_threshold_for_conc_mark_start(bool consider_current_young = false) const;
 
   void report_statistics(G1NewTracer* tracer, size_t non_young_occupancy, size_t last_period_old_gen_bytes);
 };
