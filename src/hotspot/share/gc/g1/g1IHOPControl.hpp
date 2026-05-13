@@ -73,6 +73,8 @@ class G1IHOPControl : public CHeapObj<mtGC> {
   // as there is no marking or mixed gc that could impact its size too much.
   size_t _expected_young_gen_at_first_mixed_gc;
 
+  TruncatedSeq _eagerly_reclaimed_bytes;
+
   // Get a new prediction bounded below by zero from the given sequence.
   double predict(const TruncatedSeq* seq) const;
 
@@ -109,7 +111,8 @@ class G1IHOPControl : public CHeapObj<mtGC> {
   // allocation etc.).
   void record_mutator_period(double mutator_time_s,
                              size_t old_gen_growth_bytes,
-                             size_t expected_young_gen_size);
+                             size_t expected_young_gen_size,
+                             size_t eagerly_reclaimed_bytes = 0);
 
   // Update the time spent in the mutator beginning from the end of concurrent start to
   // the first mixed gc.
@@ -120,6 +123,10 @@ class G1IHOPControl : public CHeapObj<mtGC> {
 
   // Get the current non-young occupancy at which concurrent marking should start.
   size_t old_gen_threshold_for_conc_mark_start(bool consider_current_young = false) const;
+
+  size_t eagerly_reclaimed_bytes() const {
+    return predict(&_eagerly_reclaimed_bytes);
+  }
 
   void report_statistics(G1NewTracer* tracer, size_t non_young_occupancy, size_t last_period_old_gen_bytes);
 };

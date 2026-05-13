@@ -80,7 +80,8 @@ G1IHOPControl::G1IHOPControl(double ihop_percent,
     _old_gen_alloc_rate(10, 0.05),
     _old_non_humongous_alloc_rate(10, 0.05),
     _peak_humongous_allocated_in_mark_cycle(10, 0.05),
-    _expected_young_gen_at_first_mixed_gc(0) {
+    _expected_young_gen_at_first_mixed_gc(0),
+    _eagerly_reclaimed_bytes(10, 0.05) {
   assert(_initial_ihop_percent >= 0.0 && _initial_ihop_percent <= 100.0,
          "IHOP percent out of range: %.3f", ihop_percent);
   assert(!_is_adaptive || _predictor != nullptr, "precondition");
@@ -99,12 +100,14 @@ void G1IHOPControl::report_statistics(G1NewTracer* new_tracer, size_t non_young_
 
 void G1IHOPControl::record_mutator_period(double mutator_time_s,
                                           size_t old_gen_growth_bytes,
-                                          size_t expected_young_gen_size) {
+                                          size_t expected_young_gen_size,
+                                          size_t eagerly_reclaimed_bytes) {
   assert(mutator_time_s > 0, "Invalid allocation time: %.3f", mutator_time_s);
   double alloc_rate = old_gen_growth_bytes / mutator_time_s;
   _old_gen_alloc_rate.add(alloc_rate);
   _last_allocation_time_s = mutator_time_s;
   _expected_young_gen_at_first_mixed_gc = expected_young_gen_size;
+  _eagerly_reclaimed_bytes.add(eagerly_reclaimed_bytes);
 }
 
 void G1IHOPControl::record_concurrent_cycle(double marking_start_to_mixed_time_s,
@@ -150,6 +153,13 @@ size_t G1IHOPControl::old_gen_threshold_for_conc_mark_start(bool consider_curren
 
   size_t reserve_for_young_regions = _expected_young_gen_at_first_mixed_gc;
   size_t target_heap_occupancy = effective_target_occupancy();
+
+  log_debug(gc, ihop) ("old_gen_threshold_for_conc_mark_start:  old_non_humongous_alloc_bytes %zuM "
+                        "peak_humongous_reserve %zuM reserve_for_young_regions %zuM target_heap_occupancy %zuM",
+                        old_non_humongous_alloc_bytes / M,
+                        peak_humongous_reserve / M,
+                        reserve_for_young_regions / M,
+                        target_heap_occupancy / M);
 
   if (consider_current_young) {
     reserve_for_young_regions = G1CollectedHeap::heap()->young_regions_count() * G1HeapRegion::GrainBytes;

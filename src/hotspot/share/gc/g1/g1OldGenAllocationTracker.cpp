@@ -30,7 +30,8 @@ G1OldGenAllocationTracker::G1OldGenAllocationTracker() :
   _last_period_old_gen_growth(0),
   _humongous_bytes_after_last_gc(0),
   _allocated_bytes_since_last_gc(0),
-  _allocated_humongous_bytes_since_last_gc(0) {
+  _allocated_humongous_bytes_since_last_gc(0),
+  _hum_eager_reclaimed(0) {
 }
 
 MutatorPeriodStatsBytes G1OldGenAllocationTracker::end_mutator_period(size_t humongous_bytes_after_gc) {

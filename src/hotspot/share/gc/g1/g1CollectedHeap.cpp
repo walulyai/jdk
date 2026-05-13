@@ -2956,13 +2956,21 @@ void G1CollectedHeap::abandon_collection_set() {
   collection_set()->abandon();
 }
 
-size_t G1CollectedHeap::non_young_occupancy_after_allocation(size_t allocation_word_size) const {
-  const size_t cur_occupancy = (old_regions_count() + humongous_regions_count()) * G1HeapRegion::GrainBytes -
-                               _allocator->free_bytes_in_retained_old_region();
+size_t G1CollectedHeap::non_young_occupancy_after_allocation(size_t allocation_word_size, size_t expected_eager_reclaim) const {
+
+  const size_t current_humongous = humongous_regions_count() * G1HeapRegion::GrainBytes +
+                                   (is_humongous(allocation_word_size) ? allocation_used_bytes(allocation_word_size) : 0);
+
+  const size_t expected_humongous = current_humongous > expected_eager_reclaim ?
+                                    current_humongous - expected_eager_reclaim : 0;
+
+
+  const size_t cur_non_hum_occupancy = old_regions_count() * G1HeapRegion::GrainBytes -
+                                       _allocator->free_bytes_in_retained_old_region();
   // Humongous allocations will always be assigned to non-young heap, so consider
   // that allocation in the result as well. Otherwise the allocation will always
   // be in young gen, so there is no need to account it here.
-  return cur_occupancy + (is_humongous(allocation_word_size) ? allocation_used_bytes(allocation_word_size) : 0);
+  return cur_non_hum_occupancy + expected_humongous;
 }
 
 bool G1CollectedHeap::is_old_gc_alloc_region(G1HeapRegion* hr) {

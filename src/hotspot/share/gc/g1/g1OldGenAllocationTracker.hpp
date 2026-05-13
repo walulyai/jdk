@@ -46,6 +46,9 @@ class G1OldGenAllocationTracker : public CHeapObj<mtGC> {
   // Humongous allocations during last mutator period.
   size_t _allocated_humongous_bytes_since_last_gc;
 
+  // Humongous regions reclaimed
+  size_t _hum_eager_reclaimed;
+
 public:
   G1OldGenAllocationTracker();
 
@@ -60,6 +63,10 @@ public:
   // is accounted to the previous mutator period.
   void record_collection_pause_humongous_allocation(size_t bytes) {
     _humongous_bytes_after_last_gc += bytes;
+  }
+
+  void record_humongous_regions_reclaimed(size_t bytes) {
+    _hum_eager_reclaimed = bytes;
   }
 
 

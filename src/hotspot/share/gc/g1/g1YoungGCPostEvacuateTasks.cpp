@@ -481,8 +481,10 @@ public:
     record_work_item(worker_id, G1GCPhaseTimes::EagerlyReclaimNumTotal, g1h->num_humongous_objects());
     record_work_item(worker_id, G1GCPhaseTimes::EagerlyReclaimNumCandidates, g1h->num_humongous_reclaim_candidates());
     record_work_item(worker_id, G1GCPhaseTimes::EagerlyReclaimNumReclaimed, cl.humongous_objects_reclaimed());
+    record_work_item(worker_id, G1GCPhaseTimes::EagerlyReclaimNumRegionsReclaimed, cl.humongous_regions_reclaimed());
 
     _humongous_regions_reclaimed = cl.humongous_regions_reclaimed();
+
     _bytes_freed = cl.bytes_freed();
   }
 };
