@@ -121,6 +121,14 @@
           "Fragmentation waste in the old generation is not considered "    \
           "free space in this calculation.")                                \
           range(0, 100)                                                     \
+  product(uint, G1AdaptiveIHOPYoungReservePercent, 30, DIAGNOSTIC,          \
+          "Maximum percentage of the adaptive IHOP target occupancy that "  \
+          "the predicted young generation reserve may contribute when "     \
+          "calculating the concurrent cycle start threshold. Large young "  \
+          "reserve predictions are capped to avoid overly eager "           \
+          "concurrent cycles on small heaps.")                              \
+          range(0, 100)                                                     \
+                                                                            \
                                                                             \
   product(uint, G1ConfidencePercent, 50,                                    \
           "Confidence level for MMU/pause predictions. A higher value "     \

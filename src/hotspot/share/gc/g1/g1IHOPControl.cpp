@@ -154,12 +154,10 @@ size_t G1IHOPControl::old_gen_threshold_for_conc_mark_start(bool consider_curren
   size_t reserve_for_young_regions = _expected_young_gen_at_first_mixed_gc;
   size_t target_heap_occupancy = effective_target_occupancy();
 
-  log_debug(gc, ihop) ("old_gen_threshold_for_conc_mark_start:  old_non_humongous_alloc_bytes %zuM "
-                        "peak_humongous_reserve %zuM reserve_for_young_regions %zuM target_heap_occupancy %zuM",
-                        old_non_humongous_alloc_bytes / M,
-                        peak_humongous_reserve / M,
-                        reserve_for_young_regions / M,
-                        target_heap_occupancy / M);
+  size_t young_reserve_cap = target_heap_occupancy * (G1AdaptiveIHOPYoungReservePercent/100.0);
+
+  // TODO: take into consideration the min young length
+  reserve_for_young_regions = MIN(reserve_for_young_regions, young_reserve_cap);
 
   if (consider_current_young) {
     reserve_for_young_regions = G1CollectedHeap::heap()->young_regions_count() * G1HeapRegion::GrainBytes;
