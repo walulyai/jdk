@@ -157,7 +157,7 @@ size_t G1IHOPControl::old_gen_threshold_for_conc_mark_start(bool consider_curren
   size_t young_reserve_cap = target_heap_occupancy * (G1AdaptiveIHOPYoungReservePercent/100.0);
 
   // TODO: take into consideration the min young length
-  reserve_for_young_regions = MIN(reserve_for_young_regions, young_reserve_cap);
+  reserve_for_young_regions = MIN2(reserve_for_young_regions, young_reserve_cap);
 
   if (consider_current_young) {
     reserve_for_young_regions = G1CollectedHeap::heap()->young_regions_count() * G1HeapRegion::GrainBytes;
