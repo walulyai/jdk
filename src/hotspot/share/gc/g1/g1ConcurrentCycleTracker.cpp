@@ -28,15 +28,16 @@
 void G1ConcurrentCycleTracker::reset() {
   _state = CycleState::InActive;
   _total_gc_pauses_in_cycle = 0.0;
-  _cycle_start_time = 1.0;
-  _cycle_end_time = 1.0;
+  _cycle_start_time = 0.0;
+  _cycle_end_time = 0.0;
 
   _hum_bytes_at_start = 0;
   _non_hum_bytes_allocated = 0;
   _peak_extra_humongous_reserve_bytes = 0;
 }
 
-void G1ConcurrentCycleTracker::update_mutator_stats(double pause_duration, MutatorPeriodStatsBytes period_stats) {
+void G1ConcurrentCycleTracker::update_mutator_stats(double pause_duration,
+                                                    MutatorPeriodStatsBytes period_stats) {
   if (!is_active()) {
     return;
   }
@@ -72,10 +73,10 @@ void G1ConcurrentCycleTracker::record_cycle_start(double start_time, size_t humo
 }
 
 void G1ConcurrentCycleTracker::record_mutator_period(Pause gc_type,
-                           bool is_periodic_gc,
-                           double start,
-                           double end,
-                           MutatorPeriodStatsBytes period_stats) {
+                                                     bool is_periodic_gc,
+                                                     double start,
+                                                     double end,
+                                                     MutatorPeriodStatsBytes period_stats) {
   // Manage the mutator time tracking from concurrent start to first mixed gc.
   update_mutator_stats(end - start, period_stats);
   if (is_periodic_gc) {
@@ -122,6 +123,7 @@ void G1ConcurrentCycleTracker::complete_cycle(double cycle_end_time, double mixe
 
 ConcurrentCycleStats G1ConcurrentCycleTracker::get_and_reset_cycle_stats() {
   precond(has_completed_cycle());
+
   double cycle_duration = (_cycle_end_time - _cycle_start_time - _total_gc_pauses_in_cycle);
 
   ConcurrentCycleStats stats{

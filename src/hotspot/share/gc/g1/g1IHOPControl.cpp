@@ -93,7 +93,9 @@ void G1IHOPControl::update_target_occupancy(size_t new_target_occupancy) {
   _target_occupancy = new_target_occupancy;
 }
 
-void G1IHOPControl::report_statistics(G1NewTracer* new_tracer, size_t non_young_occupancy, size_t last_period_old_gen_bytes) {
+void G1IHOPControl::report_statistics(G1NewTracer* new_tracer,
+                                      size_t non_young_occupancy,
+                                      size_t last_period_old_gen_bytes) {
   print_log(non_young_occupancy, last_period_old_gen_bytes);
   send_trace_event(new_tracer, non_young_occupancy, last_period_old_gen_bytes);
 }
@@ -207,7 +209,9 @@ void G1IHOPControl::print_log(size_t non_young_occupancy, size_t last_period_old
                       predict(&_marking_start_to_mixed_time_s) * 1000.0);
 }
 
-void G1IHOPControl::send_trace_event(G1NewTracer* tracer, size_t non_young_occupancy, size_t last_period_old_gen_bytes) {
+void G1IHOPControl::send_trace_event(G1NewTracer* tracer,
+                                     size_t non_young_occupancy,
+                                     size_t last_period_old_gen_bytes) {
   assert(_target_occupancy > 0, "Target occupancy still not updated yet.");
   tracer->report_basic_ihop_statistics(old_gen_threshold_for_conc_mark_start(),
                                        _target_occupancy,

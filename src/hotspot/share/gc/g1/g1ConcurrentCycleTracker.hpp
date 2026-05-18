@@ -47,7 +47,7 @@ struct MutatorPeriodStatsBytes {
 };
 
 // The Concurrent Cycle is the interval After the Concurrent-Start-GC until
-// The first Mixed-GC.
+// the first Mixed-GC.
 struct ConcurrentCycleStats {
   double _cycle_duration_s;
   size_t _non_hum_allocated_bytes;
