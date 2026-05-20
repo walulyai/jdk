@@ -27,6 +27,7 @@
 
 #include "gc/g1/g1ConcurrentCycleTracker.hpp"
 #include "gc/g1/g1HeapRegion.hpp"
+#include "logging/log.hpp"
 #include "memory/allocation.hpp"
 
 // Track allocation details in the old generation.
@@ -54,12 +55,6 @@ public:
   }
   void add_allocated_humongous_bytes_since_last_gc(size_t bytes) {
     _allocated_humongous_bytes_since_last_gc += bytes;
-  }
-
-  // Record a humongous allocation in a collection pause. This allocation
-  // is accounted to the previous mutator period.
-  void record_collection_pause_humongous_allocation(size_t bytes) {
-    _humongous_bytes_after_last_gc += bytes;
   }
 
   size_t last_period_old_gen_bytes() const { return _last_period_old_gen_bytes; }

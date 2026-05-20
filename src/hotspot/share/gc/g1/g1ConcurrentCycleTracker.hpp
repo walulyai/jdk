@@ -30,6 +30,7 @@
 #include "utilities/debug.hpp"
 #include "utilities/globalDefinitions.hpp"
 
+
 struct G1MutatorPeriodStatsBytes {
   size_t _non_hum_allocated;
   size_t _hum_allocated;

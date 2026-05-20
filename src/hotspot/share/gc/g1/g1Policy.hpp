@@ -256,12 +256,12 @@ public:
 
 private:
   void abandon_collection_set_candidates();
-  // Sets up marking if proper conditions are met.
-  void maybe_start_marking(size_t allocation_word_size);
+
   // Record the given STW pause with the given start and end times (in s).
   void record_pause(Pause gc_type,
                     double start,
-                    double end);
+                    double end,
+                    size_t humongous_allocation_bytes = 0);
 
   void update_gc_pause_time_ratios(Pause gc_type, double start_sec, double end_sec);
 

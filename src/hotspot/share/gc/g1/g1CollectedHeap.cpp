@@ -742,10 +742,6 @@ HeapWord* G1CollectedHeap::attempt_allocation_humongous(size_t word_size) {
     if (succeeded) {
       log_trace(gc, alloc)("%s: Successfully scheduled collection returning " PTR_FORMAT,
                            Thread::current()->name(), p2i(result));
-      if (result != nullptr) {
-        policy()->old_gen_alloc_tracker()->
-          record_collection_pause_humongous_allocation(humongous_byte_size);
-      }
       return result;
     }
 

@@ -23,6 +23,7 @@
  */
 
 #include "gc/g1/g1ConcurrentCycleTracker.hpp"
+#include "logging/log.hpp"
 #include "utilities/checkedCast.hpp"
 
 void G1ConcurrentCycleTracker::reset() {
@@ -79,6 +80,9 @@ void G1ConcurrentCycleTracker::record_mutator_period(Pause gc_type,
                                                      double end,
                                                      G1MutatorPeriodStatsBytes period_stats) {
   // Manage the mutator time tracking from concurrent start to first mixed gc.
+  log_debug(gc, ihop) ("G1ConcurrentCycleTracker::record_mutator_period %s _hum_allocated %zu _total_hum_before %zuM _total_hum_after %zuM",
+                        G1CollectorState::to_string(gc_type), period_stats._hum_allocated / M,
+                        period_stats._total_hum_before / M, period_stats._total_hum_after / M);
   update_mutator_stats(end - start, period_stats);
   if (is_periodic_gc) {
     reset();
