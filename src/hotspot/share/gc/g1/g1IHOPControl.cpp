@@ -99,10 +99,12 @@ void G1IHOPControl::report_statistics(G1NewTracer* new_tracer,
 }
 
 void G1IHOPControl::record_mutator_period(double mutator_time_s,
-                                          size_t expected_young_gen_size) {
+                                          size_t expected_young_gen_size,
+                                          size_t eagerly_reclaimed_bytes) {
   assert(mutator_time_s > 0, "Invalid allocation time: %.3f", mutator_time_s);
   _last_allocation_time_s = mutator_time_s;
   _expected_young_gen_at_first_mixed_gc = expected_young_gen_size;
+  _hum_bytes_eager_reclaimed.add(eagerly_reclaimed_bytes);
 }
 
 void G1IHOPControl::record_concurrent_cycle(double marking_start_to_mixed_time_s,
@@ -146,8 +148,21 @@ size_t G1IHOPControl::old_gen_threshold_for_conc_mark_start() const {
   //   mark_start_threshold = target_heap_occupancy -
   //                          (max_old_gen_growth + expected_young_gen_at_first_mixed_gc)
 
+
   size_t reserve_for_young_regions = _expected_young_gen_at_first_mixed_gc;
   size_t target_heap_occupancy = effective_target_occupancy();
+
+  // TODO: explain why
+  if (!SafepointSynchronize::is_at_safepoint()) {
+    reserve_for_young_regions = G1CollectedHeap::heap()->young_regions_count() * G1HeapRegion::GrainBytes;
+    target_heap_occupancy = _target_occupancy;
+  } else {
+    size_t young_reserve_cap = target_heap_occupancy * (G1AdaptiveIHOPYoungReservePercent/100.0);
+
+    // TODO: take into consideration the min young length
+    reserve_for_young_regions = MIN2(reserve_for_young_regions, young_reserve_cap);
+  }
+
 
   size_t needed_for_concurrent_cycle = reserve_for_young_regions +
                                        old_non_humongous_alloc_bytes +

@@ -294,6 +294,8 @@ public:
   bool need_to_start_conc_mark(const char* source, size_t allocation_word_size) const;
   bool need_to_start_conc_mark(const char* source, const G1CollectorState& state, size_t allocation_word_size) const;
 
+  bool need_to_continue_conc_mark(size_t allocation_word_size) const;
+
   bool concurrent_operation_is_full_mark(const char* msg, size_t allocation_word_size);
 
   bool about_to_start_mixed_phase() const;
