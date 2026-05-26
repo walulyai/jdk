@@ -360,9 +360,9 @@ static void on_unloading(Klass* klass) {
   }
 }
 
-void FinalizerService::purge_unloaded() {
+size_t FinalizerService::purge_unloaded() {
   assert_locked_or_safepoint(ClassLoaderDataGraph_lock);
-  ClassLoaderDataGraph::classes_unloading_do(&on_unloading);
+  return ClassLoaderDataGraph::classes_unloading_do(&on_unloading);
 }
 
 #endif // INCLUDE_MANAGEMENT

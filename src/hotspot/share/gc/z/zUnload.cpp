@@ -73,7 +73,7 @@ public:
 
 class ZIsUnloadingBehaviour : public IsUnloadingBehaviour {
 public:
-  virtual bool has_dead_oop(nmethod* nm) const {
+  virtual bool has_dead_oop(nmethod* nm, NMethodUnloadingStats* = nullptr) const {
     ZReentrantLock* const lock = ZNMethod::lock_for_nmethod(nm);
     ZLocker<ZReentrantLock> locker(lock);
     if (!ZNMethod::is_armed(nm)) {

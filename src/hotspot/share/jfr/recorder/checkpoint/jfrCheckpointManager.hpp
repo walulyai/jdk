@@ -98,7 +98,7 @@ class JfrCheckpointManager : public JfrCHeapObj {
 
   void shift_epoch();
 
-  static void on_unloading_classes();
+  static size_t on_unloading_classes();
   void on_rotation();
 
   // mspace callback

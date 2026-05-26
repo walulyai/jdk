@@ -66,7 +66,7 @@ public:
   void register_unloading_class_loader_data(ClassLoaderData* cld);
   void purge_class_loader_data();
 
-  void classes_unloading_do(void f(Klass* const));
+  size_t classes_unloading_do(void f(Klass* const));
 
   // Register unloading nmethods, potentially in parallel.
   void register_unlinked_nmethod(nmethod* nm);

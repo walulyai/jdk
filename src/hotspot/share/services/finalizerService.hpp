@@ -61,7 +61,7 @@ class FinalizerService : AllStatic {
   static void do_concurrent_work(JavaThread* service_thread) NOT_MANAGEMENT_RETURN;
  public:
   static void init() NOT_MANAGEMENT_RETURN;
-  static void purge_unloaded() NOT_MANAGEMENT_RETURN;
+  static size_t purge_unloaded() NOT_MANAGEMENT_RETURN_(0);
   static void on_register(oop finalizee, Thread* thread) NOT_MANAGEMENT_RETURN;
   static void on_complete(oop finalizee, JavaThread* finalizer_thread) NOT_MANAGEMENT_RETURN;
   static void do_entries(FinalizerEntryClosure* closure, Thread* thread) NOT_MANAGEMENT_RETURN;

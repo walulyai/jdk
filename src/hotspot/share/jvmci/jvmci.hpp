@@ -173,7 +173,7 @@ class JVMCI : public AllStatic {
   // if this file has not been created.
   static const char* fatal_log_filename() { return _fatal_log_filename; }
 
-  static void do_unloading(bool unloading_occurred);
+  static size_t do_unloading(bool unloading_occurred);
 
   static void metadata_do(void f(Metadata*));
 

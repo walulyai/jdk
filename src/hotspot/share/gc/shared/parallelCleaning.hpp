@@ -29,6 +29,7 @@
 #include "code/codeCache.hpp"
 #include "gc/shared/oopStorageParState.hpp"
 #include "gc/shared/workerThread.hpp"
+#include "gc/shared/workerUtils.hpp"
 #include "runtime/atomic.hpp"
 
 class CodeCacheUnloadingTask {
@@ -38,18 +39,23 @@ class CodeCacheUnloadingTask {
   // Variables used to claim nmethods.
   nmethod* _first_nmethod;
   Atomic<nmethod*> _claimed_nmethod;
+  WorkerThreadsBarrierSync _decide_barrier;
+  WorkerThreadsBarrierSync _cleanup_barrier;
 
 public:
-  CodeCacheUnloadingTask(bool unloading_occurred);
+  CodeCacheUnloadingTask(bool unloading_occurred, uint num_workers);
   ~CodeCacheUnloadingTask();
 
 private:
   static const int MaxClaimNmethods = 16;
+  void reset_claim_nmethods();
   void claim_nmethods(nmethod** claimed_nmethods, int *num_claimed_nmethods);
+  size_t work_unloading_decide(uint worker_id, NMethodUnloadingStats* stats);
+  void work_unloading_cleanup(uint worker_id, NMethodUnloadingStats* stats);
 
 public:
   // Cleaning and unloading of nmethods.
-  void work(uint worker_id);
+  size_t work(uint worker_id, NMethodUnloadingStats* stats = nullptr);
 };
 
 // Cleans out the Klass tree from stale data.
@@ -59,7 +65,7 @@ class KlassCleaningTask : public StackObj {
 public:
   KlassCleaningTask() : _cld_iterator_atomic() { }
 
-  void work();
+  size_t work(size_t* num_class_loader_data = nullptr);
 };
 
 #endif // SHARE_GC_SHARED_PARALLELCLEANING_HPP

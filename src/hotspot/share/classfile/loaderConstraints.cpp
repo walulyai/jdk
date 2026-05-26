@@ -219,11 +219,17 @@ void LoaderConstraintTable::add_loader_constraint(Symbol* name, InstanceKlass* k
 }
 
 class PurgeUnloadedConstraints : public StackObj {
+  LoaderConstraintTable::PurgeStats _stats;
+
  public:
+  LoaderConstraintTable::PurgeStats stats() const { return _stats; }
+
   bool do_entry(SymbolHandle& name, ConstraintSet& set) {
+    _stats._constraint_sets_processed++;
     LogTarget(Info, class, loader, constraints) lt;
     int len = set.num_constraints();
     for (int i = len - 1; i >= 0; i--) {
+      _stats._constraints_processed++;
       LoaderConstraint* probe = set.constraint_at(i);
       InstanceKlass* klass = probe->klass();
       // Remove klass that is no longer alive
@@ -252,6 +258,7 @@ class PurgeUnloadedConstraints : public StackObj {
                      name->as_C_string());
           }
           probe->remove_loader_at(n);
+          _stats._loaders_removed++;
 
           if (lt.is_enabled()) {
             ResourceMark rm;
@@ -272,6 +279,7 @@ class PurgeUnloadedConstraints : public StackObj {
         }
 
         set.remove_constraint(probe);
+        _stats._constraints_removed++;
       } else {
 #ifdef ASSERT
         if (probe->klass() != nullptr) {
@@ -281,6 +289,7 @@ class PurgeUnloadedConstraints : public StackObj {
       }
     }
     if (set.num_constraints() == 0) {
+      _stats._constraint_sets_removed++;
       return true;
     }
     // Don't unlink this set
@@ -288,11 +297,12 @@ class PurgeUnloadedConstraints : public StackObj {
   }
 };
 
-void LoaderConstraintTable::purge_loader_constraints() {
+LoaderConstraintTable::PurgeStats LoaderConstraintTable::purge_loader_constraints() {
   assert_locked_or_safepoint(SystemDictionary_lock);
   // Remove unloaded entries from constraint table
   PurgeUnloadedConstraints purge;
   _loader_constraint_table->unlink(&purge);
+  return purge.stats();
 }
 
 static void log_ldr_constraint_msg(Symbol* class_name, const char* reason,

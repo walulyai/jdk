@@ -24,6 +24,7 @@
 
 #include "code/codeCache.hpp"
 #include "code/nativeInst.hpp"
+#include "code/nmethod.hpp"
 #include "gc/shared/barrierSetNMethod.hpp"
 #include "logging/log.hpp"
 #include "memory/resourceArea.hpp"
@@ -183,7 +184,7 @@ static NativeNMethodCmpBarrier* native_nmethod_barrier(nmethod* nm) {
 }
 
 void BarrierSetNMethod::set_guard_value(nmethod* nm, int value, int bit_mask) {
-  if (!supports_entry_barrier(nm)) {
+  if (!nm->supports_entry_barrier()) {
     return;
   }
 
@@ -192,7 +193,7 @@ void BarrierSetNMethod::set_guard_value(nmethod* nm, int value, int bit_mask) {
 }
 
 int BarrierSetNMethod::guard_value(nmethod* nm) {
-  if (!supports_entry_barrier(nm)) {
+  if (!nm->supports_entry_barrier()) {
     return disarmed_guard_value();
   }
 

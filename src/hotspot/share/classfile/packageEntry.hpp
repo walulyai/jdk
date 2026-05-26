@@ -203,8 +203,8 @@ public:
   JFR_ONLY(DEFINE_TRACE_ID_METHODS;)
 
   // Purge dead weak references out of exported list when any given class loader is unloaded.
-  void purge_qualified_exports();
-  void delete_qualified_exports();
+  size_t purge_qualified_exports(size_t* exports_processed = nullptr);
+  size_t delete_qualified_exports();
 
   void pack_qualified_exports(); // used by AOT
 
@@ -273,7 +273,15 @@ public:
   void verify_javabase_packages(GrowableArray<Symbol*> *pkg_list);
 
   // purge dead weak references out of exported list
-  void purge_all_package_exports();
+  struct PurgeStats {
+    size_t _packages_processed;
+    size_t _exports_processed;
+    size_t _exports_removed;
+
+    PurgeStats() : _packages_processed(0), _exports_processed(0), _exports_removed(0) {}
+  };
+
+  PurgeStats purge_all_package_exports();
 
   GrowableArray<PackageEntry*>* get_system_packages();
 

@@ -107,8 +107,10 @@
 #include "runtime/init.hpp"
 #include "runtime/java.hpp"
 #include "runtime/orderAccess.hpp"
+#include "runtime/os.hpp"
 #include "runtime/threads.hpp"
 #include "runtime/threadSMR.hpp"
+#include "runtime/timer.hpp"
 #include "runtime/vmThread.hpp"
 #include "utilities/align.hpp"
 #include "utilities/autoRestore.hpp"
@@ -2750,9 +2752,36 @@ void G1CollectedHeap::do_collection_pause_at_safepoint(size_t allocation_word_si
   }
 }
 
-void G1CollectedHeap::complete_cleaning(bool class_unloading_occurred) {
-  G1ParallelCleaningTask unlink_task(class_unloading_occurred);
-  workers()->run_task(&unlink_task);
+void G1CollectedHeap::complete_cleaning(bool class_unloading_occurred, GCTimer* timer) {
+  const bool record_cleaning_stats = log_is_enabled(Trace, gc, phases, task);
+  jlong setup_start = record_cleaning_stats ? os::elapsed_counter() : 0;
+  jlong teardown_start = 0;
+  {
+    G1ParallelCleaningTask unlink_task(class_unloading_occurred,
+                                       workers()->active_workers(),
+                                       record_cleaning_stats);
+
+    if (record_cleaning_stats) {
+      log_trace(gc, phases, task)("G1 Complete Cleaning Setup %.3fms",
+                                  TimeHelper::counter_to_millis(os::elapsed_counter() - setup_start));
+      {
+        GCTraceTime(Trace, gc, phases, task) t("G1 Complete Cleaning Work", timer);
+        workers()->run_task(&unlink_task);
+      }
+      {
+        GCTraceTime(Trace, gc, phases, task) t("G1 Complete Cleaning Statistics", timer);
+        unlink_task.log_statistics();
+      }
+
+      teardown_start = os::elapsed_counter();
+    } else {
+      workers()->run_task(&unlink_task);
+    }
+  }
+  if (record_cleaning_stats) {
+    log_trace(gc, phases, task)("G1 Complete Cleaning Teardown %.3fms",
+                                TimeHelper::counter_to_millis(os::elapsed_counter() - teardown_start));
+  }
 }
 
 void G1CollectedHeap::unload_classes_and_code(const char* description, BoolObjectClosure* is_alive, GCTimer* timer) {
@@ -2765,7 +2794,7 @@ void G1CollectedHeap::unload_classes_and_code(const char* description, BoolObjec
     CodeCache::UnlinkingScope scope(is_alive);
     bool unloading_occurred = SystemDictionary::do_unloading(timer);
     GCTraceTime(Debug, gc, phases) t("G1 Complete Cleaning", timer);
-    complete_cleaning(unloading_occurred);
+    complete_cleaning(unloading_occurred, timer);
   }
   {
     GCTraceTime(Debug, gc, phases) t("Purge Unlinked NMethods", timer);

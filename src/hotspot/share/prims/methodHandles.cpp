@@ -29,6 +29,7 @@
 #include "classfile/vmClasses.hpp"
 #include "code/codeCache.hpp"
 #include "code/dependencyContext.hpp"
+#include "code/nmethod.hpp"
 #include "compiler/compileBroker.hpp"
 #include "interpreter/interpreter.hpp"
 #include "interpreter/linkResolver.hpp"
@@ -944,12 +945,34 @@ void MethodHandles::expand_MemberName(Handle mname, int suppress, TRAPS) {
 void MethodHandles::add_dependent_nmethod(oop call_site, nmethod* nm) {
   assert_lock_strong(CodeCache_lock);
   DependencyContext deps = java_lang_invoke_CallSite::vmdependencies(call_site);
-  deps.add_dependent_nmethod(nm);
+  deps.add_dependent_nmethod(nm, nullptr, true /* owner_is_call_site */);
 }
 
-void MethodHandles::clean_dependency_context(oop call_site) {
+bool MethodHandles::remove_dependent_nmethod(oop call_site, nmethod* nm, NMethodUnloadingStats* stats) {
+  jlong old_max_ticks = 0;
+  if (stats != nullptr) {
+    old_max_ticks = stats->_dependency_context_remove_max_ticks;
+  }
   DependencyContext deps = java_lang_invoke_CallSite::vmdependencies(call_site);
-  deps.clean_unloading_dependents();
+  bool removed = deps.remove_dependent_nmethod(nm, stats);
+  if (stats != nullptr && stats->_dependency_context_remove_max_ticks > old_max_ticks) {
+    stats->_dependency_context_remove_max_klass = nullptr;
+    stats->_dependency_context_remove_max_is_call_site = true;
+  }
+  return removed;
+}
+
+void MethodHandles::clean_dependency_context(oop call_site, NMethodUnloadingStats* stats) {
+  jlong old_max_ticks = 0;
+  if (stats != nullptr) {
+    old_max_ticks = stats->_dependency_context_max_ticks;
+  }
+  DependencyContext deps = java_lang_invoke_CallSite::vmdependencies(call_site);
+  deps.clean_unloading_dependents(stats);
+  if (stats != nullptr && stats->_dependency_context_max_ticks > old_max_ticks) {
+    stats->_dependency_context_max_klass = nullptr;
+    stats->_dependency_context_max_is_call_site = true;
+  }
 }
 
 void MethodHandles::mark_dependent_nmethods(DeoptimizationScope* deopt_scope, Handle call_site, Handle target) {

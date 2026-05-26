@@ -129,7 +129,9 @@ void MetadataHandles::metadata_do(void f(Metadata*)) {
 
 // Visit any live metadata handles and clean them up.  Since clearing of these handles is driven by
 // weak references they will be cleared at some point in the future when the reference cleaning logic is run.
-void MetadataHandles::do_unloading() {
+size_t MetadataHandles::do_unloading() {
+  size_t num_processed_handles = 0;
+
   for (MetadataHandleBlock* current = _head; current != nullptr; current = current->_next) {
     for (int index = 0; index < current->_top; index++) {
       HandleRecord* handle = &(current->_handles)[index];
@@ -137,6 +139,7 @@ void MetadataHandles::do_unloading() {
       // traverse heap pointers only, not deleted handles or free list
       // pointers
       if (value != nullptr && ((intptr_t) value & ptr_tag) == 0) {
+        num_processed_handles++;
         Klass* klass = nullptr;
         if (value->is_klass()) {
           klass = (Klass*)value;
@@ -168,4 +171,6 @@ void MetadataHandles::do_unloading() {
       break;
     }
   }
+
+  return num_processed_handles;
 }

@@ -72,9 +72,11 @@
 #include "runtime/java.hpp"
 #include "runtime/javaCalls.hpp"
 #include "runtime/mutexLocker.hpp"
+#include "runtime/os.hpp"
 #include "runtime/sharedRuntime.hpp"
 #include "runtime/signature.hpp"
 #include "runtime/synchronizer.hpp"
+#include "runtime/timer.hpp"
 #include "services/classLoadingService.hpp"
 #include "services/diagnosticCommand.hpp"
 #include "services/finalizerService.hpp"
@@ -1550,36 +1552,170 @@ InstanceKlass* SystemDictionary::find_or_define_instance_class(Symbol* class_nam
 // ----------------------------------------------------------------------------
 // GC support
 
+class SystemDictionaryUnloadingStats : public StackObj {
+  enum Phase {
+    ClassLoaderDataUnloading,
+    JfrUnloading,
+    FinalizerServicePurge,
+    ModuleAndPackageCleaning,
+    LoaderConstraintPurge,
+    ResolutionErrorPurge,
+    SymbolTableCleanupTrigger,
+    InitializationErrorTableCleaning,
+    PhaseCount
+  };
+
+  struct PhaseData {
+    jlong _ticks;
+    size_t _processed;
+    size_t _removed;
+    bool _recorded;
+
+    PhaseData() : _ticks(0), _processed(0), _removed(0), _recorded(false) {}
+  };
+
+  PhaseData _phases[PhaseCount];
+
+  static const char* phase_name(Phase phase) {
+    switch (phase) {
+      case ClassLoaderDataUnloading:          return "ClassLoaderData Unloading";
+      case JfrUnloading:                      return "JFR Unloading";
+      case FinalizerServicePurge:             return "Finalizer Service";
+      case ModuleAndPackageCleaning:          return "Modules and Packages";
+      case LoaderConstraintPurge:             return "Loader Constraints";
+      case ResolutionErrorPurge:              return "Resolution Errors";
+      case SymbolTableCleanupTrigger:         return "Trigger Symbol Cleanup";
+      case InitializationErrorTableCleaning:  return "Initialization Errors";
+      default:                                ShouldNotReachHere();
+                                              return "Unknown";
+    }
+  }
+
+public:
+  void record(Phase phase, jlong start_counter, size_t processed = 0, size_t removed = 0) {
+    PhaseData* data = &_phases[phase];
+    data->_ticks = os::elapsed_counter() - start_counter;
+    data->_processed = processed;
+    data->_removed = removed;
+    data->_recorded = true;
+  }
+
+  void record_class_loader_data_unloading(jlong start_counter,
+                                          const ClassLoaderDataGraph::UnloadingStats& stats) {
+    record(ClassLoaderDataUnloading, start_counter, stats._loaders_processed, stats._loaders_removed);
+  }
+
+  void record_jfr_unloading(jlong start_counter, size_t processed) {
+    record(JfrUnloading, start_counter, processed);
+  }
+
+  void record_finalizer_service_purge(jlong start_counter, size_t processed) {
+    record(FinalizerServicePurge, start_counter, processed);
+  }
+
+  void record_module_and_package_cleaning(jlong start_counter,
+                                          const ClassLoaderDataGraph::ModuleAndPackageCleaningStats& stats) {
+    record(ModuleAndPackageCleaning, start_counter, stats.processed(), stats.removed());
+  }
+
+  void record_loader_constraint_purge(jlong start_counter,
+                                      const LoaderConstraintTable::PurgeStats& stats) {
+    record(LoaderConstraintPurge, start_counter, stats.processed(), stats.removed());
+  }
+
+  void record_resolution_error_purge(jlong start_counter,
+                                     const ResolutionErrorTable::PurgeStats& stats) {
+    record(ResolutionErrorPurge, start_counter, stats._errors_processed, stats._errors_removed);
+  }
+
+  void record_symbol_table_cleanup_trigger(jlong start_counter, bool triggered) {
+    record(SymbolTableCleanupTrigger, start_counter, triggered ? 1 : 0);
+  }
+
+  void record_initialization_error_table_cleaning(jlong start_counter,
+                                                  const InstanceKlass::InitErrorTableStats& stats) {
+    record(InitializationErrorTableCleaning, start_counter, stats._errors_processed, stats._errors_removed);
+  }
+
+  void log_statistics() const {
+    LogTarget(Debug, gc, phases) debug;
+    if (!debug.is_enabled()) {
+      return;
+    }
+
+    LogStream ls(debug);
+    for (uint i = 0; i < PhaseCount; i++) {
+      const PhaseData* data = &_phases[i];
+      if (data->_recorded) {
+        ls.print_cr("    %-30s %.3fms, Processed: %zu, Removed: %zu",
+                    phase_name((Phase)i),
+                    TimeHelper::counter_to_millis(data->_ticks),
+                    data->_processed,
+                    data->_removed);
+      }
+    }
+  }
+};
+
 // Assumes classes in the SystemDictionary are only unloaded at a safepoint
 bool SystemDictionary::do_unloading(GCTimer* gc_timer) {
 
+  SystemDictionaryUnloadingStats stats;
   bool unloading_occurred;
   bool is_concurrent = !SafepointSynchronize::is_at_safepoint();
   {
     GCTraceTime(Debug, gc, phases) t("ClassLoaderData", gc_timer);
     assert_locked_or_safepoint(ClassLoaderDataGraph_lock);  // caller locks.
     // First, mark for unload all ClassLoaderData referencing a dead class loader.
-    unloading_occurred = ClassLoaderDataGraph::do_unloading();
+    jlong start = os::elapsed_counter();
+    ClassLoaderDataGraph::UnloadingStats cldg_stats = ClassLoaderDataGraph::do_unloading();
+    stats.record_class_loader_data_unloading(start, cldg_stats);
+    unloading_occurred = cldg_stats.unloading_occurred();
     if (unloading_occurred) {
       ConditionalMutexLocker ml2(Module_lock, is_concurrent);
-      JFR_ONLY(Jfr::on_unloading_classes();)
-      MANAGEMENT_ONLY(FinalizerService::purge_unloaded();)
+      JFR_ONLY({
+        start = os::elapsed_counter();
+        size_t processed = Jfr::on_unloading_classes();
+        stats.record_jfr_unloading(start, processed);
+      })
+      MANAGEMENT_ONLY({
+        start = os::elapsed_counter();
+        size_t processed = FinalizerService::purge_unloaded();
+        stats.record_finalizer_service_purge(start, processed);
+      })
       ConditionalMutexLocker ml1(SystemDictionary_lock, is_concurrent);
-      ClassLoaderDataGraph::clean_module_and_package_info();
-      LoaderConstraintTable::purge_loader_constraints();
-      ResolutionErrorTable::purge_resolution_errors();
+      start = os::elapsed_counter();
+      ClassLoaderDataGraph::ModuleAndPackageCleaningStats module_stats =
+        ClassLoaderDataGraph::clean_module_and_package_info();
+      stats.record_module_and_package_cleaning(start, module_stats);
+
+      start = os::elapsed_counter();
+      LoaderConstraintTable::PurgeStats loader_constraint_stats =
+        LoaderConstraintTable::purge_loader_constraints();
+      stats.record_loader_constraint_purge(start, loader_constraint_stats);
+
+      start = os::elapsed_counter();
+      ResolutionErrorTable::PurgeStats resolution_error_stats =
+        ResolutionErrorTable::purge_resolution_errors();
+      stats.record_resolution_error_purge(start, resolution_error_stats);
     }
   }
 
   GCTraceTime(Debug, gc, phases) t("Trigger cleanups", gc_timer);
 
   if (unloading_occurred) {
+    jlong start = os::elapsed_counter();
     SymbolTable::trigger_cleanup();
+    stats.record_symbol_table_cleanup_trigger(start, true);
 
     ConditionalMutexLocker ml(ClassInitError_lock, is_concurrent);
-    InstanceKlass::clean_initialization_error_table();
+    start = os::elapsed_counter();
+    InstanceKlass::InitErrorTableStats init_error_stats =
+      InstanceKlass::clean_initialization_error_table();
+    stats.record_initialization_error_table_cleaning(start, init_error_stats);
   }
 
+  stats.log_statistics();
   return unloading_occurred;
 }
 

@@ -214,8 +214,13 @@ bool ModuleEntry::has_reads_list() const {
 }
 
 // Purge dead module entries out of reads list.
-void ModuleEntry::purge_reads() {
+size_t ModuleEntry::purge_reads(size_t* reads_processed) {
   assert_locked_or_safepoint(Module_lock);
+
+  size_t removed = 0;
+  if (reads_processed != nullptr) {
+    *reads_processed = 0;
+  }
 
   if (_must_walk_reads && has_reads_list()) {
     // This module's _must_walk_reads flag will be reset based
@@ -231,16 +236,22 @@ void ModuleEntry::purge_reads() {
     // Go backwards because this removes entries that are dead.
     int len = reads()->length();
     for (int idx = len - 1; idx >= 0; idx--) {
+      if (reads_processed != nullptr) {
+        (*reads_processed)++;
+      }
       ModuleEntry* module_idx = reads()->at(idx);
       ClassLoaderData* cld_idx = module_idx->loader_data();
       if (cld_idx->is_unloading()) {
         reads()->delete_at(idx);
+        removed++;
       } else {
         // Update the need to walk this module's reads based on live modules
         set_read_walk_required(cld_idx);
       }
     }
   }
+
+  return removed;
 }
 
 void ModuleEntry::module_reads_do(ModuleClosure* f) {
@@ -556,12 +567,18 @@ ModuleEntry* ModuleEntryTable::lookup_only(Symbol* name) {
 
 // Remove dead modules from all other alive modules' reads list.
 // This should only occur at class unloading.
-void ModuleEntryTable::purge_all_module_reads() {
+ModuleEntryTable::PurgeStats ModuleEntryTable::purge_all_module_reads() {
   assert_locked_or_safepoint(Module_lock);
+  PurgeStats stats;
   auto purge = [&] (const SymbolHandle& key, ModuleEntry*& entry) {
-    entry->purge_reads();
+    stats._modules_processed++;
+    size_t reads_processed = 0;
+    size_t reads_removed = entry->purge_reads(&reads_processed);
+    stats._reads_processed += reads_processed;
+    stats._reads_removed += reads_removed;
   };
   _table.iterate_all(purge);
+  return stats;
 }
 
 void ModuleEntryTable::finalize_javabase(Handle module_handle, Symbol* version, Symbol* location) {

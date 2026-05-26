@@ -189,7 +189,7 @@ class MetadataHandles : public CHeapObj<mtJVMCI> {
 
   void metadata_do(void f(Metadata*));
 
-  void do_unloading();
+  size_t do_unloading();
 };
 
 #endif // SHARE_JVMCI_METADATAHANDLES_HPP

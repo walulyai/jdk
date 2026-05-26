@@ -77,7 +77,7 @@ public:
 
 class ShenandoahIsUnloadingBehaviour : public IsUnloadingBehaviour {
 public:
-  virtual bool has_dead_oop(nmethod* nm) const {
+  virtual bool has_dead_oop(nmethod* nm, NMethodUnloadingStats* = nullptr) const {
     assert(ShenandoahHeap::heap()->is_concurrent_weak_root_in_progress(), "Only for this phase");
     ShenandoahNMethod* data = ShenandoahNMethod::gc_data(nm);
     ShenandoahNMethodLocker locker(data->lock());

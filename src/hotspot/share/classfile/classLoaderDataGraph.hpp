@@ -59,7 +59,51 @@ class ClassLoaderDataGraph : public AllStatic {
  public:
   static ClassLoaderData* find_or_create(Handle class_loader);
   static ClassLoaderData* add(Handle class_loader, bool has_class_mirror_holder);
-  static void clean_module_and_package_info();
+  struct UnloadingStats {
+    size_t _loaders_processed;
+    size_t _loaders_removed;
+
+    UnloadingStats() : _loaders_processed(0), _loaders_removed(0) {}
+
+    bool unloading_occurred() const { return _loaders_removed != 0; }
+  };
+
+  struct ModuleAndPackageCleaningStats {
+    size_t _class_loader_data_processed;
+    size_t _package_tables_processed;
+    size_t _package_entries_processed;
+    size_t _package_exports_processed;
+    size_t _package_exports_removed;
+    size_t _module_tables_processed;
+    size_t _module_entries_processed;
+    size_t _module_reads_processed;
+    size_t _module_reads_removed;
+
+    ModuleAndPackageCleaningStats() :
+      _class_loader_data_processed(0),
+      _package_tables_processed(0),
+      _package_entries_processed(0),
+      _package_exports_processed(0),
+      _package_exports_removed(0),
+      _module_tables_processed(0),
+      _module_entries_processed(0),
+      _module_reads_processed(0),
+      _module_reads_removed(0) {}
+
+    size_t processed() const {
+      return _class_loader_data_processed +
+             _package_entries_processed +
+             _package_exports_processed +
+             _module_entries_processed +
+             _module_reads_processed;
+    }
+
+    size_t removed() const {
+      return _package_exports_removed + _module_reads_removed;
+    }
+  };
+
+  static ModuleAndPackageCleaningStats clean_module_and_package_info();
   static void purge(bool at_safepoint);
   static void clear_claimed_marks();
   static void clear_claimed_marks(int claim);
@@ -87,8 +131,8 @@ class ClassLoaderDataGraph : public AllStatic {
   static void modules_do(void f(ModuleEntry*));
   static void packages_do(void f(PackageEntry*));
   static void loaded_classes_do_keepalive(KlassClosure* klass_closure);
-  static void classes_unloading_do(void f(Klass* const));
-  static bool do_unloading();
+  static size_t classes_unloading_do(void f(Klass* const));
+  static UnloadingStats do_unloading();
 
   static inline bool should_clean_metaspaces_and_reset();
   static void set_should_clean_deallocate_lists() { _should_clean_deallocate_lists = true; }

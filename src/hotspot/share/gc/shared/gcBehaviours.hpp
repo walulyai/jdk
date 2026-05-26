@@ -28,6 +28,9 @@
 #include "memory/iterator.hpp"
 #include "oops/oopsHierarchy.hpp"
 
+class nmethod;
+struct NMethodUnloadingStats;
+
 // This is the behaviour for checking if an nmethod is unloading
 // or has unloaded due to having phantomly dead oops in it after a GC.
 class IsUnloadingBehaviour {
@@ -35,7 +38,7 @@ class IsUnloadingBehaviour {
 
 public:
   static bool is_unloading(nmethod* nm);
-  virtual bool has_dead_oop(nmethod* nm) const = 0;
+  virtual bool has_dead_oop(nmethod* nm, NMethodUnloadingStats* stats = nullptr) const = 0;
   static IsUnloadingBehaviour* current() { return _current; }
   static void set_current(IsUnloadingBehaviour* current) { _current = current; }
 };
@@ -48,7 +51,7 @@ public:
     : _cl(is_alive)
   { }
 
-  virtual bool has_dead_oop(nmethod* nm) const;
+  virtual bool has_dead_oop(nmethod* nm, NMethodUnloadingStats* stats = nullptr) const;
 };
 
 #endif // SHARE_GC_SHARED_GCBEHAVIOURS_HPP

@@ -60,7 +60,25 @@ public:
   static bool check_or_update(InstanceKlass* k, ClassLoaderData* loader, Symbol* name);
 
   static void remove_failed_loaded_klass(InstanceKlass* k, ClassLoaderData* loader);
-  static void purge_loader_constraints();
+  struct PurgeStats {
+    size_t _constraint_sets_processed;
+    size_t _constraint_sets_removed;
+    size_t _constraints_processed;
+    size_t _constraints_removed;
+    size_t _loaders_removed;
+
+    PurgeStats() :
+      _constraint_sets_processed(0),
+      _constraint_sets_removed(0),
+      _constraints_processed(0),
+      _constraints_removed(0),
+      _loaders_removed(0) {}
+
+    size_t processed() const { return _constraint_sets_processed + _constraints_processed; }
+    size_t removed() const { return _constraint_sets_removed + _constraints_removed + _loaders_removed; }
+  };
+
+  static PurgeStats purge_loader_constraints();
 
   static void print_table_statistics(outputStream* st);
   static void verify();

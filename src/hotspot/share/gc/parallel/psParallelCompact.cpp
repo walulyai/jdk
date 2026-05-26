@@ -1165,10 +1165,10 @@ class PSParallelCleaningTask : public WorkerTask {
   KlassCleaningTask       _klass_cleaning_task;
 
 public:
-  PSParallelCleaningTask(bool unloading_occurred) :
+  PSParallelCleaningTask(bool unloading_occurred, uint num_workers) :
     WorkerTask("PS Parallel Cleaning"),
     _unloading_occurred(unloading_occurred),
-    _code_cache_task(unloading_occurred),
+    _code_cache_task(unloading_occurred, num_workers),
     _klass_cleaning_task() {}
 
   void work(uint worker_id) {
@@ -1250,7 +1250,7 @@ void PSParallelCompact::marking_phase(ParallelOldTracer *gc_tracer) {
       // Follow system dictionary roots and unload classes.
       bool unloading_occurred = SystemDictionary::do_unloading(&_gc_timer);
 
-      PSParallelCleaningTask task{unloading_occurred};
+      PSParallelCleaningTask task{unloading_occurred, active_gc_threads};
       ParallelScavengeHeap::heap()->workers().run_task(&task);
     }
 

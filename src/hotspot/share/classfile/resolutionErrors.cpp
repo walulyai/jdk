@@ -159,11 +159,17 @@ void ResolutionErrorTable::delete_entry(ConstantPool* c) {
 }
 
 class ResolutionIteratePurgeErrors : StackObj {
+  ResolutionErrorTable::PurgeStats _stats;
+
 public:
+  ResolutionErrorTable::PurgeStats stats() const { return _stats; }
+
   bool do_entry(const ResolutionErrorKey& key, ResolutionErrorEntry* value){
+    _stats._errors_processed++;
     ConstantPool* pool = key.cpool();
     if (!(pool->pool_holder()->is_loader_alive())) {
       delete value;
+      _stats._errors_removed++;
       return true;
     } else {
       return false;
@@ -172,9 +178,10 @@ public:
 };
 
 // Remove unloaded entries from the table
-void ResolutionErrorTable::purge_resolution_errors() {
+ResolutionErrorTable::PurgeStats ResolutionErrorTable::purge_resolution_errors() {
   assert_locked_or_safepoint(SystemDictionary_lock);
 
   ResolutionIteratePurgeErrors purgeErrorsIterator;
   _resolution_error_table->unlink(&purgeErrorsIterator);
+  return purgeErrorsIterator.stats();
 }

@@ -57,7 +57,7 @@ class Jfr : AllStatic {
   static void on_create_vm_1();
   static void on_create_vm_2();
   static void on_create_vm_3();
-  static void on_unloading_classes();
+  static size_t on_unloading_classes();
   static bool is_excluded(Thread* thread);
   static void include_thread(Thread* thread);
   static void exclude_thread(Thread* thread);

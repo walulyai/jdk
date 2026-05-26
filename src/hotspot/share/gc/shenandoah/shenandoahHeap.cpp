@@ -2339,7 +2339,7 @@ void ShenandoahHeap::stw_unload_classes(bool full_gc) {
       // Clean JVMCI metadata handles.
       JVMCI_ONLY(JVMCI::do_unloading(unloading_occurred));
 
-      ShenandoahClassUnloadingTask unlink_task(phase, unloading_occurred);
+      ShenandoahClassUnloadingTask unlink_task(phase, unloading_occurred, _workers->active_workers());
       _workers->run_task(&unlink_task);
     }
     // Release unloaded nmethods's memory.

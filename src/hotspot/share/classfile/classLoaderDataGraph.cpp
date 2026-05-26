@@ -339,8 +339,8 @@ void ClassLoaderDataGraph::loaded_classes_do_keepalive(KlassClosure* klass_closu
   }
 }
 
-void ClassLoaderDataGraph::classes_unloading_do(void f(Klass* const)) {
-  ClassUnloadingContext::context()->classes_unloading_do(f);
+size_t ClassLoaderDataGraph::classes_unloading_do(void f(Klass* const)) {
+  return ClassUnloadingContext::context()->classes_unloading_do(f);
 }
 
 void ClassLoaderDataGraph::verify_dictionary() {
@@ -407,20 +407,19 @@ bool ClassLoaderDataGraph::is_valid(ClassLoaderData* loader_data) {
 
 // Move class loader data from main list to the unloaded list for unloading
 // and deallocation later.
-bool ClassLoaderDataGraph::do_unloading() {
+ClassLoaderDataGraph::UnloadingStats ClassLoaderDataGraph::do_unloading() {
   assert_locked_or_safepoint(ClassLoaderDataGraph_lock);
 
   ClassLoaderData* prev = nullptr;
-  uint loaders_processed = 0;
-  uint loaders_removed = 0;
+  UnloadingStats stats;
 
   for (ClassLoaderData* data = _head; data != nullptr; data = data->next()) {
+    stats._loaders_processed++;
     if (data->is_alive()) {
       prev = data;
-      loaders_processed++;
     } else {
       // Found dead CLD.
-      loaders_removed++;
+      stats._loaders_removed++;
 
       ClassUnloadingContext::context()->register_unloading_class_loader_data(data);
 
@@ -435,18 +434,21 @@ bool ClassLoaderDataGraph::do_unloading() {
     }
   }
 
-  log_debug(class, loader, data)("do_unloading: loaders processed %u, loaders removed %u", loaders_processed, loaders_removed);
+  log_debug(class, loader, data)("do_unloading: loaders processed %zu, loaders removed %zu",
+                                 stats._loaders_processed, stats._loaders_removed);
 
-  return loaders_removed != 0;
+  return stats;
 }
 
 // There's at least one dead class loader.  Purge refererences of healthy module
 // reads lists and package export lists to modules belonging to dead loaders.
-void ClassLoaderDataGraph::clean_module_and_package_info() {
+ClassLoaderDataGraph::ModuleAndPackageCleaningStats ClassLoaderDataGraph::clean_module_and_package_info() {
   assert_locked_or_safepoint(ClassLoaderDataGraph_lock);
 
+  ModuleAndPackageCleaningStats stats;
   ClassLoaderData* data = _head;
   while (data != nullptr) {
+    stats._class_loader_data_processed++;
     // Walk a ModuleEntry's reads, and a PackageEntry's exports
     // lists to determine if there are modules on those lists that are now
     // dead and should be removed.  A module's life cycle is equivalent
@@ -454,13 +456,22 @@ void ClassLoaderDataGraph::clean_module_and_package_info() {
     // considered dead if its class loader is dead, these walks must
     // occur after each class loader's aliveness is determined.
     if (data->packages() != nullptr) {
-      data->packages()->purge_all_package_exports();
+      PackageEntryTable::PurgeStats purge_stats = data->packages()->purge_all_package_exports();
+      stats._package_tables_processed++;
+      stats._package_entries_processed += purge_stats._packages_processed;
+      stats._package_exports_processed += purge_stats._exports_processed;
+      stats._package_exports_removed += purge_stats._exports_removed;
     }
     if (data->modules_defined()) {
-      data->modules()->purge_all_module_reads();
+      ModuleEntryTable::PurgeStats purge_stats = data->modules()->purge_all_module_reads();
+      stats._module_tables_processed++;
+      stats._module_entries_processed += purge_stats._modules_processed;
+      stats._module_reads_processed += purge_stats._reads_processed;
+      stats._module_reads_removed += purge_stats._reads_removed;
     }
     data = data->next();
   }
+  return stats;
 }
 
 void ClassLoaderDataGraph::purge(bool at_safepoint) {

@@ -621,11 +621,12 @@ void JfrCheckpointManager::write_type_set() {
   write();
 }
 
-void JfrCheckpointManager::on_unloading_classes() {
+size_t JfrCheckpointManager::on_unloading_classes() {
   assert_locked_or_safepoint(ClassLoaderDataGraph_lock);
   JfrCheckpointWriter writer(Thread::current());
-  JfrTypeSet::on_unloading_classes(&writer);
+  size_t count = JfrTypeSet::on_unloading_classes(&writer);
   JfrAddRefCountedBlob add_blob(writer, false /* move */, false /* reset */);
+  return count;
 }
 
 static size_t flush_type_set(Thread* thread) {

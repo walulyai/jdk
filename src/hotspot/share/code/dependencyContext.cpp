@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2015, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -32,6 +32,7 @@
 #include "runtime/deoptimization.hpp"
 #include "runtime/mutexLocker.hpp"
 #include "runtime/orderAccess.hpp"
+#include "runtime/os.hpp"
 #include "runtime/perfData.hpp"
 #include "utilities/exceptions.hpp"
 
@@ -89,7 +90,9 @@ void DependencyContext::mark_dependent_nmethods(DeoptimizationScope* deopt_scope
 //
 // Add an nmethod to the dependency context.
 //
-void DependencyContext::add_dependent_nmethod(nmethod* nm) {
+void DependencyContext::add_dependent_nmethod(nmethod* nm,
+                                              const InstanceKlass* owner_klass,
+                                              bool owner_is_call_site) {
   assert_lock_strong(CodeCache_lock);
   assert(nm->is_not_installed(), "Precondition: new nmethod");
 
@@ -118,10 +121,15 @@ void DependencyContext::add_dependent_nmethod(nmethod* nm) {
   }
 #endif
 
-  nmethodBucket* new_head = new nmethodBucket(nm, nullptr);
+  nmethodBucket* new_head = new nmethodBucket(nm, _dependency_context_addr, owner_klass, owner_is_call_site);
   for (;;) {
     new_head->set_next(head);
+    new_head->set_previous(nullptr);
     if (AtomicAccess::cmpxchg(_dependency_context_addr, head, new_head) == head) {
+      if (head != nullptr) {
+        head->set_previous(new_head);
+      }
+      nm->add_dependency_context_bucket(new_head);
       break;
     }
     head = AtomicAccess::load(_dependency_context_addr);
@@ -155,6 +163,105 @@ void DependencyContext::release(nmethodBucket* b) {
   }
 }
 
+bool DependencyContext::remove_dependent_nmethod(nmethod* nm, NMethodUnloadingStats* stats) {
+  jlong start = 0;
+  if (stats != nullptr) {
+    start = os::elapsed_counter();
+  }
+
+  size_t buckets = 0;
+  bool removed = false;
+
+  // Serialize direct bucket removal. The legacy cleanup path is lock-free because
+  // it may clean whole contexts in parallel; direct removal targets one nmethod
+  // bucket and is expected to do much less total work.
+  MutexLocker ml(CodeCache_lock, Mutex::_no_safepoint_check_flag);
+  nmethodBucket* cur = dependencies();
+  while (cur != nullptr) {
+    nmethodBucket* next = cur->next();
+    buckets++;
+    if (cur->get_nmethod() == nm) {
+      removed = cur->unlink_from_context();
+      break;
+    }
+    cur = next;
+  }
+
+  if (stats != nullptr) {
+    jlong elapsed = os::elapsed_counter() - start;
+    stats->_dependency_context_remove_ticks += elapsed;
+    stats->_dependency_context_remove_buckets += buckets;
+    if (removed) {
+      stats->_dependency_context_remove_removed++;
+    }
+    if (elapsed > stats->_dependency_context_remove_max_ticks) {
+      stats->_dependency_context_remove_max_ticks = elapsed;
+      stats->_dependency_context_remove_max_buckets = buckets;
+    }
+  }
+
+  return removed;
+}
+
+bool nmethodBucket::unlink_from_context() {
+  assert_locked_or_safepoint(CodeCache_lock);
+
+  if (is_removed()) {
+    return false;
+  }
+
+  nmethodBucket* next_bucket = next();
+  nmethodBucket* previous_bucket = previous();
+  if (previous_bucket == nullptr) {
+    AtomicAccess::store(_dependency_context_addr, next_bucket);
+  } else {
+    previous_bucket->set_next(next_bucket);
+  }
+  if (next_bucket != nullptr) {
+    next_bucket->set_previous(previous_bucket);
+  }
+
+  set_next(nullptr);
+  set_previous(nullptr);
+  mark_removed();
+  DependencyContext::release(this);
+  return true;
+}
+
+static bool dependency_context_is_unloading(nmethod* nm, NMethodUnloadingStats* stats) {
+  if (stats == nullptr) {
+    return nm->is_unloading();
+  }
+
+  stats->_dependency_buckets_checked++;
+  jlong start = os::elapsed_counter();
+  bool unloading = nm->is_unloading();
+  stats->_dependency_bucket_is_unloading_ticks += os::elapsed_counter() - start;
+  if (unloading) {
+    stats->_dependency_buckets_unloading++;
+  }
+  return unloading;
+}
+
+static void record_dependency_context_bucket_unlink_start(NMethodUnloadingStats* stats,
+                                                          jlong* start) {
+  if (stats != nullptr) {
+    stats->_dependency_bucket_unlink_attempts++;
+    *start = os::elapsed_counter();
+  }
+}
+
+static void record_dependency_context_bucket_unlink_end(NMethodUnloadingStats* stats,
+                                                        jlong start,
+                                                        bool unlinked) {
+  if (stats != nullptr) {
+    if (unlinked) {
+      stats->_dependency_buckets_unlinked++;
+    }
+    stats->_dependency_bucket_unlink_ticks += os::elapsed_counter() - start;
+  }
+}
+
 //
 // Reclaim all unused buckets.
 //
@@ -175,17 +282,42 @@ void DependencyContext::purge_dependency_contexts() {
 //
 // Cleanup a dependency context by unlinking and placing all dependents corresponding
 // to is_unloading nmethods on a purge list, which will be deleted later when it is safe.
-void DependencyContext::clean_unloading_dependents() {
+void DependencyContext::clean_unloading_dependents(NMethodUnloadingStats* stats) {
   if (!claim_cleanup()) {
     // Somebody else is cleaning up this dependency context.
+    if (stats != nullptr) {
+      stats->_dependency_contexts_skipped++;
+    }
     return;
   }
+  if (stats != nullptr) {
+    stats->_dependency_contexts_claimed++;
+  }
+
   // Walk the nmethodBuckets and move dead entries on the purge list, which will
   // be deleted during ClassLoaderDataGraph::purge().
-  nmethodBucket* b = dependencies_not_unloading();
+  jlong start = 0;
+  size_t start_buckets_checked = 0;
+  if (stats != nullptr) {
+    start = os::elapsed_counter();
+    start_buckets_checked = stats->_dependency_buckets_checked;
+  }
+
+  nmethodBucket* b = dependencies_not_unloading(stats);
   while (b != nullptr) {
-    nmethodBucket* next = b->next_not_unloading();
+    nmethodBucket* next = b->next_not_unloading(stats);
     b = next;
+  }
+
+  if (stats != nullptr) {
+    jlong elapsed = os::elapsed_counter() - start;
+    size_t buckets_checked = stats->_dependency_buckets_checked - start_buckets_checked;
+
+    stats->_dependency_context_walk_ticks += elapsed;
+    if (elapsed > stats->_dependency_context_max_ticks) {
+      stats->_dependency_context_max_ticks = elapsed;
+      stats->_dependency_context_max_buckets = buckets_checked;
+    }
   }
 }
 
@@ -206,6 +338,7 @@ void DependencyContext::remove_all_dependents() {
   jlong count = 0;
   for (; cur != nullptr; cur = cur->next()) {
     assert(cur->get_nmethod()->is_unloading(), "must be");
+    cur->mark_removed();
     last = cur;
     count++;
   }
@@ -279,11 +412,11 @@ bool DependencyContext::delete_on_release() {
 // Retrieve the first nmethodBucket that has a dependent that does not correspond to
 // an is_unloading nmethod. Any nmethodBucket entries observed from the original head
 // that is_unloading() will be unlinked and placed on the purge list.
-nmethodBucket* DependencyContext::dependencies_not_unloading() {
+nmethodBucket* DependencyContext::dependencies_not_unloading(NMethodUnloadingStats* stats) {
   for (;;) {
     // Need acquire because the read value could come from a concurrent insert.
     nmethodBucket* head = AtomicAccess::load_acquire(_dependency_context_addr);
-    if (head == nullptr || !head->get_nmethod()->is_unloading()) {
+    if (head == nullptr || !dependency_context_is_unloading(head->get_nmethod(), stats)) {
       return head;
     }
     nmethodBucket* head_next = head->next();
@@ -292,10 +425,18 @@ nmethodBucket* DependencyContext::dependencies_not_unloading() {
       // Unstable load of head w.r.t. head->next
       continue;
     }
-    if (AtomicAccess::cmpxchg(_dependency_context_addr, head, head_next) == head) {
+    jlong unlink_start = 0;
+    record_dependency_context_bucket_unlink_start(stats, &unlink_start);
+    bool unlinked = AtomicAccess::cmpxchg(_dependency_context_addr, head, head_next) == head;
+    if (unlinked) {
+      if (head_next != nullptr) {
+        head_next->set_previous(nullptr);
+      }
+      head->mark_removed();
       // Release is_unloading entries if unlinking was claimed
       DependencyContext::release(head);
     }
+    record_dependency_context_bucket_unlink_end(stats, unlink_start, unlinked);
   }
 }
 
@@ -332,12 +473,12 @@ void DependencyContext::cleaning_end() {
 // dependents as-if they were already cleaned, despite being cleaned
 // concurrently. Any entry observed that is_unloading() will be unlinked
 // and placed on the purge list.
-nmethodBucket* nmethodBucket::next_not_unloading() {
+nmethodBucket* nmethodBucket::next_not_unloading(NMethodUnloadingStats* stats) {
   for (;;) {
     // Do not need acquire because the loaded entry can never be
     // concurrently inserted.
     nmethodBucket* next = AtomicAccess::load(&_next);
-    if (next == nullptr || !next->get_nmethod()->is_unloading()) {
+    if (next == nullptr || !dependency_context_is_unloading(next->get_nmethod(), stats)) {
       return next;
     }
     nmethodBucket* next_next = AtomicAccess::load(&next->_next);
@@ -346,10 +487,18 @@ nmethodBucket* nmethodBucket::next_not_unloading() {
       // Unstable load of next w.r.t. next->next
       continue;
     }
-    if (AtomicAccess::cmpxchg(&_next, next, next_next) == next) {
+    jlong unlink_start = 0;
+    record_dependency_context_bucket_unlink_start(stats, &unlink_start);
+    bool unlinked = AtomicAccess::cmpxchg(&_next, next, next_next) == next;
+    if (unlinked) {
+      if (next_next != nullptr) {
+        next_next->set_previous(this);
+      }
+      next->mark_removed();
       // Release is_unloading entries if unlinking was claimed
       DependencyContext::release(next);
     }
+    record_dependency_context_bucket_unlink_end(stats, unlink_start, unlinked);
   }
 }
 
@@ -360,6 +509,22 @@ nmethodBucket* nmethodBucket::next() {
 
 void nmethodBucket::set_next(nmethodBucket* b) {
   AtomicAccess::store(&_next, b);
+}
+
+nmethodBucket* nmethodBucket::previous() {
+  return AtomicAccess::load(&_previous);
+}
+
+void nmethodBucket::set_previous(nmethodBucket* b) {
+  AtomicAccess::store(&_previous, b);
+}
+
+nmethodBucket* nmethodBucket::nmethod_next() {
+  return _nmethod_next;
+}
+
+void nmethodBucket::set_nmethod_next(nmethodBucket* b) {
+  _nmethod_next = b;
 }
 
 nmethodBucket* nmethodBucket::purge_list_next() {

@@ -66,6 +66,7 @@ class ClassFileParser;
 class ClassFileStream;
 class KlassDepChange;
 class DependencyContext;
+struct NMethodUnloadingStats;
 class fieldDescriptor;
 class JNIid;
 class JvmtiCachedClassFieldMap;
@@ -855,7 +856,8 @@ public:
   inline DependencyContext dependencies();
   void mark_dependent_nmethods(DeoptimizationScope* deopt_scope, KlassDepChange& changes);
   void add_dependent_nmethod(nmethod* nm);
-  void clean_dependency_context();
+  bool remove_dependent_nmethod(nmethod* nm, NMethodUnloadingStats* stats = nullptr);
+  void clean_dependency_context(NMethodUnloadingStats* stats = nullptr);
   // Setup link to hierarchy and deoptimize
   void add_to_hierarchy(JavaThread* current);
 
@@ -1102,7 +1104,14 @@ public:
   ArrayKlass* array_klass(TRAPS) override;
   ArrayKlass* array_klass_or_null() override;
 
-  static void clean_initialization_error_table();
+  struct InitErrorTableStats {
+    size_t _errors_processed;
+    size_t _errors_removed;
+
+    InitErrorTableStats() : _errors_processed(0), _errors_removed(0) {}
+  };
+
+  static InitErrorTableStats clean_initialization_error_table();
 private:
   void fence_and_clear_init_lock();
 

@@ -149,8 +149,13 @@ void PackageEntry::set_is_exported_allUnnamed() {
 // if all of the modules on the _qualified_exports get purged the list does not
 // get deleted.  This prevents the package from illegally transitioning from
 // exported to non-exported.
-void PackageEntry::purge_qualified_exports() {
+size_t PackageEntry::purge_qualified_exports(size_t* exports_processed) {
   assert_locked_or_safepoint(Module_lock);
+  size_t removed = 0;
+  if (exports_processed != nullptr) {
+    *exports_processed = 0;
+  }
+
   if (_must_walk_exports &&
       _qualified_exports != nullptr &&
       !_qualified_exports->is_empty()) {
@@ -171,23 +176,31 @@ void PackageEntry::purge_qualified_exports() {
     // Go backwards because this removes entries that are dead.
     int len = _qualified_exports->length();
     for (int idx = len - 1; idx >= 0; idx--) {
+      if (exports_processed != nullptr) {
+        (*exports_processed)++;
+      }
       ModuleEntry* module_idx = _qualified_exports->at(idx);
       ClassLoaderData* cld_idx = module_idx->loader_data();
       if (cld_idx->is_unloading()) {
         _qualified_exports->delete_at(idx);
+        removed++;
       } else {
         // Update the need to walk this package's exports based on live modules
         set_export_walk_required(cld_idx);
       }
     }
   }
+
+  return removed;
 }
 
-void PackageEntry::delete_qualified_exports() {
+size_t PackageEntry::delete_qualified_exports() {
+  size_t removed = _qualified_exports != nullptr ? _qualified_exports->length() : 0;
   if (_qualified_exports != nullptr && !AOTMetaspace::in_aot_cache(_qualified_exports)) {
     delete _qualified_exports;
   }
   _qualified_exports = nullptr;
+  return removed;
 }
 
 void PackageEntry::pack_qualified_exports() {
@@ -374,18 +387,24 @@ bool PackageEntry::exported_pending_delete() const {
 }
 
 // Remove dead entries from all packages' exported list
-void PackageEntryTable::purge_all_package_exports() {
+PackageEntryTable::PurgeStats PackageEntryTable::purge_all_package_exports() {
   assert_locked_or_safepoint(Module_lock);
+  PurgeStats stats;
   auto purge = [&] (const SymbolHandle& name, PackageEntry*& entry) {
+    stats._packages_processed++;
     if (entry->exported_pending_delete()) {
       // exported list is pending deletion due to a transition
       // from qualified to unqualified
-      entry->delete_qualified_exports();
+      stats._exports_removed += entry->delete_qualified_exports();
     } else if (entry->is_qual_exported()) {
-      entry->purge_qualified_exports();
+      size_t exports_processed = 0;
+      size_t exports_removed = entry->purge_qualified_exports(&exports_processed);
+      stats._exports_processed += exports_processed;
+      stats._exports_removed += exports_removed;
     }
   };
   _table.iterate_all(purge);
+  return stats;
 }
 
 void PackageEntryTable::packages_do(void f(PackageEntry*)) {

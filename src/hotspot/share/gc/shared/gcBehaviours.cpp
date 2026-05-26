@@ -36,40 +36,6 @@ bool IsUnloadingBehaviour::is_unloading(nmethod* nm) {
   return _current->has_dead_oop(nm) || nm->is_cold();
 }
 
-class IsCompiledMethodUnloadingOopClosure: public OopClosure {
-  BoolObjectClosure *_cl;
-  bool _is_unloading;
-
-public:
-  IsCompiledMethodUnloadingOopClosure(BoolObjectClosure* cl)
-    : _cl(cl),
-      _is_unloading(false)
-  { }
-
-  virtual void do_oop(oop* p) {
-    if (_is_unloading) {
-      return;
-    }
-    oop obj = *p;
-    if (obj == nullptr) {
-      return;
-    }
-    if (!_cl->do_object_b(obj)) {
-      _is_unloading = true;
-    }
-  }
-
-  virtual void do_oop(narrowOop* p) {
-    ShouldNotReachHere();
-  }
-
-  bool is_unloading() const {
-    return _is_unloading;
-  }
-};
-
-bool ClosureIsUnloadingBehaviour::has_dead_oop(nmethod* nm) const {
-  IsCompiledMethodUnloadingOopClosure cl(_cl);
-  nm->oops_do(&cl);
-  return cl.is_unloading();
+bool ClosureIsUnloadingBehaviour::has_dead_oop(nmethod* nm, NMethodUnloadingStats* stats) const {
+  return nm->has_dead_oop(_cl, stats);
 }

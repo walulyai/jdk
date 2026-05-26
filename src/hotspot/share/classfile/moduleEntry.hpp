@@ -170,7 +170,7 @@ public:
   void module_reads_do(ModuleClosure* const f);
 
   // Purge dead weak references out of reads list when any given class loader is unloaded.
-  void purge_reads();
+  size_t purge_reads(size_t* reads_processed = nullptr);
   void delete_reads();
 
   // Special handling for unnamed module, one per class loader
@@ -247,7 +247,15 @@ public:
   ModuleEntry* lookup_only(Symbol* name);
 
   // purge dead weak references out of reads list
-  void purge_all_module_reads();
+  struct PurgeStats {
+    size_t _modules_processed;
+    size_t _reads_processed;
+    size_t _reads_removed;
+
+    PurgeStats() : _modules_processed(0), _reads_processed(0), _reads_removed(0) {}
+  };
+
+  PurgeStats purge_all_module_reads();
 
   // Special handling for java.base
   static ModuleEntry* javabase_moduleEntry()                   { return _javabase_module; }

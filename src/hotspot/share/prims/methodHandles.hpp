@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2008, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -42,6 +42,7 @@
 class MacroAssembler;
 class MethodHandlesAdapterBlob;
 class Label;
+struct NMethodUnloadingStats;
 
 class MethodHandles: AllStatic {
   // JVM support for MethodHandle, MethodType, and related types
@@ -77,7 +78,8 @@ class MethodHandles: AllStatic {
 
   // CallSite support
   static void add_dependent_nmethod(oop call_site, nmethod* nm);
-  static void clean_dependency_context(oop call_site);
+  static bool remove_dependent_nmethod(oop call_site, nmethod* nm, NMethodUnloadingStats* stats = nullptr);
+  static void clean_dependency_context(oop call_site, NMethodUnloadingStats* stats = nullptr);
 
   static void mark_dependent_nmethods(DeoptimizationScope* deopt_scope, Handle call_site, Handle target);
 

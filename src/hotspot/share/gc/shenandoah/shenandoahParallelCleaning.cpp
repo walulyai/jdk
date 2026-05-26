@@ -30,11 +30,12 @@
 #include "runtime/safepoint.hpp"
 
 ShenandoahClassUnloadingTask::ShenandoahClassUnloadingTask(ShenandoahPhaseTimings::Phase phase,
-                                                           bool unloading_occurred) :
+                                                           bool unloading_occurred,
+                                                           uint num_workers) :
   WorkerTask("Shenandoah Class Unloading"),
   _phase(phase),
   _unloading_occurred(unloading_occurred),
-  _code_cache_task(unloading_occurred),
+  _code_cache_task(unloading_occurred, num_workers),
   _klass_cleaning_task() {
   assert(SafepointSynchronize::is_at_safepoint(), "Must be at a safepoint");
 }

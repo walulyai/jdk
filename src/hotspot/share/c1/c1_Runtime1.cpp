@@ -34,6 +34,7 @@
 #include "code/aotCodeCache.hpp"
 #include "code/codeBlob.hpp"
 #include "code/compiledIC.hpp"
+#include "code/nmethod.hpp"
 #include "code/scopeDesc.hpp"
 #include "code/vtableStubs.hpp"
 #include "compiler/compilationPolicy.hpp"
@@ -1236,7 +1237,7 @@ JRT_ENTRY(void, Runtime1::patch_code(JavaThread* current, StubId stub_id ))
               (stub_id == StubId::c1_load_klass_patching_id) ?
                                    relocInfo::metadata_type :
                                    relocInfo::oop_type;
-            // update relocInfo to metadata
+            // Update relocInfo to metadata or oop.
             nmethod* nm = CodeCache::find_nmethod(instr_pc);
             assert(nm != nullptr, "invalid nmethod_pc");
 
@@ -1246,6 +1247,9 @@ JRT_ENTRY(void, Runtime1::patch_code(JavaThread* current, StubId stub_id ))
             RelocIterator iter(nm, (address)instr_pc, (address)(instr_pc + 1));
             relocInfo::change_reloc_info_for_address(&iter, (address) instr_pc,
                                                      relocInfo::none, rtype);
+            if (rtype == relocInfo::oop_type) {
+              nm->set_has_immediate_oops();
+            }
           }
 
         } else {

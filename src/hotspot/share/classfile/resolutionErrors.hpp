@@ -45,8 +45,15 @@ public:
   // find error given the constant pool and constant pool index
   static ResolutionErrorEntry* find_entry(const constantPoolHandle& pool, int cp_index);
 
+  struct PurgeStats {
+    size_t _errors_processed;
+    size_t _errors_removed;
+
+    PurgeStats() : _errors_processed(0), _errors_removed(0) {}
+  };
+
   // purges unloaded entries from the table
-  static void purge_resolution_errors();
+  static PurgeStats purge_resolution_errors();
 
   // RedefineClasses support - remove obsolete constant pool entry
   static void delete_entry(ConstantPool* c);

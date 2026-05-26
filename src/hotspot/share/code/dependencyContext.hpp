@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2015, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -32,8 +32,10 @@
 #include "runtime/safepoint.hpp"
 
 class nmethod;
+class InstanceKlass;
 class DeoptimizationScope;
 class DepChange;
+struct NMethodUnloadingStats;
 
 //
 // nmethodBucket is used to record dependent nmethods for
@@ -44,19 +46,45 @@ class DepChange;
 class nmethodBucket: public CHeapObj<mtClass> {
  private:
   nmethod*       _nmethod;
+  nmethodBucket* volatile* _dependency_context_addr;
+  const InstanceKlass* _owner_klass;
   nmethodBucket* volatile _next;
+  nmethodBucket* volatile _previous;
+  nmethodBucket* _nmethod_next;
   nmethodBucket* volatile _purge_list_next;
+  bool _owner_is_call_site;
+  bool _removed;
 
  public:
-  nmethodBucket(nmethod* nmethod, nmethodBucket* next) :
-    _nmethod(nmethod), _next(next), _purge_list_next(nullptr) {}
+  nmethodBucket(nmethod* nmethod,
+                nmethodBucket* volatile* dependency_context_addr,
+                const InstanceKlass* owner_klass,
+                bool owner_is_call_site) :
+    _nmethod(nmethod),
+    _dependency_context_addr(dependency_context_addr),
+    _owner_klass(owner_klass),
+    _next(nullptr),
+    _previous(nullptr),
+    _nmethod_next(nullptr),
+    _purge_list_next(nullptr),
+    _owner_is_call_site(owner_is_call_site),
+    _removed(false) {}
 
   nmethodBucket* next();
-  nmethodBucket* next_not_unloading();
+  nmethodBucket* next_not_unloading(NMethodUnloadingStats* stats = nullptr);
+  nmethodBucket* previous();
   void set_next(nmethodBucket* b);
+  void set_previous(nmethodBucket* b);
+  nmethodBucket* nmethod_next();
+  void set_nmethod_next(nmethodBucket* b);
   nmethodBucket* purge_list_next();
   void set_purge_list_next(nmethodBucket* b);
   nmethod* get_nmethod()                     { return _nmethod; }
+  const InstanceKlass* owner_klass() const    { return _owner_klass; }
+  bool owner_is_call_site() const             { return _owner_is_call_site; }
+  bool is_removed() const                     { return _removed; }
+  void mark_removed()                         { _removed = true; }
+  bool unlink_from_context();
 };
 
 //
@@ -76,7 +104,7 @@ class DependencyContext : public StackObj {
   static bool delete_on_release();
   void set_dependencies(nmethodBucket* b);
   nmethodBucket* dependencies();
-  nmethodBucket* dependencies_not_unloading();
+  nmethodBucket* dependencies_not_unloading(NMethodUnloadingStats* stats = nullptr);
 
   static PerfCounter*            _perf_total_buckets_allocated_count;
   static PerfCounter*            _perf_total_buckets_deallocated_count;
@@ -109,9 +137,12 @@ class DependencyContext : public StackObj {
   static void init();
 
   void mark_dependent_nmethods(DeoptimizationScope* deopt_scope, DepChange& changes);
-  void add_dependent_nmethod(nmethod* nm);
+  void add_dependent_nmethod(nmethod* nm,
+                             const InstanceKlass* owner_klass = nullptr,
+                             bool owner_is_call_site = false);
+  bool remove_dependent_nmethod(nmethod* nm, NMethodUnloadingStats* stats = nullptr);
   void remove_all_dependents();
-  void clean_unloading_dependents();
+  void clean_unloading_dependents(NMethodUnloadingStats* stats = nullptr);
   static void purge_dependency_contexts();
   static void release(nmethodBucket* b);
   static void cleaning_start();

@@ -27,6 +27,7 @@
 #include "code/codeCache.hpp"
 #include "code/compiledIC.hpp"
 #include "code/dependencies.hpp"
+#include "code/dependencyContext.hpp"
 #include "code/nativeInst.hpp"
 #include "code/nmethod.inline.hpp"
 #include "code/scopeDesc.hpp"
@@ -49,6 +50,7 @@
 #include "logging/log.hpp"
 #include "logging/logStream.hpp"
 #include "memory/allocation.inline.hpp"
+#include "memory/iterator.hpp"
 #include "memory/resourceArea.hpp"
 #include "memory/universe.hpp"
 #include "oops/access.inline.hpp"
@@ -84,6 +86,7 @@
 #include "utilities/dtrace.hpp"
 #include "utilities/events.hpp"
 #include "utilities/globalDefinitions.hpp"
+#include "utilities/growableArray.hpp"
 #include "utilities/hashTable.hpp"
 #include "utilities/xmlstream.hpp"
 #if INCLUDE_JVMCI
@@ -530,7 +533,7 @@ void nmethod::add_exception_cache_entry(ExceptionCache* new_entry) {
   }
 }
 
-void nmethod::clean_exception_cache() {
+void nmethod::clean_exception_cache(NMethodUnloadingStats* stats) {
   // For each nmethod, only a single thread may call this cleanup function
   // at the same time, whether called in STW cleanup or concurrent cleanup.
   // Note that if the GC is processing exception cache cleaning in a concurrent phase,
@@ -551,6 +554,9 @@ void nmethod::clean_exception_cache() {
 
   while (curr != nullptr) {
     ExceptionCache* next = curr->next();
+    if (stats != nullptr) {
+      stats->_exception_cache_entries++;
+    }
 
     if (!curr->exception_type()->is_loader_alive()) {
       if (prev == nullptr) {
@@ -571,6 +577,9 @@ void nmethod::clean_exception_cache() {
       // prev stays the same.
 
       CodeCache::release_exception_cache(curr);
+      if (stats != nullptr) {
+        stats->_exception_cache_removed++;
+      }
     } else {
       prev = curr;
     }
@@ -790,15 +799,107 @@ class CheckClass : public MetadataClosure {
 
 // Clean references to unloaded nmethods at addr from this one, which is not unloaded.
 template <typename CallsiteT>
-static void clean_if_nmethod_is_unloaded(CallsiteT* callsite, bool clean_all) {
-  CodeBlob* cb = CodeCache::find_blob(callsite->destination());
-  if (!cb->is_nmethod()) {
-    return;
+static bool clean_if_nmethod_is_unloaded(nmethod* caller,
+                                         CallsiteT* callsite,
+                                         bool clean_all,
+                                         bool check_method_code,
+                                         NMethodUnloadingStats* stats) {
+  if (callsite->is_clean()) {
+    if (stats != nullptr) {
+      stats->_inline_cache_clean_call_skips++;
+    }
+    return false;
+  }
+
+  address destination = callsite->destination();
+  if (!clean_all && caller->stub_contains(destination)) {
+    if (stats != nullptr) {
+      stats->_inline_cache_stub_call_skips++;
+    }
+    return false;
+  }
+
+  jlong lookup_start = 0;
+  if (stats != nullptr) {
+    lookup_start = os::elapsed_counter();
+    stats->_inline_cache_nmethod_lookups++;
+  }
+  CodeBlob* cb = CodeCache::find_blob(destination);
+  if (stats != nullptr) {
+    stats->_inline_cache_nmethod_lookup_ticks += os::elapsed_counter() - lookup_start;
+  }
+  if (cb == nullptr || !cb->is_nmethod()) {
+    return false;
   }
   nmethod* nm = cb->as_nmethod();
-  if (clean_all || !nm->is_in_use() || nm->is_unloading() || nm->method()->code() != nm) {
-    callsite->set_to_clean();
+
+  jlong state_start = 0;
+  if (stats != nullptr) {
+    state_start = os::elapsed_counter();
+    stats->_inline_cache_nmethod_state_checks++;
   }
+
+  bool clean = clean_all;
+  if (!clean) {
+    jlong start = 0;
+    if (stats != nullptr) {
+      start = os::elapsed_counter();
+      stats->_inline_cache_is_in_use_checks++;
+    }
+    bool in_use = nm->is_in_use();
+    if (stats != nullptr) {
+      stats->_inline_cache_is_in_use_ticks += os::elapsed_counter() - start;
+      if (!in_use) {
+        stats->_inline_cache_not_in_use++;
+      }
+    }
+    clean = !in_use;
+  }
+
+  if (!clean) {
+    jlong start = 0;
+    if (stats != nullptr) {
+      start = os::elapsed_counter();
+      stats->_inline_cache_is_unloading_checks++;
+    }
+    bool unloading = nm->is_unloading();
+    if (stats != nullptr) {
+      stats->_inline_cache_is_unloading_ticks += os::elapsed_counter() - start;
+      if (unloading) {
+        stats->_inline_cache_unloading++;
+      }
+    }
+    clean = unloading;
+  }
+
+  if (!clean && check_method_code) {
+    jlong start = 0;
+    if (stats != nullptr) {
+      start = os::elapsed_counter();
+      stats->_inline_cache_method_code_checks++;
+    }
+    bool method_code_mismatch = nm->method()->code() != nm;
+    if (stats != nullptr) {
+      stats->_inline_cache_method_code_ticks += os::elapsed_counter() - start;
+      if (method_code_mismatch) {
+        stats->_inline_cache_method_code_mismatches++;
+      }
+    }
+    clean = method_code_mismatch;
+  } else if (!clean) {
+    if (stats != nullptr) {
+      stats->_inline_cache_method_code_skips++;
+    }
+  }
+
+  if (stats != nullptr) {
+    stats->_inline_cache_nmethod_state_ticks += os::elapsed_counter() - state_start;
+  }
+  if (clean) {
+    callsite->set_to_clean();
+    return true;
+  }
+  return false;
 }
 
 // Cleans caches in nmethods that point to either classes that are unloaded
@@ -808,26 +909,46 @@ static void clean_if_nmethod_is_unloaded(CallsiteT* callsite, bool clean_all) {
 // nmethods are unloaded.  Return postponed=true in the parallel case for
 // inline caches found that point to nmethods that are not yet visited during
 // the do_unloading walk.
-void nmethod::unload_nmethod_caches(bool unloading_occurred) {
+void nmethod::unload_nmethod_caches(bool unloading_occurred, NMethodUnloadingStats* stats) {
   ResourceMark rm;
+  jlong start = 0;
 
   // Exception cache only needs to be called if unloading occurred
   if (unloading_occurred) {
-    clean_exception_cache();
+    if (stats != nullptr) {
+      start = os::elapsed_counter();
+    }
+    clean_exception_cache(stats);
+    if (stats != nullptr) {
+      stats->_unload_exception_cache_ticks += os::elapsed_counter() - start;
+    }
   }
 
-  cleanup_inline_caches_impl(unloading_occurred, false);
+  if (stats != nullptr) {
+    start = os::elapsed_counter();
+  }
+  cleanup_inline_caches_impl(unloading_occurred, false, stats);
+  if (stats != nullptr) {
+    stats->_unload_inline_caches_ticks += os::elapsed_counter() - start;
+  }
 
 #ifdef ASSERT
   // Check that the metadata embedded in the nmethod is alive
+  if (stats != nullptr) {
+    start = os::elapsed_counter();
+  }
   CheckClass check_class;
   metadata_do(&check_class);
+  if (stats != nullptr) {
+    stats->_unload_verify_metadata_ticks += os::elapsed_counter() - start;
+    stats->_verify_metadata_nmethods++;
+  }
 #endif
 }
 
 void nmethod::run_nmethod_entry_barrier() {
   BarrierSetNMethod* bs_nm = BarrierSet::barrier_set()->barrier_set_nmethod();
-  if (bs_nm != nullptr) {
+  if (bs_nm != nullptr && supports_entry_barrier()) {
     // We want to keep an invariant that nmethods found through iterations of a Thread's
     // nmethods found in safepoints have gone through an entry barrier and are not armed.
     // By calling this nmethod entry barrier, it plays along and acts
@@ -850,38 +971,102 @@ address* nmethod::orig_pc_addr(const frame* fr) {
 }
 
 // Called to clean up after class unloading for live nmethods
-void nmethod::cleanup_inline_caches_impl(bool unloading_occurred, bool clean_all) {
+void nmethod::cleanup_inline_caches_impl(bool unloading_occurred, bool clean_all, NMethodUnloadingStats* stats) {
   assert(CompiledICLocker::is_safe(this), "mt unsafe call");
   ResourceMark rm;
+
+  jlong filter_start = 0;
+  if (stats != nullptr) {
+    filter_start = os::elapsed_counter();
+    stats->_inline_cache_checked_nmethods++;
+  }
+  const bool clean_calls = clean_all || has_unloading_calls();
+  const bool clean_metadata = unloading_occurred && has_unloading_metadata();
+  if (stats != nullptr) {
+    stats->_inline_cache_filter_ticks += os::elapsed_counter() - filter_start;
+  }
+  if (!clean_calls && !clean_metadata) {
+    if (stats != nullptr) {
+      stats->_inline_cache_skipped_nmethods++;
+    }
+    return;
+  }
 
   // Find all calls in an nmethod and clear the ones that point to bad nmethods.
   RelocIterator iter(this, oops_reloc_begin());
   bool is_in_static_stub = false;
   while(iter.next()) {
+    if (stats != nullptr) {
+      stats->_inline_cache_relocations++;
+    }
 
     switch (iter.type()) {
 
     case relocInfo::virtual_call_type:
-      if (unloading_occurred) {
+      if (clean_calls && unloading_occurred) {
         // If class unloading occurred we first clear ICs where the cached metadata
         // is referring to an unloaded klass or method.
+        jlong start = 0;
+        if (stats != nullptr) {
+          start = os::elapsed_counter();
+          stats->_inline_cache_clean_metadata_calls++;
+        }
         CompiledIC_at(&iter)->clean_metadata();
+        if (stats != nullptr) {
+          stats->_inline_cache_clean_metadata_ticks += os::elapsed_counter() - start;
+        }
       }
 
-      clean_if_nmethod_is_unloaded(CompiledIC_at(&iter), clean_all);
+      if (clean_calls) {
+        jlong start = 0;
+        if (stats != nullptr) {
+          start = os::elapsed_counter();
+          stats->_inline_cache_nmethod_checks++;
+        }
+        bool cleaned = clean_if_nmethod_is_unloaded(this, CompiledIC_at(&iter), clean_all, true /* check_method_code */, stats);
+        if (stats != nullptr) {
+          stats->_inline_cache_clean_nmethod_ticks += os::elapsed_counter() - start;
+          if (cleaned) {
+            stats->_inline_cache_cleaned_calls++;
+          }
+        }
+      }
       break;
 
     case relocInfo::opt_virtual_call_type:
     case relocInfo::static_call_type:
-      clean_if_nmethod_is_unloaded(CompiledDirectCall::at(iter.reloc()), clean_all);
+      if (clean_calls) {
+        jlong start = 0;
+        if (stats != nullptr) {
+          start = os::elapsed_counter();
+          stats->_inline_cache_nmethod_checks++;
+        }
+        bool cleaned = clean_if_nmethod_is_unloaded(this, CompiledDirectCall::at(iter.reloc()), clean_all, true /* check_method_code */, stats);
+        if (stats != nullptr) {
+          stats->_inline_cache_clean_nmethod_ticks += os::elapsed_counter() - start;
+          if (cleaned) {
+            stats->_inline_cache_cleaned_calls++;
+          }
+        }
+      }
       break;
 
     case relocInfo::static_stub_type: {
-      is_in_static_stub = true;
+      if (clean_metadata) {
+        is_in_static_stub = true;
+      }
       break;
     }
 
     case relocInfo::metadata_type: {
+      if (!clean_metadata) {
+        break;
+      }
+      jlong start = 0;
+      if (stats != nullptr) {
+        start = os::elapsed_counter();
+        stats->_inline_cache_metadata_relocations++;
+      }
       // Only the metadata relocations contained in static/opt virtual call stubs
       // contains the Method* passed to c2i adapters. It is the only metadata
       // relocation that needs to be walked, as it is the one metadata relocation
@@ -897,12 +1082,18 @@ void nmethod::cleanup_inline_caches_impl(bool unloading_occurred, bool clean_all
         // The first metadata relocation after a static stub relocation is the
         // metadata relocation of the static stub used to pass the Method* to
         // c2i adapters.
+        if (stats != nullptr) {
+          stats->_inline_cache_metadata_reloc_ticks += os::elapsed_counter() - start;
+        }
         continue;
       }
       is_in_static_stub = false;
       if (is_unloading()) {
         // If the nmethod itself is dying, then it may point at dead metadata.
         // Nobody should follow that metadata; it is strictly unsafe.
+        if (stats != nullptr) {
+          stats->_inline_cache_metadata_reloc_ticks += os::elapsed_counter() - start;
+        }
         continue;
       }
       metadata_Relocation* r = iter.metadata_reloc();
@@ -911,11 +1102,17 @@ void nmethod::cleanup_inline_caches_impl(bool unloading_occurred, bool clean_all
         Method* method = static_cast<Method*>(md);
         if (!method->method_holder()->is_loader_alive()) {
           AtomicAccess::store(r->metadata_addr(), (Method*)nullptr);
+          if (stats != nullptr) {
+            stats->_inline_cache_metadata_cleared++;
+          }
 
           if (!r->metadata_is_immediate()) {
             r->fix_metadata_relocation();
           }
         }
+      }
+      if (stats != nullptr) {
+        stats->_inline_cache_metadata_reloc_ticks += os::elapsed_counter() - start;
       }
       break;
     }
@@ -1225,6 +1422,7 @@ void nmethod::init_defaults(CodeBuffer *code_buffer, CodeOffsets* offsets) {
   _gc_data                    = nullptr;
   _oops_do_mark_link          = nullptr;
   _compiled_ic_data           = nullptr;
+  _dependency_context_buckets = nullptr;
 
   _is_unloading_state         = 0;
   _state                      = not_installed;
@@ -1236,6 +1434,12 @@ void nmethod::init_defaults(CodeBuffer *code_buffer, CodeOffsets* offsets) {
   _has_flushed_dependencies   = 0;
   _is_unlinked                = 0;
   _load_reported              = 0; // jvmti state
+  _has_oops_do_roots          = 0;
+  _has_immediate_oops         = 0;
+  _has_unloading_calls        = 0;
+  _has_unloading_metadata     = 0;
+  _can_be_allocated_in_NonNMethod_space = _method != nullptr && _method->can_be_allocated_in_NonNMethod_space();
+  _supports_entry_barrier     = 0;
 
   _deoptimization_status      = not_marked;
 
@@ -1256,6 +1460,7 @@ void nmethod::post_init() {
   clear_unloading_state();
 
   finalize_relocations();
+  initialize_unloading_flags();
 
   // Flush generated code
   ICache::invalidate_range(code_begin(), code_size());
@@ -1438,6 +1643,7 @@ nmethod::nmethod(const nmethod &nm) : CodeBlob(nm._name, nm._kind, nm._size, nm.
   _oops_do_mark_nmethods        = nullptr;
   _oops_do_mark_link            = nullptr;
   _compiled_ic_data             = nullptr;
+  _dependency_context_buckets   = nullptr;
 
   if (nm._osr_entry_point != nullptr) {
     _osr_entry_point            = (nm._osr_entry_point - (address) &nm) + (address) this;
@@ -1490,6 +1696,12 @@ nmethod::nmethod(const nmethod &nm) : CodeBlob(nm._name, nm._kind, nm._size, nm.
   _has_flushed_dependencies     = nm._has_flushed_dependencies;
   _is_unlinked                  = nm._is_unlinked;
   _load_reported                = nm._load_reported;
+  _has_oops_do_roots            = nm._has_oops_do_roots;
+  _has_immediate_oops           = nm._has_immediate_oops;
+  _has_unloading_calls          = nm._has_unloading_calls;
+  _has_unloading_metadata       = nm._has_unloading_metadata;
+  _can_be_allocated_in_NonNMethod_space = nm._can_be_allocated_in_NonNMethod_space;
+  _supports_entry_barrier       = nm._supports_entry_barrier;
 
   _deoptimization_status        = nm._deoptimization_status;
 
@@ -2141,6 +2353,47 @@ void nmethod::finalize_relocations() {
   }
 }
 
+void nmethod::initialize_unloading_flags() {
+  _has_oops_do_roots = oops_begin() < oops_end();
+  _has_immediate_oops = false;
+  _has_unloading_calls = false;
+  _has_unloading_metadata = false;
+  BarrierSet* bs = BarrierSet::barrier_set();
+  BarrierSetNMethod* bs_nm = bs != nullptr ? bs->barrier_set_nmethod() : nullptr;
+  _supports_entry_barrier = bs_nm != nullptr && bs_nm->supports_entry_barrier(this);
+
+  bool is_in_static_stub = false;
+  RelocIterator iter(this);
+  while (iter.next()) {
+    switch (iter.type()) {
+      case relocInfo::oop_type: {
+        oop_Relocation* r = iter.oop_reloc();
+        if (relocInfo::mustIterateImmediateOopsInCode() && r->oop_is_immediate()) {
+          _has_immediate_oops = true;
+          _has_oops_do_roots = true;
+        }
+        break;
+      }
+      case relocInfo::virtual_call_type:
+      case relocInfo::opt_virtual_call_type:
+      case relocInfo::static_call_type:
+        _has_unloading_calls = true;
+        break;
+      case relocInfo::static_stub_type:
+        is_in_static_stub = true;
+        break;
+      case relocInfo::metadata_type:
+        if (is_in_static_stub) {
+          _has_unloading_metadata = true;
+          is_in_static_stub = false;
+        }
+        break;
+      default:
+        break;
+    }
+  }
+}
+
 void nmethod::make_deoptimized() {
   if (!Continuations::enabled()) {
     // Don't deopt this again.
@@ -2361,8 +2614,7 @@ bool nmethod::make_not_entrant(InvalidationReason invalidation_reason) {
       inc_decompile_count();
     }
 
-    BarrierSetNMethod* bs_nm = BarrierSet::barrier_set()->barrier_set_nmethod();
-    if (bs_nm == nullptr || !bs_nm->supports_entry_barrier(this)) {
+    if (!supports_entry_barrier()) {
       // If nmethod entry barriers are not supported, we won't mark
       // nmethods as on-stack when they become on-stack. So we
       // degrade to a less accurate flushing strategy, for now.
@@ -2401,41 +2653,129 @@ bool nmethod::make_not_entrant(InvalidationReason invalidation_reason) {
 }
 
 // For concurrent GCs, there must be a handshake between unlink and flush
-void nmethod::unlink() {
+void nmethod::unlink(NMethodUnloadingStats* stats) {
   if (is_unlinked()) {
     // Already unlinked.
+    if (stats != nullptr) {
+      stats->_unlink_already_unlinked_nmethods++;
+    }
     return;
   }
 
-  flush_dependencies();
+  jlong start = 0;
+  if (stats != nullptr) {
+    start = os::elapsed_counter();
+  }
+  flush_dependencies(stats);
+  if (stats != nullptr) {
+    stats->_unlink_flush_dependencies_ticks += os::elapsed_counter() - start;
+    start = os::elapsed_counter();
+  }
 
   // unlink_from_method will take the NMethodState_lock.
   // In this case we don't strictly need it when unlinking nmethods from
   // the Method, because it is only concurrently unlinked by
   // the entry barrier, which acquires the per nmethod lock.
   unlink_from_method();
+  if (stats != nullptr) {
+    stats->_unlink_from_method_ticks += os::elapsed_counter() - start;
+  }
 
   if (is_osr_method()) {
+    if (stats != nullptr) {
+      start = os::elapsed_counter();
+      stats->_osr_nmethods++;
+    }
     invalidate_osr_method();
+    if (stats != nullptr) {
+      stats->_unlink_osr_ticks += os::elapsed_counter() - start;
+    }
   }
 
 #if INCLUDE_JVMCI
   // Clear the link between this nmethod and a HotSpotNmethod mirror
   JVMCINMethodData* nmethod_data = jvmci_nmethod_data();
   if (nmethod_data != nullptr) {
+    if (stats != nullptr) {
+      start = os::elapsed_counter();
+      stats->_jvmci_nmethods++;
+    }
     nmethod_data->invalidate_nmethod_mirror(this, is_cold() ?
             nmethod::InvalidationReason::UNLOADING_COLD :
             nmethod::InvalidationReason::UNLOADING);
+    if (stats != nullptr) {
+      stats->_unlink_jvmci_ticks += os::elapsed_counter() - start;
+    }
   }
 #endif
 
   // Post before flushing as jmethodID is being used
+  if (stats != nullptr) {
+    start = os::elapsed_counter();
+  }
   post_compiled_method_unload();
+  if (stats != nullptr) {
+    stats->_unlink_post_unload_ticks += os::elapsed_counter() - start;
+    start = os::elapsed_counter();
+  }
 
   // Register for flushing when it is safe. For concurrent class unloading,
   // that would be after the unloading handshake, and for STW class unloading
   // that would be when getting back to the VM thread.
   ClassUnloadingContext::context()->register_unlinked_nmethod(this);
+  if (stats != nullptr) {
+    stats->_register_unlinked_ticks += os::elapsed_counter() - start;
+  }
+}
+
+void nmethod::add_dependency_context_bucket(nmethodBucket* bucket) {
+  assert_lock_strong(CodeCache_lock);
+
+  bucket->set_nmethod_next(_dependency_context_buckets);
+  _dependency_context_buckets = bucket;
+}
+
+void nmethod::remove_from_dependency_contexts(NMethodUnloadingStats* stats) {
+  assert(stats != nullptr, "must be");
+
+  MutexLocker ml(CodeCache_lock, Mutex::_no_safepoint_check_flag);
+  for (nmethodBucket* bucket = _dependency_context_buckets; bucket != nullptr; ) {
+    nmethodBucket* next = bucket->nmethod_next();
+    const bool owner_is_call_site = bucket->owner_is_call_site();
+    const InstanceKlass* owner_klass = bucket->owner_klass();
+    jlong start = os::elapsed_counter();
+
+    stats->_dependencies_processed++;
+    if (owner_is_call_site) {
+      stats->_call_site_dependencies++;
+    } else {
+      stats->_klass_dependencies++;
+    }
+
+    bool removed = bucket->unlink_from_context();
+    jlong elapsed = os::elapsed_counter() - start;
+
+    if (owner_is_call_site) {
+      stats->_call_site_dependency_ticks += elapsed;
+    } else {
+      stats->_klass_dependency_ticks += elapsed;
+    }
+    stats->_dependency_context_remove_ticks += elapsed;
+    stats->_dependency_context_remove_buckets++;
+    if (removed) {
+      stats->_dependency_context_remove_removed++;
+    }
+    if (elapsed > stats->_dependency_context_remove_max_ticks) {
+      stats->_dependency_context_remove_max_ticks = elapsed;
+      stats->_dependency_context_remove_max_buckets = 1;
+      stats->_dependency_context_remove_max_klass = owner_klass;
+      stats->_dependency_context_remove_max_is_call_site = owner_is_call_site;
+    }
+
+    bucket = next;
+  }
+
+  _dependency_context_buckets = nullptr;
 }
 
 void nmethod::purge(bool unregister_nmethod) {
@@ -2517,9 +2857,17 @@ oop nmethod::oop_at_phantom(int index) const {
 // Notify all classes this nmethod is dependent on that it is no
 // longer dependent.
 
-void nmethod::flush_dependencies() {
+void nmethod::flush_dependencies(NMethodUnloadingStats* stats) {
   if (!has_flushed_dependencies()) {
+    if (stats != nullptr) {
+      stats->_flush_dependencies_nmethods++;
+    }
     set_has_flushed_dependencies(true);
+    if (stats != nullptr) {
+      remove_from_dependency_contexts(stats);
+      return;
+    }
+
     for (Dependencies::DepStream deps(this); deps.next(); ) {
       if (deps.type() == Dependencies::call_site_target_value) {
         // CallSite dependencies are managed on per-CallSite instance basis.
@@ -2687,20 +3035,53 @@ void nmethod::metadata_do(MetadataClosure* f) {
 // Heuristic for nuking nmethods even though their oops are live.
 // Main purpose is to reduce code cache pressure and get rid of
 // nmethods that don't seem to be all that relevant any longer.
-bool nmethod::is_cold() {
-  if (!MethodFlushing || is_not_installed()) {
+bool nmethod::is_cold(NMethodUnloadingStats* stats) {
+  jlong start = 0;
+  if (stats != nullptr) {
+    start = os::elapsed_counter();
+    stats->_is_cold_precheck_checks++;
+  }
+  bool precheck_bailout = !MethodFlushing || is_not_installed();
+  if (stats != nullptr) {
+    stats->_is_cold_precheck_ticks += os::elapsed_counter() - start;
+    if (precheck_bailout) {
+      stats->_is_cold_precheck_bailouts++;
+    }
+  }
+  if (precheck_bailout) {
     // No heuristic unloading at all
     return false;
   }
 
-  if (!is_maybe_on_stack() && is_not_entrant()) {
+  if (stats != nullptr) {
+    start = os::elapsed_counter();
+    stats->_is_cold_stack_state_checks++;
+  }
+  bool stack_state_cold = !is_maybe_on_stack() && is_not_entrant();
+  if (stats != nullptr) {
+    stats->_is_cold_stack_state_ticks += os::elapsed_counter() - start;
+    if (stack_state_cold) {
+      stats->_is_cold_stack_state_cold++;
+    }
+  }
+  if (stack_state_cold) {
     // Not entrant nmethods that are not on any stack can just
     // be removed
     return true;
   }
 
-  BarrierSetNMethod* bs_nm = BarrierSet::barrier_set()->barrier_set_nmethod();
-  if (bs_nm == nullptr || !bs_nm->supports_entry_barrier(this)) {
+  if (stats != nullptr) {
+    start = os::elapsed_counter();
+    stats->_is_cold_entry_barrier_checks++;
+  }
+  bool entry_barrier_unsupported = !supports_entry_barrier();
+  if (stats != nullptr) {
+    stats->_is_cold_entry_barrier_ticks += os::elapsed_counter() - start;
+    if (entry_barrier_unsupported) {
+      stats->_is_cold_entry_barrier_unsupported++;
+    }
+  }
+  if (entry_barrier_unsupported) {
     // On platforms that don't support nmethod entry barriers, we can't
     // trust the temporal aspect of the gc epochs. So we can't detect
     // cold nmethods on such platforms.
@@ -2713,7 +3094,18 @@ bool nmethod::is_cold() {
   }
 
   // Other code can be phased out more gradually after N GCs
-  return CodeCache::previous_completed_gc_marking_cycle() > _gc_epoch + 2 * CodeCache::cold_gc_count();
+  if (stats != nullptr) {
+    start = os::elapsed_counter();
+    stats->_is_cold_epoch_checks++;
+  }
+  bool epoch_cold = CodeCache::previous_completed_gc_marking_cycle() > _gc_epoch + 2 * CodeCache::cold_gc_count();
+  if (stats != nullptr) {
+    stats->_is_cold_epoch_ticks += os::elapsed_counter() - start;
+    if (epoch_cold) {
+      stats->_is_cold_epoch_cold++;
+    }
+  }
+  return epoch_cold;
 }
 
 // The _is_unloading_state encodes a tuple comprising the unloading cycle
@@ -2756,24 +3148,113 @@ public:
   }
 };
 
-bool nmethod::is_unloading() {
+bool nmethod::is_unloading(NMethodUnloadingStats* stats) {
+  jlong start = 0;
+  if (stats != nullptr) {
+    start = os::elapsed_counter();
+  }
+
+  jlong state_start = 0;
+  if (stats != nullptr) {
+    state_start = os::elapsed_counter();
+  }
   uint8_t state = AtomicAccess::load(&_is_unloading_state);
   bool state_is_unloading = IsUnloadingState::is_unloading(state);
+  if (stats != nullptr) {
+    stats->_is_unloading_state_ticks += os::elapsed_counter() - state_start;
+    stats->_is_unloading_state_nmethods++;
+  }
   if (state_is_unloading) {
+    if (stats != nullptr) {
+      stats->_is_unloading_cached_ticks += os::elapsed_counter() - start;
+      stats->_is_unloading_cached_nmethods++;
+    }
     return true;
   }
   uint8_t state_unloading_cycle = IsUnloadingState::unloading_cycle(state);
   uint8_t current_cycle = CodeCache::unloading_cycle();
   if (state_unloading_cycle == current_cycle) {
+    if (stats != nullptr) {
+      stats->_is_unloading_cached_ticks += os::elapsed_counter() - start;
+      stats->_is_unloading_cached_nmethods++;
+    }
     return false;
   }
 
   // The IsUnloadingBehaviour is responsible for calculating if the nmethod
   // should be unloaded. This can be either because there is a dead oop,
   // or because is_cold() heuristically determines it is time to unload.
+  jlong slow_start = 0;
+  if (stats != nullptr) {
+    slow_start = os::elapsed_counter();
+    stats->_is_unloading_uncached_nmethods++;
+  }
   state_unloading_cycle = current_cycle;
-  state_is_unloading = IsUnloadingBehaviour::is_unloading(this);
+  jlong non_nmethod_start = 0;
+  if (stats != nullptr) {
+    non_nmethod_start = os::elapsed_counter();
+  }
+  bool non_nmethod = can_be_allocated_in_NonNMethod_space();
+  if (stats != nullptr) {
+    stats->_is_unloading_non_nmethod_ticks += os::elapsed_counter() - non_nmethod_start;
+    if (non_nmethod) {
+      stats->_is_unloading_non_nmethod_nmethods++;
+    }
+  }
+  if (non_nmethod) {
+    // When the nmethod is in NonNMethod space, we may reach here without IsUnloadingBehaviour.
+    // However, we only allow this for special methods which never get unloaded.
+    state_is_unloading = false;
+  } else {
+    jlong sub_start = 0;
+    if (stats != nullptr) {
+      sub_start = os::elapsed_counter();
+      stats->_has_dead_oop_checks++;
+    }
+    bool has_dead_oop = false;
+    jlong filter_start = 0;
+    if (stats != nullptr) {
+      filter_start = os::elapsed_counter();
+    }
+    bool has_oop_roots = has_oops_do_roots();
+    if (stats != nullptr) {
+      stats->_has_dead_oop_root_filter_ticks += os::elapsed_counter() - filter_start;
+      if (has_oop_roots) {
+        stats->_has_dead_oop_root_nmethods++;
+      } else {
+        stats->_has_dead_oop_no_root_nmethods++;
+      }
+    }
+    if (has_oop_roots) {
+      has_dead_oop = IsUnloadingBehaviour::current()->has_dead_oop(this, stats);
+    }
+    if (stats != nullptr) {
+      stats->_has_dead_oop_ticks += os::elapsed_counter() - sub_start;
+      if (has_dead_oop) {
+        stats->_dead_oop_nmethods++;
+      }
+    }
+
+    if (has_dead_oop) {
+      state_is_unloading = true;
+    } else {
+      if (stats != nullptr) {
+        sub_start = os::elapsed_counter();
+        stats->_is_cold_checks++;
+      }
+      state_is_unloading = is_cold(stats);
+      if (stats != nullptr) {
+        stats->_is_cold_ticks += os::elapsed_counter() - sub_start;
+        if (state_is_unloading) {
+          stats->_cold_nmethods++;
+        }
+      }
+    }
+  }
   uint8_t new_state = IsUnloadingState::create(state_is_unloading, state_unloading_cycle);
+  if (stats != nullptr) {
+    stats->_is_unloading_uncached_ticks += os::elapsed_counter() - slow_start;
+  }
 
   MACOS_AARCH64_ONLY(os::thread_wx_enable_write());
 
@@ -2782,10 +3263,21 @@ bool nmethod::is_unloading() {
   // different outcomes, so we guard the computed result with a CAS
   // to ensure all threads have a shared view of whether an nmethod
   // is_unloading or not.
+  jlong cas_start = 0;
+  if (stats != nullptr) {
+    cas_start = os::elapsed_counter();
+    stats->_is_unloading_cas_nmethods++;
+  }
   uint8_t found_state = AtomicAccess::cmpxchg(&_is_unloading_state, state, new_state, memory_order_relaxed);
+  if (stats != nullptr) {
+    stats->_is_unloading_cas_ticks += os::elapsed_counter() - cas_start;
+  }
 
   if (found_state == state) {
     // First to change state, we win
+    if (stats != nullptr) {
+      stats->_is_unloading_cas_wins++;
+    }
     return state_is_unloading;
   } else {
     // State already set, so use it
@@ -2802,44 +3294,258 @@ void nmethod::clear_unloading_state() {
 // This is called at the end of the strong tracing/marking phase of a
 // GC to unload an nmethod if it contains otherwise unreachable
 // oops or is heuristically found to be not important.
-void nmethod::do_unloading(bool unloading_occurred) {
+bool nmethod::do_unloading_decide(NMethodUnloadingStats* stats) {
+  jlong start = 0;
+  jlong total_start = 0;
+
+  if (stats != nullptr) {
+    total_start = os::elapsed_counter();
+    start = total_start;
+  }
+
   // Make sure the oop's ready to receive visitors
-  if (is_unloading()) {
-    unlink();
-  } else {
-    unload_nmethod_caches(unloading_occurred);
+  bool unloading = is_unloading(stats);
+  if (stats != nullptr) {
+    stats->_is_unloading_ticks += os::elapsed_counter() - start;
+    stats->_processed_nmethods++;
+  }
+
+  if (unloading) {
+    if (stats != nullptr) {
+      stats->_unloading_nmethods++;
+      start = os::elapsed_counter();
+    }
+    unlink(stats);
+    if (stats != nullptr) {
+      stats->_unlink_ticks += os::elapsed_counter() - start;
+    }
+  }
+
+  if (stats != nullptr) {
+    stats->_total_ticks += os::elapsed_counter() - total_start;
+  }
+
+  return unloading;
+}
+
+void nmethod::do_unloading_cleanup(bool unloading_occurred, NMethodUnloadingStats* stats) {
+  jlong start = 0;
+  jlong total_start = 0;
+
+  if (stats != nullptr) {
+    total_start = os::elapsed_counter();
+  }
+
+  if (!is_unloading()) {
+    if (stats != nullptr) {
+      stats->_live_nmethods++;
+      start = os::elapsed_counter();
+    }
+    unload_nmethod_caches(unloading_occurred, stats);
+    if (stats != nullptr) {
+      stats->_unload_caches_ticks += os::elapsed_counter() - start;
+    }
+
     BarrierSetNMethod* bs_nm = BarrierSet::barrier_set()->barrier_set_nmethod();
     if (bs_nm != nullptr) {
+      if (stats != nullptr) {
+        start = os::elapsed_counter();
+      }
       bs_nm->disarm(this);
+      if (stats != nullptr) {
+        stats->_disarm_ticks += os::elapsed_counter() - start;
+        stats->_disarmed_nmethods++;
+      }
     }
+  }
+
+  if (stats != nullptr) {
+    stats->_total_ticks += os::elapsed_counter() - total_start;
   }
 }
 
-void nmethod::oops_do(OopClosure* f) {
+void nmethod::do_unloading(bool unloading_occurred, NMethodUnloadingStats* stats) {
+  do_unloading_decide(stats);
+  do_unloading_cleanup(unloading_occurred, stats);
+}
+
+static bool is_dead_oop(oop* p, BoolObjectClosure* is_alive, NMethodUnloadingStats* stats) {
+  if (stats != nullptr) {
+    stats->_has_dead_oop_oops++;
+  }
+  oop obj = *p;
+  if (obj == nullptr) {
+    return false;
+  }
+  jlong start = 0;
+  if (stats != nullptr) {
+    stats->_has_dead_oop_non_null_oops++;
+    start = os::elapsed_counter();
+  }
+  bool alive = is_alive->do_object_b(obj);
+  if (stats != nullptr) {
+    stats->_has_dead_oop_is_alive_ticks += os::elapsed_counter() - start;
+    if (!alive) {
+      stats->_has_dead_oop_dead_oops++;
+    }
+  }
+  return !alive;
+}
+
+bool nmethod::has_dead_oop(BoolObjectClosure* is_alive, NMethodUnloadingStats* stats) {
+  assert(is_alive != nullptr, "must be");
+
   // Prevent extra code cache walk for platforms that don't have immediate oops.
   if (relocInfo::mustIterateImmediateOopsInCode()) {
-    RelocIterator iter(this, oops_reloc_begin());
+    jlong filter_start = 0;
+    if (stats != nullptr) {
+      filter_start = os::elapsed_counter();
+    }
+    bool has_immediates = has_immediate_oops();
+    if (stats != nullptr) {
+      stats->_has_dead_oop_immediate_filter_ticks += os::elapsed_counter() - filter_start;
+      if (has_immediates) {
+        stats->_has_dead_oop_immediate_oop_nmethods++;
+      } else {
+        stats->_has_dead_oop_no_immediate_oop_nmethods++;
+      }
+    }
 
-    while (iter.next()) {
-      if (iter.type() == relocInfo::oop_type ) {
-        oop_Relocation* r = iter.oop_reloc();
-        // In this loop, we must only follow those oops directly embedded in
-        // the code.  Other oops (oop_index>0) are seen as part of scopes_oops.
-        assert(1 == (r->oop_is_immediate()) +
-               (r->oop_addr() >= oops_begin() && r->oop_addr() < oops_end()),
-               "oop must be found in exactly one place");
-        if (r->oop_is_immediate() && r->oop_value() != nullptr) {
-          f->do_oop(r->oop_addr());
+    jlong immediate_oop_start = 0;
+    if (has_immediates && stats != nullptr) {
+      immediate_oop_start = os::elapsed_counter();
+    }
+    if (has_immediates) {
+      RelocIterator iter(this, oops_reloc_begin());
+      while (iter.next()) {
+        if (stats != nullptr) {
+          stats->_has_dead_oop_relocations++;
         }
+        if (iter.type() == relocInfo::oop_type) {
+          if (stats != nullptr) {
+            stats->_has_dead_oop_oop_relocations++;
+          }
+          oop_Relocation* r = iter.oop_reloc();
+          // In this loop, we must only follow those oops directly embedded in
+          // the code.  Other oops are found in the oop table below.
+          assert(1 == (r->oop_is_immediate()) +
+                 (r->oop_addr() >= oops_begin() && r->oop_addr() < oops_end()),
+                 "oop must be found in exactly one place");
+          if (r->oop_is_immediate() && r->oop_value() != nullptr) {
+            if (stats != nullptr) {
+              stats->_has_dead_oop_immediate_oops++;
+            }
+            if (is_dead_oop(r->oop_addr(), is_alive, stats)) {
+              if (stats != nullptr) {
+                stats->_has_dead_oop_immediate_oop_ticks += os::elapsed_counter() - immediate_oop_start;
+              }
+              return true;
+            }
+          }
+        }
+      }
+      if (stats != nullptr) {
+        stats->_has_dead_oop_immediate_oop_ticks += os::elapsed_counter() - immediate_oop_start;
       }
     }
   }
 
   // Scopes
   // This includes oop constants not inlined in the code stream.
+  jlong oop_table_start = 0;
+  if (stats != nullptr) {
+    oop_table_start = os::elapsed_counter();
+  }
   for (oop* p = oops_begin(); p < oops_end(); p++) {
+    if (stats != nullptr) {
+      stats->_has_dead_oop_oop_table_entries++;
+    }
     if (*p == Universe::non_oop_word())  continue;  // skip non-oops
+    if (stats != nullptr) {
+      stats->_has_dead_oop_oop_table_oops++;
+    }
+    if (is_dead_oop(p, is_alive, stats)) {
+      if (stats != nullptr) {
+        stats->_has_dead_oop_oop_table_ticks += os::elapsed_counter() - oop_table_start;
+      }
+      return true;
+    }
+  }
+  if (stats != nullptr) {
+    stats->_has_dead_oop_oop_table_ticks += os::elapsed_counter() - oop_table_start;
+  }
+  return false;
+}
+
+void nmethod::oops_do(OopClosure* f, NMethodUnloadingStats* stats) {
+  // Prevent extra code cache walk for platforms that don't have immediate oops.
+  if (relocInfo::mustIterateImmediateOopsInCode()) {
+    jlong filter_start = 0;
+    if (stats != nullptr) {
+      filter_start = os::elapsed_counter();
+    }
+    bool has_immediates = has_immediate_oops();
+    if (stats != nullptr) {
+      stats->_has_dead_oop_immediate_filter_ticks += os::elapsed_counter() - filter_start;
+      if (has_immediates) {
+        stats->_has_dead_oop_immediate_oop_nmethods++;
+      } else {
+        stats->_has_dead_oop_no_immediate_oop_nmethods++;
+      }
+    }
+
+    jlong immediate_oop_start = 0;
+    if (has_immediates && stats != nullptr) {
+      immediate_oop_start = os::elapsed_counter();
+    }
+    if (has_immediates) {
+      RelocIterator iter(this, oops_reloc_begin());
+      while (iter.next()) {
+        if (stats != nullptr) {
+          stats->_has_dead_oop_relocations++;
+        }
+        if (iter.type() == relocInfo::oop_type) {
+          if (stats != nullptr) {
+            stats->_has_dead_oop_oop_relocations++;
+          }
+          oop_Relocation* r = iter.oop_reloc();
+          // In this loop, we must only follow those oops directly embedded in
+          // the code.  Other oops are found in the oop table below.
+          assert(1 == (r->oop_is_immediate()) +
+                 (r->oop_addr() >= oops_begin() && r->oop_addr() < oops_end()),
+                 "oop must be found in exactly one place");
+          if (r->oop_is_immediate() && r->oop_value() != nullptr) {
+            if (stats != nullptr) {
+              stats->_has_dead_oop_immediate_oops++;
+            }
+            f->do_oop(r->oop_addr());
+          }
+        }
+      }
+      if (stats != nullptr) {
+        stats->_has_dead_oop_immediate_oop_ticks += os::elapsed_counter() - immediate_oop_start;
+      }
+    }
+  }
+
+  // Scopes
+  // This includes oop constants not inlined in the code stream.
+  jlong oop_table_start = 0;
+  if (stats != nullptr) {
+    oop_table_start = os::elapsed_counter();
+  }
+  for (oop* p = oops_begin(); p < oops_end(); p++) {
+    if (stats != nullptr) {
+      stats->_has_dead_oop_oop_table_entries++;
+    }
+    if (*p == Universe::non_oop_word())  continue;  // skip non-oops
+    if (stats != nullptr) {
+      stats->_has_dead_oop_oop_table_oops++;
+    }
     f->do_oop(p);
+  }
+  if (stats != nullptr) {
+    stats->_has_dead_oop_oop_table_ticks += os::elapsed_counter() - oop_table_start;
   }
 }
 
@@ -3382,7 +4088,7 @@ void nmethod::verify_scopes() {
   if (method()->is_native()) return; // Ignore stub methods.
   // iterate through all interrupt point
   // and verify the debug information is valid.
-  RelocIterator iter(this);
+  RelocIterator iter(this, oops_reloc_begin());
   while (iter.next()) {
     address stub = nullptr;
     switch (iter.type()) {

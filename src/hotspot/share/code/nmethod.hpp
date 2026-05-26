@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -32,6 +32,7 @@
 #include "runtime/mutexLocker.hpp"
 
 class AbstractCompiler;
+class BoolObjectClosure;
 class CompiledDirectCall;
 class CompiledIC;
 class CompiledICData;
@@ -43,9 +44,11 @@ class DebugInformationRecorder;
 class ExceptionHandlerTable;
 class ICacheInvalidationContext;
 class ImplicitExceptionTable;
+class InstanceKlass;
 class JvmtiThreadState;
 class MetadataClosure;
 class NativeCallWrapper;
+class nmethodBucket;
 class OopIterateClosure;
 class ScopeDesc;
 class xmlStream;
@@ -88,6 +91,262 @@ class ExceptionCache : public CHeapObj<mtCode> {
   bool    match_exception_with_space(Handle exception) ;
   address test_address(address addr);
   bool    add_address_and_handler(address addr, address handler) ;
+};
+
+struct NMethodUnloadingStats {
+  jlong  _total_ticks;
+  jlong  _is_unloading_ticks;
+  jlong  _is_unloading_state_ticks;
+  jlong  _is_unloading_cached_ticks;
+  jlong  _is_unloading_uncached_ticks;
+  jlong  _is_unloading_non_nmethod_ticks;
+  jlong  _has_dead_oop_ticks;
+  jlong  _has_dead_oop_root_filter_ticks;
+  jlong  _has_dead_oop_immediate_filter_ticks;
+  jlong  _has_dead_oop_immediate_oop_ticks;
+  jlong  _has_dead_oop_oop_table_ticks;
+  jlong  _has_dead_oop_is_alive_ticks;
+  jlong  _is_cold_ticks;
+  jlong  _is_cold_precheck_ticks;
+  jlong  _is_cold_stack_state_ticks;
+  jlong  _is_cold_entry_barrier_ticks;
+  jlong  _is_cold_epoch_ticks;
+  jlong  _is_unloading_cas_ticks;
+  jlong  _unlink_ticks;
+  jlong  _unlink_flush_dependencies_ticks;
+  jlong  _call_site_dependency_ticks;
+  jlong  _klass_dependency_ticks;
+  jlong  _dependency_context_walk_ticks;
+  jlong  _dependency_context_max_ticks;
+  jlong  _dependency_bucket_is_unloading_ticks;
+  jlong  _dependency_bucket_unlink_ticks;
+  jlong  _dependency_context_remove_ticks;
+  jlong  _dependency_context_remove_max_ticks;
+  jlong  _unlink_from_method_ticks;
+  jlong  _unlink_osr_ticks;
+  jlong  _unlink_jvmci_ticks;
+  jlong  _unlink_post_unload_ticks;
+  jlong  _register_unlinked_ticks;
+  jlong  _unload_caches_ticks;
+  jlong  _unload_exception_cache_ticks;
+  jlong  _unload_inline_caches_ticks;
+  jlong  _unload_verify_metadata_ticks;
+  jlong  _inline_cache_filter_ticks;
+  jlong  _inline_cache_clean_metadata_ticks;
+  jlong  _inline_cache_clean_nmethod_ticks;
+  jlong  _inline_cache_nmethod_lookup_ticks;
+  jlong  _inline_cache_nmethod_state_ticks;
+  jlong  _inline_cache_is_in_use_ticks;
+  jlong  _inline_cache_is_unloading_ticks;
+  jlong  _inline_cache_method_code_ticks;
+  jlong  _inline_cache_metadata_reloc_ticks;
+  jlong  _disarm_ticks;
+  size_t _processed_nmethods;
+  size_t _unloading_nmethods;
+  size_t _live_nmethods;
+  size_t _disarmed_nmethods;
+  size_t _is_unloading_state_nmethods;
+  size_t _is_unloading_cached_nmethods;
+  size_t _is_unloading_uncached_nmethods;
+  size_t _is_unloading_non_nmethod_nmethods;
+  size_t _has_dead_oop_checks;
+  size_t _dead_oop_nmethods;
+  size_t _has_dead_oop_root_nmethods;
+  size_t _has_dead_oop_no_root_nmethods;
+  size_t _has_dead_oop_immediate_oop_nmethods;
+  size_t _has_dead_oop_no_immediate_oop_nmethods;
+  size_t _has_dead_oop_relocations;
+  size_t _has_dead_oop_oop_relocations;
+  size_t _has_dead_oop_immediate_oops;
+  size_t _has_dead_oop_oop_table_entries;
+  size_t _has_dead_oop_oop_table_oops;
+  size_t _has_dead_oop_oops;
+  size_t _has_dead_oop_non_null_oops;
+  size_t _has_dead_oop_dead_oops;
+  size_t _is_cold_checks;
+  size_t _cold_nmethods;
+  size_t _is_cold_precheck_checks;
+  size_t _is_cold_precheck_bailouts;
+  size_t _is_cold_stack_state_checks;
+  size_t _is_cold_stack_state_cold;
+  size_t _is_cold_entry_barrier_checks;
+  size_t _is_cold_entry_barrier_unsupported;
+  size_t _is_cold_epoch_checks;
+  size_t _is_cold_epoch_cold;
+  size_t _is_unloading_cas_nmethods;
+  size_t _is_unloading_cas_wins;
+  size_t _unlink_already_unlinked_nmethods;
+  size_t _flush_dependencies_nmethods;
+  size_t _dependencies_processed;
+  size_t _call_site_dependencies;
+  size_t _klass_dependencies;
+  size_t _null_context_dependencies;
+  size_t _dependency_contexts_claimed;
+  size_t _dependency_contexts_skipped;
+  size_t _dependency_context_max_buckets;
+  size_t _dependency_buckets_checked;
+  size_t _dependency_buckets_unloading;
+  size_t _dependency_bucket_unlink_attempts;
+  size_t _dependency_buckets_unlinked;
+  const InstanceKlass* _dependency_context_max_klass;
+  bool   _dependency_context_max_is_call_site;
+  size_t _dependency_context_remove_buckets;
+  size_t _dependency_context_remove_removed;
+  size_t _dependency_context_remove_max_buckets;
+  const InstanceKlass* _dependency_context_remove_max_klass;
+  bool   _dependency_context_remove_max_is_call_site;
+  size_t _osr_nmethods;
+  size_t _jvmci_nmethods;
+  size_t _exception_cache_entries;
+  size_t _exception_cache_removed;
+  size_t _inline_cache_relocations;
+  size_t _inline_cache_checked_nmethods;
+  size_t _inline_cache_skipped_nmethods;
+  size_t _inline_cache_clean_metadata_calls;
+  size_t _inline_cache_nmethod_checks;
+  size_t _inline_cache_nmethod_lookups;
+  size_t _inline_cache_clean_call_skips;
+  size_t _inline_cache_stub_call_skips;
+  size_t _inline_cache_nmethod_state_checks;
+  size_t _inline_cache_is_in_use_checks;
+  size_t _inline_cache_not_in_use;
+  size_t _inline_cache_is_unloading_checks;
+  size_t _inline_cache_unloading;
+  size_t _inline_cache_method_code_checks;
+  size_t _inline_cache_method_code_skips;
+  size_t _inline_cache_method_code_mismatches;
+  size_t _inline_cache_cleaned_calls;
+  size_t _inline_cache_metadata_relocations;
+  size_t _inline_cache_metadata_cleared;
+  size_t _verify_metadata_nmethods;
+
+  NMethodUnloadingStats() :
+    _total_ticks(0),
+    _is_unloading_ticks(0),
+    _is_unloading_state_ticks(0),
+    _is_unloading_cached_ticks(0),
+    _is_unloading_uncached_ticks(0),
+    _is_unloading_non_nmethod_ticks(0),
+    _has_dead_oop_ticks(0),
+    _has_dead_oop_root_filter_ticks(0),
+    _has_dead_oop_immediate_filter_ticks(0),
+    _has_dead_oop_immediate_oop_ticks(0),
+    _has_dead_oop_oop_table_ticks(0),
+    _has_dead_oop_is_alive_ticks(0),
+    _is_cold_ticks(0),
+    _is_cold_precheck_ticks(0),
+    _is_cold_stack_state_ticks(0),
+    _is_cold_entry_barrier_ticks(0),
+    _is_cold_epoch_ticks(0),
+    _is_unloading_cas_ticks(0),
+    _unlink_ticks(0),
+    _unlink_flush_dependencies_ticks(0),
+    _call_site_dependency_ticks(0),
+    _klass_dependency_ticks(0),
+    _dependency_context_walk_ticks(0),
+    _dependency_context_max_ticks(0),
+    _dependency_bucket_is_unloading_ticks(0),
+    _dependency_bucket_unlink_ticks(0),
+    _dependency_context_remove_ticks(0),
+    _dependency_context_remove_max_ticks(0),
+    _unlink_from_method_ticks(0),
+    _unlink_osr_ticks(0),
+    _unlink_jvmci_ticks(0),
+    _unlink_post_unload_ticks(0),
+    _register_unlinked_ticks(0),
+    _unload_caches_ticks(0),
+    _unload_exception_cache_ticks(0),
+    _unload_inline_caches_ticks(0),
+    _unload_verify_metadata_ticks(0),
+    _inline_cache_filter_ticks(0),
+    _inline_cache_clean_metadata_ticks(0),
+    _inline_cache_clean_nmethod_ticks(0),
+    _inline_cache_nmethod_lookup_ticks(0),
+    _inline_cache_nmethod_state_ticks(0),
+    _inline_cache_is_in_use_ticks(0),
+    _inline_cache_is_unloading_ticks(0),
+    _inline_cache_method_code_ticks(0),
+    _inline_cache_metadata_reloc_ticks(0),
+    _disarm_ticks(0),
+    _processed_nmethods(0),
+    _unloading_nmethods(0),
+    _live_nmethods(0),
+    _disarmed_nmethods(0),
+    _is_unloading_state_nmethods(0),
+    _is_unloading_cached_nmethods(0),
+    _is_unloading_uncached_nmethods(0),
+    _is_unloading_non_nmethod_nmethods(0),
+    _has_dead_oop_checks(0),
+    _dead_oop_nmethods(0),
+    _has_dead_oop_root_nmethods(0),
+    _has_dead_oop_no_root_nmethods(0),
+    _has_dead_oop_immediate_oop_nmethods(0),
+    _has_dead_oop_no_immediate_oop_nmethods(0),
+    _has_dead_oop_relocations(0),
+    _has_dead_oop_oop_relocations(0),
+    _has_dead_oop_immediate_oops(0),
+    _has_dead_oop_oop_table_entries(0),
+    _has_dead_oop_oop_table_oops(0),
+    _has_dead_oop_oops(0),
+    _has_dead_oop_non_null_oops(0),
+    _has_dead_oop_dead_oops(0),
+    _is_cold_checks(0),
+    _cold_nmethods(0),
+    _is_cold_precheck_checks(0),
+    _is_cold_precheck_bailouts(0),
+    _is_cold_stack_state_checks(0),
+    _is_cold_stack_state_cold(0),
+    _is_cold_entry_barrier_checks(0),
+    _is_cold_entry_barrier_unsupported(0),
+    _is_cold_epoch_checks(0),
+    _is_cold_epoch_cold(0),
+    _is_unloading_cas_nmethods(0),
+    _is_unloading_cas_wins(0),
+    _unlink_already_unlinked_nmethods(0),
+    _flush_dependencies_nmethods(0),
+    _dependencies_processed(0),
+    _call_site_dependencies(0),
+    _klass_dependencies(0),
+    _null_context_dependencies(0),
+    _dependency_contexts_claimed(0),
+    _dependency_contexts_skipped(0),
+    _dependency_context_max_buckets(0),
+    _dependency_buckets_checked(0),
+    _dependency_buckets_unloading(0),
+    _dependency_bucket_unlink_attempts(0),
+    _dependency_buckets_unlinked(0),
+    _dependency_context_max_klass(nullptr),
+    _dependency_context_max_is_call_site(false),
+    _dependency_context_remove_buckets(0),
+    _dependency_context_remove_removed(0),
+    _dependency_context_remove_max_buckets(0),
+    _dependency_context_remove_max_klass(nullptr),
+    _dependency_context_remove_max_is_call_site(false),
+    _osr_nmethods(0),
+    _jvmci_nmethods(0),
+    _exception_cache_entries(0),
+    _exception_cache_removed(0),
+    _inline_cache_relocations(0),
+    _inline_cache_checked_nmethods(0),
+    _inline_cache_skipped_nmethods(0),
+    _inline_cache_clean_metadata_calls(0),
+    _inline_cache_nmethod_checks(0),
+    _inline_cache_nmethod_lookups(0),
+    _inline_cache_clean_call_skips(0),
+    _inline_cache_stub_call_skips(0),
+    _inline_cache_nmethod_state_checks(0),
+    _inline_cache_is_in_use_checks(0),
+    _inline_cache_not_in_use(0),
+    _inline_cache_is_unloading_checks(0),
+    _inline_cache_unloading(0),
+    _inline_cache_method_code_checks(0),
+    _inline_cache_method_code_skips(0),
+    _inline_cache_method_code_mismatches(0),
+    _inline_cache_cleaned_calls(0),
+    _inline_cache_metadata_relocations(0),
+    _inline_cache_metadata_cleared(0),
+    _verify_metadata_nmethods(0) {
+  }
 };
 
 // cache pc descs found in earlier inquiries
@@ -212,6 +471,7 @@ class nmethod : public CodeBlob {
   oops_do_mark_link* volatile _oops_do_mark_link;
 
   CompiledICData* _compiled_ic_data;
+  nmethodBucket* _dependency_context_buckets;
 
   // offsets for entry points
   address  _osr_entry_point;       // entry point for on stack replacement
@@ -275,6 +535,12 @@ class nmethod : public CodeBlob {
           _has_flushed_dependencies:1, // Used for maintenance of dependencies (under CodeCache_lock)
           _is_unlinked:1,              // mark during class unloading
           _load_reported:1;            // used by jvmti to track if an event has been posted for this nmethod
+  uint8_t _has_oops_do_roots:1,         // Has oop roots for nmethod::oops_do()
+          _has_immediate_oops:1,        // Has immediate oop relocations in code
+          _has_unloading_calls:1,       // Has call relocations needing nmethod unloading cleanup
+          _has_unloading_metadata:1,    // Has metadata relocations needing class unloading cleanup
+          _can_be_allocated_in_NonNMethod_space:1,
+          _supports_entry_barrier:1;
 
   enum DeoptimizationStatus : u1 {
     not_marked,
@@ -294,6 +560,7 @@ class nmethod : public CodeBlob {
 
   // Post initialization
   void post_init();
+  void initialize_unloading_flags();
 
   // For native wrappers
   nmethod(Method* method,
@@ -712,9 +979,11 @@ public:
 
   void clear_unloading_state();
   // Heuristically deduce an nmethod isn't worth keeping around
-  bool is_cold();
-  bool is_unloading();
-  void do_unloading(bool unloading_occurred);
+  bool is_cold(NMethodUnloadingStats* stats = nullptr);
+  bool is_unloading(NMethodUnloadingStats* stats = nullptr);
+  bool do_unloading_decide(NMethodUnloadingStats* stats = nullptr);
+  void do_unloading_cleanup(bool unloading_occurred, NMethodUnloadingStats* stats = nullptr);
+  void do_unloading(bool unloading_occurred, NMethodUnloadingStats* stats = nullptr);
 
   bool make_in_use() {
     return try_transition(in_use);
@@ -744,7 +1013,7 @@ public:
 
   bool has_dependencies()                         { return dependencies_size() != 0; }
   void print_dependencies_on(outputStream* out) PRODUCT_RETURN;
-  void flush_dependencies();
+  void flush_dependencies(NMethodUnloadingStats* stats = nullptr);
 
   template<typename T>
   T* gc_data() const                              { return reinterpret_cast<T*>(_gc_data); }
@@ -768,6 +1037,16 @@ public:
     assert(!has_flushed_dependencies(), "should only happen once");
     _has_flushed_dependencies = z;
   }
+  bool  has_oops_do_roots() const                 { return _has_oops_do_roots; }
+  bool  has_immediate_oops() const                { return _has_immediate_oops; }
+  void  set_has_immediate_oops()                  {
+    _has_immediate_oops = true;
+    _has_oops_do_roots = true;
+  }
+  bool  has_unloading_calls() const               { return _has_unloading_calls; }
+  bool  has_unloading_metadata() const            { return _has_unloading_metadata; }
+  bool  can_be_allocated_in_NonNMethod_space() const { return _can_be_allocated_in_NonNMethod_space; }
+  bool  supports_entry_barrier() const            { return _supports_entry_barrier; }
 
   bool  is_unlinked() const                       { return _is_unlinked; }
   void  set_is_unlinked()                         {
@@ -824,7 +1103,7 @@ protected:
 public:
   address handler_for_exception_and_pc(Handle exception, address pc);
   void add_handler_for_exception_and_pc(Handle exception, address pc, address handler);
-  void clean_exception_cache();
+  void clean_exception_cache(NMethodUnloadingStats* stats = nullptr);
 
   void add_exception_cache_entry(ExceptionCache* new_entry);
   ExceptionCache* exception_cache_entry_for_exception(Handle exception);
@@ -853,7 +1132,7 @@ public:
 
   // Inline cache support for class unloading and nmethod unloading
  private:
-  void cleanup_inline_caches_impl(bool unloading_occurred, bool clean_all);
+  void cleanup_inline_caches_impl(bool unloading_occurred, bool clean_all, NMethodUnloadingStats* stats = nullptr);
 
   address continuation_for_implicit_exception(address pc, bool for_div0_check);
 
@@ -876,9 +1155,12 @@ public:
   // GC unloading support
   // Cleans unloaded klasses and unloaded nmethods in inline caches
 
-  void unload_nmethod_caches(bool class_unloading_occurred);
+  void unload_nmethod_caches(bool class_unloading_occurred, NMethodUnloadingStats* stats = nullptr);
 
   void unlink_from_method();
+  void add_dependency_context_bucket(nmethodBucket* bucket);
+  nmethodBucket* dependency_context_buckets() const { return _dependency_context_buckets; }
+  void remove_from_dependency_contexts(NMethodUnloadingStats* stats);
 
   // On-stack replacement support
   int      osr_entry_bci()    const { assert(is_osr_method(), "wrong kind of nmethod"); return _entry_bci; }
@@ -895,7 +1177,7 @@ public:
   void verify_clean_inline_caches();
 
   // Unlink this nmethod from the system
-  void unlink();
+  void unlink(NMethodUnloadingStats* stats = nullptr);
 
   // Deallocate this nmethod - called by the GC
   void purge(bool unregister_nmethod);
@@ -927,7 +1209,8 @@ public:
   bool jvmci_skip_profile_deopt() const;
 #endif
 
-  void oops_do(OopClosure* f);
+  void oops_do(OopClosure* f, NMethodUnloadingStats* stats = nullptr);
+  bool has_dead_oop(BoolObjectClosure* is_alive, NMethodUnloadingStats* stats = nullptr);
 
   // All-in-one claiming of nmethods: returns true if the caller successfully claimed that
   // nmethod.

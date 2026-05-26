@@ -1303,7 +1303,7 @@ public:
   void rebuild_code_roots();
 
   // Performs cleaning of data structures after class unloading.
-  void complete_cleaning(bool class_unloading_occurred);
+  void complete_cleaning(bool class_unloading_occurred, GCTimer* timer);
 
   void unload_classes_and_code(const char* description, BoolObjectClosure* cl, GCTimer* timer);
 

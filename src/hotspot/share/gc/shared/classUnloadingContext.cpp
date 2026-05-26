@@ -83,12 +83,30 @@ void ClassUnloadingContext::purge_class_loader_data() {
   }
 }
 
-void ClassUnloadingContext::classes_unloading_do(void f(Klass* const)) {
+size_t ClassUnloadingContext::classes_unloading_do(void f(Klass* const)) {
   assert_locked_or_safepoint(ClassLoaderDataGraph_lock);
+  class CountAndApplyClosure : public KlassClosure {
+    void (*_f)(Klass* const);
+    size_t _count;
+
+  public:
+    CountAndApplyClosure(void f(Klass* const)) : _f(f), _count(0) {}
+
+    void do_klass(Klass* klass) override {
+      _count++;
+      _f(klass);
+    }
+
+    size_t count() const { return _count; }
+  } cl(f);
+
+  size_t count = 0;
   for (ClassLoaderData* cld = _cld_head; cld != nullptr; cld = cld->unloading_next()) {
     assert(cld->is_unloading(), "invariant");
-    cld->classes_do(f);
+    cld->classes_do(&cl);
   }
+  count = cl.count();
+  return count;
 }
 
 void ClassUnloadingContext::register_unlinked_nmethod(nmethod* nm) {

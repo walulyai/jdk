@@ -43,6 +43,7 @@
 #include "classfile/vmSymbols.hpp"
 #include "code/codeCache.hpp"
 #include "code/dependencyContext.hpp"
+#include "code/nmethod.hpp"
 #include "compiler/compilationPolicy.hpp"
 #include "compiler/compileBroker.hpp"
 #include "gc/shared/collectedHeap.inline.hpp"
@@ -1225,11 +1226,15 @@ oop InstanceKlass::get_initialization_error(JavaThread* current) {
 }
 
 // Need to remove entries for unloaded classes.
-void InstanceKlass::clean_initialization_error_table() {
+InstanceKlass::InitErrorTableStats InstanceKlass::clean_initialization_error_table() {
   struct InitErrorTableCleaner {
+    InitErrorTableStats _stats;
+
     bool do_entry(const InstanceKlass* ik, OopHandle h) {
+      _stats._errors_processed++;
       if (!ik->is_loader_alive()) {
         h.release(Universe::vm_global());
+        _stats._errors_removed++;
         return true;
       } else {
         return false;
@@ -1242,6 +1247,7 @@ void InstanceKlass::clean_initialization_error_table() {
   if (_initialization_error_table != nullptr) {
     _initialization_error_table->unlink(&cleaner);
   }
+  return cleaner._stats;
 }
 
 class ThreadWaitingForClassInit : public StackObj {
@@ -2591,11 +2597,32 @@ void InstanceKlass::mark_dependent_nmethods(DeoptimizationScope* deopt_scope, Kl
 
 void InstanceKlass::add_dependent_nmethod(nmethod* nm) {
   assert_lock_strong(CodeCache_lock);
-  dependencies().add_dependent_nmethod(nm);
+  dependencies().add_dependent_nmethod(nm, this, false /* owner_is_call_site */);
 }
 
-void InstanceKlass::clean_dependency_context() {
-  dependencies().clean_unloading_dependents();
+bool InstanceKlass::remove_dependent_nmethod(nmethod* nm, NMethodUnloadingStats* stats) {
+  jlong old_max_ticks = 0;
+  if (stats != nullptr) {
+    old_max_ticks = stats->_dependency_context_remove_max_ticks;
+  }
+  bool removed = dependencies().remove_dependent_nmethod(nm, stats);
+  if (stats != nullptr && stats->_dependency_context_remove_max_ticks > old_max_ticks) {
+    stats->_dependency_context_remove_max_klass = this;
+    stats->_dependency_context_remove_max_is_call_site = false;
+  }
+  return removed;
+}
+
+void InstanceKlass::clean_dependency_context(NMethodUnloadingStats* stats) {
+  jlong old_max_ticks = 0;
+  if (stats != nullptr) {
+    old_max_ticks = stats->_dependency_context_max_ticks;
+  }
+  dependencies().clean_unloading_dependents(stats);
+  if (stats != nullptr && stats->_dependency_context_max_ticks > old_max_ticks) {
+    stats->_dependency_context_max_klass = this;
+    stats->_dependency_context_max_is_call_site = false;
+  }
 }
 
 #ifndef PRODUCT

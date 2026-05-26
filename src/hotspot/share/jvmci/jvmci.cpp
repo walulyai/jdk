@@ -256,18 +256,22 @@ void JVMCI::metadata_do(void f(Metadata*)) {
   }
 }
 
-void JVMCI::do_unloading(bool unloading_occurred) {
+size_t JVMCI::do_unloading(bool unloading_occurred) {
+  size_t num_processed_handles = 0;
+
   if (unloading_occurred) {
     if (_java_runtime != nullptr) {
-      _java_runtime->_metadata_handles->do_unloading();
+      num_processed_handles += _java_runtime->_metadata_handles->do_unloading();
     }
     for (JVMCIRuntime* runtime = _compiler_runtimes; runtime != nullptr; runtime = runtime->_next) {
-      runtime->_metadata_handles->do_unloading();
+      num_processed_handles += runtime->_metadata_handles->do_unloading();
     }
     if (_shutdown_compiler_runtime != nullptr) {
-      _shutdown_compiler_runtime->_metadata_handles->do_unloading();
+      num_processed_handles += _shutdown_compiler_runtime->_metadata_handles->do_unloading();
     }
   }
+
+  return num_processed_handles;
 }
 
 bool JVMCI::is_compiler_initialized() {

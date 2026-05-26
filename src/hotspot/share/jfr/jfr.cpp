@@ -75,10 +75,11 @@ void Jfr::on_create_vm_3() {
   }
 }
 
-void Jfr::on_unloading_classes() {
+size_t Jfr::on_unloading_classes() {
   if (JfrRecorder::is_created() || JfrRecorder::is_started_on_commandline()) {
-    JfrCheckpointManager::on_unloading_classes();
+    return JfrCheckpointManager::on_unloading_classes();
   }
+  return 0;
 }
 
 void Jfr::on_klass_creation(InstanceKlass*& ik, ClassFileParser& parser, TRAPS) {

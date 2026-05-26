@@ -29,20 +29,28 @@
 #include "logging/log.hpp"
 #include "oops/klass.inline.hpp"
 
-CodeCacheUnloadingTask::CodeCacheUnloadingTask(bool unloading_occurred) :
+CodeCacheUnloadingTask::CodeCacheUnloadingTask(bool unloading_occurred, uint num_workers) :
   _unloading_occurred(unloading_occurred),
   _first_nmethod(nullptr),
-  _claimed_nmethod(nullptr) {
+  _claimed_nmethod(nullptr),
+  _decide_barrier(),
+  _cleanup_barrier() {
   // Get first alive nmethod
   NMethodIterator iter(NMethodIterator::all);
   if(iter.next()) {
     _first_nmethod = iter.method();
   }
-  _claimed_nmethod.store_relaxed(_first_nmethod);
+  reset_claim_nmethods();
+  _decide_barrier.set_n_workers(num_workers);
+  _cleanup_barrier.set_n_workers(num_workers);
 }
 
 CodeCacheUnloadingTask::~CodeCacheUnloadingTask() {
   CodeCache::verify_clean_inline_caches();
+}
+
+void CodeCacheUnloadingTask::reset_claim_nmethods() {
+  _claimed_nmethod.store_relaxed(_first_nmethod);
 }
 
 void CodeCacheUnloadingTask::claim_nmethods(nmethod** claimed_nmethods, int *num_claimed_nmethods) {
@@ -69,11 +77,13 @@ void CodeCacheUnloadingTask::claim_nmethods(nmethod** claimed_nmethods, int *num
   } while (!_claimed_nmethod.compare_set(first, last.method()));
 }
 
-void CodeCacheUnloadingTask::work(uint worker_id) {
+size_t CodeCacheUnloadingTask::work_unloading_decide(uint worker_id, NMethodUnloadingStats* stats) {
+  size_t num_processed_nmethods = 0;
+
   // The first nmethods is claimed by the first worker.
   if (worker_id == 0 && _first_nmethod != nullptr) {
-    _first_nmethod->do_unloading(_unloading_occurred);
-    _first_nmethod = nullptr;
+    _first_nmethod->do_unloading_decide(stats);
+    num_processed_nmethods++;
   }
 
   int num_claimed_nmethods;
@@ -87,31 +97,89 @@ void CodeCacheUnloadingTask::work(uint worker_id) {
     }
 
     for (int i = 0; i < num_claimed_nmethods; i++) {
-      claimed_nmethods[i]->do_unloading(_unloading_occurred);
+      claimed_nmethods[i]->do_unloading_decide(stats);
+    }
+    num_processed_nmethods += num_claimed_nmethods;
+  }
+
+  return num_processed_nmethods;
+}
+
+void CodeCacheUnloadingTask::work_unloading_cleanup(uint worker_id, NMethodUnloadingStats* stats) {
+  // The first nmethods is claimed by the first worker.
+  if (worker_id == 0 && _first_nmethod != nullptr) {
+    _first_nmethod->do_unloading_cleanup(_unloading_occurred, stats);
+  }
+
+  int num_claimed_nmethods;
+  nmethod* claimed_nmethods[MaxClaimNmethods];
+
+  while (true) {
+    claim_nmethods(claimed_nmethods, &num_claimed_nmethods);
+
+    if (num_claimed_nmethods == 0) {
+      break;
+    }
+
+    for (int i = 0; i < num_claimed_nmethods; i++) {
+      claimed_nmethods[i]->do_unloading_cleanup(_unloading_occurred, stats);
     }
   }
 }
 
-void KlassCleaningTask::work() {
-  for (ClassLoaderData* cur = _cld_iterator_atomic.next(); cur != nullptr; cur = _cld_iterator_atomic.next()) {
-      class CleanKlasses : public KlassClosure {
-      public:
+size_t CodeCacheUnloadingTask::work(uint worker_id, NMethodUnloadingStats* stats) {
+  size_t num_processed_nmethods = work_unloading_decide(worker_id, stats);
 
-        void do_klass(Klass* klass) override {
-          klass->clean_subklass(true);
+  _decide_barrier.enter();
 
-          Klass* sibling = klass->next_sibling(true);
-          klass->set_next_sibling(sibling);
-
-          if (klass->is_instance_klass()) {
-            Klass::clean_weak_instanceklass_links(InstanceKlass::cast(klass));
-          }
-
-          assert(klass->subklass() == nullptr || klass->subklass()->is_loader_alive(), "must be");
-          assert(klass->next_sibling(false) == nullptr || klass->next_sibling(false)->is_loader_alive(), "must be");
-        }
-      } cl;
-
-      cur->classes_do(&cl);
+  if (worker_id == 0) {
+    reset_claim_nmethods();
   }
+
+  _cleanup_barrier.enter();
+
+  work_unloading_cleanup(worker_id, stats);
+
+  return num_processed_nmethods;
+}
+
+size_t KlassCleaningTask::work(size_t* num_class_loader_data) {
+  size_t num_processed_class_loader_data = 0;
+  size_t num_processed_klasses = 0;
+
+  for (ClassLoaderData* cur = _cld_iterator_atomic.next(); cur != nullptr; cur = _cld_iterator_atomic.next()) {
+    class CleanKlasses : public KlassClosure {
+      size_t _num_processed_klasses;
+
+    public:
+      CleanKlasses() : _num_processed_klasses(0) { }
+
+      void do_klass(Klass* klass) override {
+        _num_processed_klasses++;
+
+        klass->clean_subklass(true);
+
+        Klass* sibling = klass->next_sibling(true);
+        klass->set_next_sibling(sibling);
+
+        if (klass->is_instance_klass()) {
+          Klass::clean_weak_instanceklass_links(InstanceKlass::cast(klass));
+        }
+
+        assert(klass->subklass() == nullptr || klass->subklass()->is_loader_alive(), "must be");
+        assert(klass->next_sibling(false) == nullptr || klass->next_sibling(false)->is_loader_alive(), "must be");
+      }
+
+      size_t num_processed_klasses() const { return _num_processed_klasses; }
+    } cl;
+
+    cur->classes_do(&cl);
+    num_processed_class_loader_data++;
+    num_processed_klasses += cl.num_processed_klasses();
+  }
+
+  if (num_class_loader_data != nullptr) {
+    *num_class_loader_data = num_processed_class_loader_data;
+  }
+  return num_processed_klasses;
 }
