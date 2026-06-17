@@ -105,6 +105,7 @@ G1GCPhaseTimes::G1GCPhaseTimes(STWGCTimer* gc_timer, uint max_gc_threads) :
   _gc_par_phases[EagerlyReclaimHumongousObjects] = new WorkerDataArray<double>("EagerlyReclaimHumongousObjects", "Eagerly Reclaim Humongous Objects (ms):", max_gc_threads);
   _gc_par_phases[ResetPartialArrayStateManager] = new WorkerDataArray<double>("ResetPartialArrayStateManager", "Reset Partial Array State Manager (ms):", max_gc_threads);
   _gc_par_phases[ProcessEvacuationFailedRegions] = new WorkerDataArray<double>("ProcessEvacuationFailedRegions", "Process Evacuation Failed Regions (ms):", max_gc_threads);
+  _gc_par_phases[EagerlyReclaimHumongousObjects]->create_thread_work_items("Humongous Regions Reclaimed:", EagerlyReclaimNumRegionsReclaimed);
 
   _gc_par_phases[ScanHR]->create_thread_work_items("Pending Cards:", ScanHRPendingCards);
   _gc_par_phases[ScanHR]->create_thread_work_items("Scanned Empty:", ScanHRScannedEmptyCards);

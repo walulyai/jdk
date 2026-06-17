@@ -74,7 +74,8 @@ G1IHOPControl::G1IHOPControl(double ihop_percent,
     _marking_start_to_mixed_time_s(10, 0.05),
     _old_non_humongous_alloc_rate(10, 0.05),
     _peak_extra_humongous_occupancy_in_mark_cycle(10, 0.05),
-    _expected_young_gen_at_first_mixed_gc(0) {
+    _expected_young_gen_at_first_mixed_gc(0),
+    _eagerly_reclaimed_bytes(10, 0.05) {
   assert(_initial_ihop_percent >= 0.0 && _initial_ihop_percent <= 100.0,
          "IHOP percent out of range: %.3f", ihop_percent);
   assert(!_is_adaptive || _predictor != nullptr, "precondition");
@@ -95,8 +96,10 @@ void G1IHOPControl::report_statistics(G1NewTracer* new_tracer,
                    non_humongous_allocation, peak_extra_humongous_occupancy);
 }
 
-void G1IHOPControl::record_expected_young_gen_size(size_t expected_young_gen_size) {
+void G1IHOPControl::record_young_gc_ihop_sample(size_t expected_young_gen_size,
+                                                size_t eagerly_reclaimed_bytes) {
   _expected_young_gen_at_first_mixed_gc = expected_young_gen_size;
+  _eagerly_reclaimed_bytes.add(eagerly_reclaimed_bytes);
 }
 
 void G1IHOPControl::record_concurrent_cycle(double marking_start_to_mixed_time_s,
@@ -113,7 +116,7 @@ void G1IHOPControl::record_concurrent_cycle(double marking_start_to_mixed_time_s
 // Determine the old generation occupancy threshold at which to start
 // concurrent marking such that reclamation (first Mixed GC) begins
 // before the heap reaches a critical occupancy level.
-size_t G1IHOPControl::old_gen_threshold_for_conc_mark_start() const {
+size_t G1IHOPControl::old_gen_threshold_for_conc_mark_start(bool for_humongous_allocation_trigger) const {
   guarantee(_target_occupancy > 0, "Target occupancy must be initialized");
 
   if (!_is_adaptive || !have_enough_data_for_prediction()) {
@@ -145,6 +148,20 @@ size_t G1IHOPControl::old_gen_threshold_for_conc_mark_start() const {
 
   size_t reserve_for_young_regions = _expected_young_gen_at_first_mixed_gc;
   size_t target_heap_occupancy = effective_target_occupancy();
+  size_t young_reserve_cap = target_heap_occupancy * (G1AdaptiveIHOPYoungReservePercent/100.0);
+
+  if (for_humongous_allocation_trigger) {
+    // The young reserve predicts how much young gen we should preserve through
+    // the concurrent cycle to maintain throughput. This call is made
+    // while deciding whether a humongous allocation should trigger a GC now.
+    // Since triggering a GC immediately is also costly, use a less conservative
+    // threshold: preserve only the currently allocated young regions and use the
+    // full target occupancy.
+    reserve_for_young_regions = G1CollectedHeap::heap()->young_regions_count() * G1HeapRegion::GrainBytes;
+    target_heap_occupancy = _target_occupancy;
+  } else {
+    reserve_for_young_regions = MIN2(reserve_for_young_regions, young_reserve_cap);
+  }
 
   size_t needed_for_concurrent_cycle = reserve_for_young_regions +
                                        old_non_humongous_alloc_bytes +
@@ -153,6 +170,13 @@ size_t G1IHOPControl::old_gen_threshold_for_conc_mark_start() const {
   size_t threshold = needed_for_concurrent_cycle < target_heap_occupancy ?
                      target_heap_occupancy - needed_for_concurrent_cycle : 0;
   return threshold;
+}
+
+size_t G1IHOPControl::predicted_eager_reclaim_bytes() const {
+  if (!_is_adaptive || (size_t)_eagerly_reclaimed_bytes.num() < G1AdaptiveIHOPNumInitialSamples) {
+    return 0;
+  }
+  return predict(&_eagerly_reclaimed_bytes);
 }
 
 void G1IHOPControl::print_log(size_t non_young_occupancy,

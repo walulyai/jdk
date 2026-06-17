@@ -21,7 +21,7 @@
  * questions.
  */
 
- #include "gc/g1/g1CollectedHeap.inline.hpp"
+#include "gc/g1/g1CollectedHeap.inline.hpp"
 #include "gc/g1/g1ConcurrentCycleTracker.hpp"
 #include "gc/g1/g1IHOPControl.hpp"
 #include "gc/g1/g1OldGenAllocationTracker.hpp"
@@ -91,7 +91,7 @@ class G1IHOPTestController {
 
     if (pause_type != G1CollectorState::Pause::Mixed &&
         pause_type != G1CollectorState::Pause::Full) {
-      _ihop_control.record_expected_young_gen_size(pause_data._desired_young_bytes);
+      _ihop_control.record_young_gc_ihop_sample(pause_data._desired_young_bytes, 0);
     }
   }
 

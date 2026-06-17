@@ -71,6 +71,8 @@ class G1IHOPControl : public CHeapObj<mtGC> {
   // as there is no marking or mixed gc that could impact its size too much.
   size_t _expected_young_gen_at_first_mixed_gc;
 
+  TruncatedSeq _eagerly_reclaimed_bytes;
+
   // Get a new prediction bounded below by zero from the given sequence.
   double predict(const TruncatedSeq* seq) const;
 
@@ -100,18 +102,22 @@ class G1IHOPControl : public CHeapObj<mtGC> {
   // Adjust target occupancy.
   void update_target_occupancy(size_t new_target_occupancy);
 
-  // Updates expected young gen size for the first mixed gc needed for the predictor.
-  // Contents include young gen at that point, and the memory required for evacuating
-  // the collection set in that first mixed gc (including waste caused by PLAB
-  // allocation etc.).
-  void record_expected_young_gen_size(size_t expected_young_gen_size);
+  // Record young-GC data used by adaptive IHOP.
+  // The expected young-gen size is used as the reserve to maintain through the
+  // concurrent cycle. The eagerly reclaimed bytes are used to predict how much
+  // humongous occupancy may be reclaimed during future humongous-allocation
+  // trigger checks.
+  void record_young_gc_ihop_sample(size_t expected_young_gen_size,
+                                   size_t eagerly_reclaimed_bytes);
 
   void record_concurrent_cycle(double marking_start_to_mixed_time_s,
                                size_t non_humongous_bytes,
                                size_t peak_extra_humongous_occupancy);
 
   // Get the current non-young occupancy at which concurrent marking should start.
-  size_t old_gen_threshold_for_conc_mark_start() const;
+  size_t old_gen_threshold_for_conc_mark_start(bool for_humongous_allocation_trigger = false) const;
+
+  size_t predicted_eager_reclaim_bytes() const;
 
   void report_statistics(G1NewTracer* tracer,
                          size_t non_young_occupancy,
