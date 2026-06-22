@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2011, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -30,20 +30,20 @@
 
 #define assert_heap_region_set(p, message) \
   do {                                     \
-    assert((p), "[%s] %s ln: %u",          \
-           name(), message, length());     \
+    assert((p), "[%s] %s nr: %u",          \
+           name(), message, num_regions());     \
   } while (0)
 
 #define guarantee_heap_region_set(p, message) \
   do {                                        \
-    guarantee((p), "[%s] %s ln: %u",          \
-              name(), message, length());     \
+    guarantee((p), "[%s] %s nr: %u",          \
+              name(), message, num_regions());     \
   } while (0)
 
 #define assert_free_region_list(p, message)                          \
   do {                                                               \
-    assert((p), "[%s] %s ln: %u hd: " PTR_FORMAT " tl: " PTR_FORMAT, \
-           name(), message, length(), p2i(_head), p2i(_tail));       \
+    assert((p), "[%s] %s nr: %u hd: " PTR_FORMAT " tl: " PTR_FORMAT, \
+           name(), message, num_regions(), p2i(_head), p2i(_tail));       \
   } while (0)
 
 
@@ -70,8 +70,8 @@ class G1HeapRegionSetBase {
   G1HeapRegionSetChecker* _checker;
 
 protected:
-  // The number of regions in to the set.
-  uint _length;
+  // The number of regions in the set.
+  uint _num_regions;
 
   const char* _name;
 
@@ -92,9 +92,9 @@ protected:
 public:
   const char* name() { return _name; }
 
-  uint length() const { return _length; }
+  uint num_regions() const { return _num_regions; }
 
-  bool is_empty() { return _length == 0; }
+  bool is_empty() { return _num_regions == 0; }
 
   // It updates the fields of the set to reflect hr being added to
   // the set and tags the region appropriately.
@@ -126,7 +126,7 @@ public:
   }
 
   void bulk_remove(const uint removed) {
-    _length -= removed;
+    _num_regions -= removed;
   }
 };
 
@@ -228,15 +228,15 @@ public:
   // are taken care of separately, to allow a rebuild.
   void abandon();
 
-  // Remove all (contiguous) regions from first to first + num_regions -1 from
+  // Remove all (contiguous) regions from first to first + num_regions_to_remove -1 from
   // this list.
-  // Num_regions must be >= 1.
-  void remove_starting_at(G1HeapRegion* first, uint num_regions);
+  // num_regions_to_remove must be >= 1.
+  void remove_starting_at(G1HeapRegion* first, uint num_regions_to_remove);
 
   virtual void verify();
 
-  using G1HeapRegionSetBase::length;
-  uint length(uint node_index) const;
+  using G1HeapRegionSetBase::num_regions;
+  uint num_regions(uint node_index) const;
 };
 
 // Iterator class that provides a convenient way to iterate over the

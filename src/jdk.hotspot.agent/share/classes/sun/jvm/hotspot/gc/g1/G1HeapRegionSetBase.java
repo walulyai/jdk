@@ -41,8 +41,8 @@ import sun.jvm.hotspot.types.TypeDataBase;
 
 public class G1HeapRegionSetBase extends VMObject {
 
-    // uint _length
-    private static CIntegerField lengthField;
+    // uint _num_regions
+    private static CIntegerField numRegionsField;
 
     static {
         VM.registerVMInitializedObserver(new Observer() {
@@ -55,11 +55,11 @@ public class G1HeapRegionSetBase extends VMObject {
     private static synchronized void initialize(TypeDataBase db) {
         Type type = db.lookupType("G1HeapRegionSetBase");
 
-        lengthField = type.getCIntegerField("_length");
+        numRegionsField = type.getCIntegerField("_num_regions");
     }
 
-    public long length() {
-        return lengthField.getValue(addr);
+    public long numRegions() {
+        return numRegionsField.getValue(addr);
     }
 
     public G1HeapRegionSetBase(Address addr) {
