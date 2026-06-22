@@ -332,10 +332,6 @@ double G1CollectionSet::finalize_young_part(double target_pause_time_ms, G1Survi
   log_trace(gc, ergo, cset)("Start choosing CSet. Pending cards: %zu target pause time: %1.2fms",
                             pending_cards, target_pause_time_ms);
 
-  // The young list is laid with the survivor regions from the previous
-  // pause are appended to the RHS of the young list, i.e.
-  //   [Newly Young Regions ++ Survivors from last pause].
-
   uint num_eden_regions = _g1h->eden_regions_count();
   uint num_survivor_regions = survivors->length();
   prepare_for_collection(num_eden_regions, num_survivor_regions);
