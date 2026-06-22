@@ -85,7 +85,7 @@ TEST_OTHER_VM(G1FreeRegionList, length) {
   l.add_ordered(&hr4);
   l.add_ordered(&hr2);
 
-  EXPECT_EQ(l.length(), num_regions_in_test) << "Wrong free region list length";
+  EXPECT_EQ(l.num_regions(), num_regions_in_test) << "Wrong free region list length";
   l.verify_list();
 
   bot_storage->uncommit_regions(0, num_regions_in_test);

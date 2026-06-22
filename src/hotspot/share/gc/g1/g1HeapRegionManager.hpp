@@ -220,7 +220,7 @@ public:
 
   // Return the number of committed free regions in the heap.
   uint num_free_regions() const {
-    return _free_list.length();
+    return _free_list.num_regions();
   }
 
   uint num_used_regions() const { return num_committed_regions() - num_free_regions(); }

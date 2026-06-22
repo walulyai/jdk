@@ -61,7 +61,7 @@
 #include "gc/g1/g1RegionPinCache.inline.hpp"
 #include "gc/g1/g1RegionToSpaceMapper.hpp"
 #include "gc/g1/g1RemSet.hpp"
-#include "gc/g1/g1ReviseYoungLengthTask.hpp"
+#include "gc/g1/g1ReviseNumYoungRegionsTask.hpp"
 #include "gc/g1/g1RootClosures.hpp"
 #include "gc/g1/g1SATBMarkQueueSet.hpp"
 #include "gc/g1/g1ServiceThread.hpp"
@@ -916,7 +916,7 @@ void G1CollectedHeap::verify_after_full_collection() {
 
   // At this point there should be no regions in the
   // entire heap tagged as young.
-  assert(check_young_list_empty(), "young list should be empty at this point");
+  assert(check_no_young_regions(), "We should not have young regions at this point");
 
   // Note: since we've just done a full GC, concurrent
   // marking is no longer active. Therefore we need not
@@ -1295,7 +1295,7 @@ G1CollectedHeap::G1CollectedHeap() :
   _service_thread(nullptr),
   _periodic_gc_task(nullptr),
   _free_arena_memory_task(nullptr),
-  _revise_young_length_task(nullptr),
+  _revise_num_young_regions_task(nullptr),
   _workers(nullptr),
   _refinement_epoch(0),
   _last_synchronized_start(0),
@@ -1604,9 +1604,9 @@ jint G1CollectedHeap::initialize() {
   _free_arena_memory_task = new G1MonotonicArenaFreeMemoryTask("Card Set Free Memory Task");
   _service_thread->register_task(_free_arena_memory_task);
 
-  if (policy()->use_adaptive_young_list_length()) {
-    _revise_young_length_task = new G1ReviseYoungLengthTask("Revise Young Length List Task");
-    _service_thread->register_task(_revise_young_length_task);
+  if (policy()->use_adaptive_num_young_regions()) {
+    _revise_num_young_regions_task = new G1ReviseNumYoungRegionsTask("Revise Num Young Regions Task");
+    _service_thread->register_task(_revise_num_young_regions_task);
   }
 
   // Here we allocate the dummy G1HeapRegion that is required by the
@@ -2286,7 +2286,7 @@ size_t G1CollectedHeap::tlab_capacity() const {
 }
 
 size_t G1CollectedHeap::tlab_used() const {
-  return _eden.length() * G1HeapRegion::GrainBytes;
+  return _eden.num_regions() * G1HeapRegion::GrainBytes;
 }
 
 // For G1 TLABs should not contain humongous objects, so the maximum TLAB size
@@ -2451,7 +2451,7 @@ G1HeapSummary G1CollectedHeap::create_g1_heap_summary() {
   size_t heap_used = Heap_lock->owned_by_self() ? used() : used_unlocked();
 
   size_t eden_capacity_bytes =
-    (policy()->young_list_target_length() * G1HeapRegion::GrainBytes) - survivor_used_bytes;
+    (policy()->target_num_young_regions() * G1HeapRegion::GrainBytes) - survivor_used_bytes;
 
   VirtualSpaceSummary heap_summary = create_heap_space_summary();
   return G1HeapSummary(heap_summary, heap_used, eden_used_bytes, eden_capacity_bytes,
@@ -2612,7 +2612,7 @@ void G1CollectedHeap::start_new_collection_set() {
 
   clear_region_attr();
 
-  guarantee(_eden.length() == 0, "eden should have been cleared");
+  guarantee(_eden.num_regions() == 0, "eden should have been cleared");
   policy()->transfer_survivors_to_cset(survivor());
 
   // We redo the verification but now wrt to the new CSet which
@@ -2988,7 +2988,7 @@ public:
   bool success() { return _success; }
 };
 
-bool G1CollectedHeap::check_young_list_empty() {
+bool G1CollectedHeap::check_no_young_regions() {
   bool ret = (young_regions_count() == 0);
 
   NoYoungRegionsClosure closure;

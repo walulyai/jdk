@@ -165,7 +165,7 @@ JVMFlag::Error GCPauseIntervalMillisConstraintFuncG1(uintx value, bool verbose) 
 
 JVMFlag::Error NewSizeConstraintFuncG1(size_t value, bool verbose) {
 #ifdef _LP64
-  // Overflow would happen for uint type variable of YoungGenSizer::_min_desired_young_length
+  // Overflow would happen for uint type variable of YoungGenSizer::_min_desired_num_regions
   // when the value to be assigned exceeds uint range.
   // i.e. result of '(uint)(NewSize / region size(1~32MB))'
   // So maximum of NewSize should be 'max_juint * 1M'

@@ -415,8 +415,8 @@ public:
   }
 
   void verify_counts(G1HeapRegionSet* old_set, G1HeapRegionSet* humongous_set, G1HeapRegionManager* free_list) {
-    guarantee(old_set->length() == _old_count, "Old set count mismatch. Expected %u, actual %u.", old_set->length(), _old_count);
-    guarantee(humongous_set->length() == _humongous_count, "Hum set count mismatch. Expected %u, actual %u.", humongous_set->length(), _humongous_count);
+    guarantee(old_set->num_regions() == _old_count, "Old set count mismatch. Expected %u, actual %u.", old_set->num_regions(), _old_count);
+    guarantee(humongous_set->num_regions() == _humongous_count, "Hum set count mismatch. Expected %u, actual %u.", humongous_set->num_regions(), _humongous_count);
     guarantee(free_list->num_free_regions() == _free_count, "Free list count mismatch. Expected %u, actual %u.", free_list->num_free_regions(), _free_count);
   }
 };

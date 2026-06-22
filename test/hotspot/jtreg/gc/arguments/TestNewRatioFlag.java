@@ -167,13 +167,13 @@ public class TestNewRatioFlag {
             long maxOld = HeapRegionUsageTool.getOldUsage().getMax();
 
             int regionSize = wb.g1RegionSize();
-            int youngListLength = (int) ((initEden + initSurv) / regionSize);
+            int numYoungRegions = (int) ((initEden + initSurv) / regionSize);
             int maxRegions = (int) (maxOld / regionSize);
-            int expectedYoungListLength = (int) (maxRegions / (double) (expectedRatio + 1));
+            int expectedNumYoungRegions = (int) (maxRegions / (double) (expectedRatio + 1));
 
-            if (youngListLength != expectedYoungListLength) {
-                throw new RuntimeException("Expected G1 young list length is: " + expectedYoungListLength
-                        + ", but observed young list length is: " + youngListLength);
+            if (numYoungRegions != expectedNumYoungRegions) {
+                throw new RuntimeException("Expected number of G1 young regions: " + expectedNumYoungRegions
+                        + ", but observed number of young regions: " + numYoungRegions);
             }
         }
     }

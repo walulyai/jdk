@@ -79,31 +79,33 @@ private:
   // true otherwise.
   bool _use_adaptive_sizing;
 
-  Atomic<uint> _min_desired_young_length;
-  Atomic<uint> _max_desired_young_length;
+  Atomic<uint> _min_desired_num_regions;
+  Atomic<uint> _max_desired_num_regions;
 
-  uint calculate_default_min_length(uint new_number_of_heap_regions);
-  uint calculate_default_max_length(uint new_number_of_heap_regions);
+  uint calculate_default_min_num_regions(uint new_number_of_heap_regions);
+  uint calculate_default_max_num_regions(uint new_number_of_heap_regions);
 
-  // Update the given values for minimum and maximum young gen length in regions
-  // given the number of heap regions depending on the kind of sizing algorithm.
-  void recalculate_min_max_young_length(uint number_of_heap_regions, uint* min_young_length, uint* max_young_length);
+  // Update the given minimum and maximum numbers of young regions according to
+  // the sizing algorithm and the number of heap regions.
+  void recalculate_min_max_num_regions(uint number_of_heap_regions,
+                                       uint* min_num_young_regions,
+                                       uint* max_num_young_regions);
 
 public:
   G1YoungGenSizer();
-  // Calculate the maximum length of the young gen given the number of regions
+  // Calculate the maximum young size given the number of regions
   // depending on the sizing algorithm.
   virtual void adjust_max_new_size(uint number_of_heap_regions);
 
   virtual void heap_size_changed(uint new_number_of_heap_regions);
-  uint min_desired_young_length() const {
-    return _min_desired_young_length.load_relaxed();
+  uint min_desired_num_regions() const {
+    return _min_desired_num_regions.load_relaxed();
   }
-  uint max_desired_young_length() const {
-    return _max_desired_young_length.load_relaxed();
+  uint max_desired_num_regions() const {
+    return _max_desired_num_regions.load_relaxed();
   }
 
-  bool use_adaptive_young_list_length() const {
+  bool use_adaptive_sizing() const {
     return _use_adaptive_sizing;
   }
 };

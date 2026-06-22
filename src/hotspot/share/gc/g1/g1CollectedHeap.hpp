@@ -75,7 +75,7 @@ class G1GCPhaseTimes;
 class G1HeapSizingPolicy;
 class G1NewTracer;
 class G1RemSet;
-class G1ReviseYoungLengthTask;
+class G1ReviseNumYoungRegionsTask;
 class G1ServiceTask;
 class G1ServiceThread;
 class GCMemoryManager;
@@ -183,7 +183,7 @@ private:
   G1ServiceThread* _service_thread;
   G1ServiceTask* _periodic_gc_task;
   G1MonotonicArenaFreeMemoryTask* _free_arena_memory_task;
-  G1ReviseYoungLengthTask* _revise_young_length_task;
+  G1ReviseNumYoungRegionsTask* _revise_num_young_regions_task;
 
   WorkerThreads* _workers;
 
@@ -401,7 +401,6 @@ private:
 #define assert_used_and_recalculate_used_equal(g1h) do {} while(0)
 #endif
 
-  // The young region list.
   G1EdenRegions _eden;
   G1SurvivorRegions _survivor;
 
@@ -1245,18 +1244,18 @@ public:
   G1SurvivorRegions* survivor() { return &_survivor; }
 
   inline uint eden_target_length() const;
-  uint eden_regions_count() const { return _eden.length(); }
+  uint eden_regions_count() const { return _eden.num_regions(); }
   uint eden_regions_count(uint node_index) const { return _eden.regions_on_node(node_index); }
   uint survivor_regions_count() const { return _survivor.length(); }
   uint survivor_regions_count(uint node_index) const { return _survivor.regions_on_node(node_index); }
   size_t eden_regions_used_bytes() const { return _eden.used_bytes(); }
   size_t survivor_regions_used_bytes() const { return _survivor.used_bytes(); }
-  uint young_regions_count() const { return _eden.length() + _survivor.length(); }
-  uint old_regions_count() const { return _old_set.length(); }
-  uint humongous_regions_count() const { return _humongous_set.length(); }
+  uint young_regions_count() const { return _eden.num_regions() + _survivor.length(); }
+  uint old_regions_count() const { return _old_set.num_regions(); }
+  uint humongous_regions_count() const { return _humongous_set.num_regions(); }
 
 #ifdef ASSERT
-  bool check_young_list_empty();
+  bool check_no_young_regions();
 #endif
 
   bool is_marked(oop obj) const;

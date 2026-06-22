@@ -245,14 +245,14 @@ void G1MonitoringSupport::recalculate_sizes() {
   // use smaller value to subtract.
   _old_gen_used = _overall_used - MIN2(_overall_used, _eden_space_used + _survivor_space_used);
 
-  uint survivor_list_length = _g1h->survivor_regions_count();
+  uint num_survivor_regions = _g1h->survivor_regions_count();
 
-  uint young_list_target_length = _g1h->policy()->young_list_target_length();
-  assert(young_list_target_length >= survivor_list_length, "invariant");
-  uint eden_list_max_length = young_list_target_length - survivor_list_length;
+  uint target_num_young_regions = _g1h->policy()->target_num_young_regions();
+  assert(target_num_young_regions >= num_survivor_regions, "invariant");
+  uint max_num_eden_regions = target_num_young_regions - num_survivor_regions;
 
   // First calculate the committed sizes that can be calculated independently.
-  _survivor_space_committed = survivor_list_length * G1HeapRegion::GrainBytes;
+  _survivor_space_committed = num_survivor_regions * G1HeapRegion::GrainBytes;
   _old_gen_committed = G1HeapRegion::align_up_to_region_byte_size(_old_gen_used);
 
   // Next, start with the overall committed size.
@@ -265,7 +265,7 @@ void G1MonitoringSupport::recalculate_sizes() {
   committed -= _survivor_space_committed + _old_gen_committed;
 
   // Next, calculate and remove the committed size for the eden.
-  _eden_space_committed = (size_t) eden_list_max_length * G1HeapRegion::GrainBytes;
+  _eden_space_committed = (size_t) max_num_eden_regions * G1HeapRegion::GrainBytes;
   // Somewhat defensive: be robust in case there are inaccuracies in
   // the calculations
   _eden_space_committed = MIN2(_eden_space_committed, committed);
@@ -283,7 +283,7 @@ void G1MonitoringSupport::recalculate_sizes() {
   // never exceeds the committed size.
   _eden_space_used = MIN2(_eden_space_used, _eden_space_committed);
   // _survivor_space_used is calculated during a safepoint and _survivor_space_committed
-  // is calculated from survivor region count * heap region size.
+  // is calculated from number of survivor regions * heap region size.
   assert(_survivor_space_used <= _survivor_space_committed, "Survivor used bytes(%zu)"
          " should be less than or equal to survivor committed(%zu)",
          _survivor_space_used, _survivor_space_committed);
