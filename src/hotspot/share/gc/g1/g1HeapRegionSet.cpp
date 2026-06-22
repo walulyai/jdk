@@ -260,8 +260,8 @@ void G1FreeRegionList::remove_starting_at(G1HeapRegion* first, uint num_regions_
   G1HeapRegion* next = first->next();
 
   G1HeapRegion* curr = first;
-  uint count = 0;
-  while (count < num_regions_to_remove) {
+  uint removed = 0;
+  while (removed < num_regions_to_remove) {
     verify_region(curr);
     next = curr->next();
     verify_region_to_remove(curr, next);
@@ -274,7 +274,7 @@ void G1FreeRegionList::remove_starting_at(G1HeapRegion* first, uint num_regions_
     curr->set_prev(nullptr);
     remove(curr);
 
-    count++;
+    removed++;
 
     decrease_length(curr->node_index());
 
@@ -292,12 +292,12 @@ void G1FreeRegionList::remove_starting_at(G1HeapRegion* first, uint num_regions_
     next->set_prev(prev);
   }
 
-  assert(count == num_regions_to_remove,
-         "[%s] count: %u should be == num_regions: %u",
-         name(), count, num_regions_to_remove);
+  assert(removed == num_regions_to_remove,
+         "[%s] removed: %u should be == num_regions: %u",
+         name(), removed, num_regions_to_remove);
   assert(num_regions() + num_regions_to_remove == old_length,
-         "[%s] new length should be consistent "
-         "new length: %u old length: %u num_regions: %u",
+         "[%s] new num regions should be consistent "
+         "new num regions: %u old num regions: %u num_regions: %u",
          name(), num_regions(), old_length, num_regions_to_remove);
 
   verify_optional();
@@ -331,7 +331,7 @@ void G1FreeRegionList::verify_list() {
   G1HeapRegion* curr = _head;
   G1HeapRegion* prev1 = nullptr;
   G1HeapRegion* prev0 = nullptr;
-  uint count = 0;
+  uint num_regions_found = 0;
   size_t capacity = 0;
   uint last_index = 0;
 
@@ -339,10 +339,10 @@ void G1FreeRegionList::verify_list() {
   while (curr != nullptr) {
     verify_region(curr);
 
-    count++;
-    guarantee(count < _unrealistically_long_length,
+    num_regions_found++;
+    guarantee(num_regions_found < _unrealistically_long_length,
               "[%s] the calculated length: %u seems very long, is there maybe a cycle? curr: " PTR_FORMAT " prev0: " PTR_FORMAT " " "prev1: " PTR_FORMAT " length: %u",
-              name(), count, p2i(curr), p2i(prev0), p2i(prev1), num_regions());
+              name(), num_regions_found, p2i(curr), p2i(prev0), p2i(prev1), num_regions());
 
     if (curr->next() != nullptr) {
       guarantee(curr->next()->prev() == curr, "Next or prev pointers messed up");
@@ -359,7 +359,7 @@ void G1FreeRegionList::verify_list() {
 
   guarantee(_tail == prev0, "Expected %s to end with %u but it ended with %u.", name(), _tail->hrm_index(), prev0->hrm_index());
   guarantee(_tail == nullptr || _tail->next() == nullptr, "_tail should not have a next");
-  guarantee(num_regions() == count, "%s count mismatch. Expected %u, actual %u.", name(), num_regions(), count);
+  guarantee(num_regions() == num_regions_found, "%s num regions mismatch. Expected %u, actual %u.", name(), num_regions(), num_regions_found);
 }
 
 

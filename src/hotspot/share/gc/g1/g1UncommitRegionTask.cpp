@@ -34,7 +34,7 @@ G1UncommitRegionTask::G1UncommitRegionTask() :
     G1ServiceTask("G1 Uncommit Region Task"),
     _active(false),
     _summary_duration(),
-    _summary_region_count(0) { }
+    _summary_num_regions(0) { }
 
 void G1UncommitRegionTask::initialize() {
   assert(_instance == nullptr, "Already initialized");
@@ -78,7 +78,7 @@ void G1UncommitRegionTask::set_active(bool state) {
 }
 
 void G1UncommitRegionTask::report_execution(Tickspan time, uint regions) {
-  _summary_region_count += regions;
+  _summary_num_regions += regions;
   _summary_duration += time;
 
   log_trace(gc, heap)("Concurrent Uncommit: %zu%s, %u regions, %1.3fms",
@@ -90,15 +90,15 @@ void G1UncommitRegionTask::report_execution(Tickspan time, uint regions) {
 
 void G1UncommitRegionTask::report_summary() {
   log_debug(gc, heap)("Concurrent Uncommit Summary: %zu%s, %u regions, %1.3fms",
-                      byte_size_in_proper_unit(_summary_region_count * G1HeapRegion::GrainBytes),
-                      proper_unit_for_byte_size(_summary_region_count * G1HeapRegion::GrainBytes),
-                      _summary_region_count,
+                      byte_size_in_proper_unit(_summary_num_regions * G1HeapRegion::GrainBytes),
+                      proper_unit_for_byte_size(_summary_num_regions * G1HeapRegion::GrainBytes),
+                      _summary_num_regions,
                       _summary_duration.seconds() * 1000);
 }
 
 void G1UncommitRegionTask::clear_summary() {
   _summary_duration = Tickspan();
-  _summary_region_count = 0;
+  _summary_num_regions = 0;
 }
 
 void G1UncommitRegionTask::execute() {
@@ -113,11 +113,11 @@ void G1UncommitRegionTask::execute() {
   G1CollectedHeap* g1h = G1CollectedHeap::heap();
 
   Ticks start = Ticks::now();
-  uint uncommit_count = g1h->uncommit_regions(region_limit);
+  uint num_uncommitted_regions = g1h->uncommit_regions(region_limit);
   Tickspan uncommit_time = (Ticks::now() - start);
 
-  if (uncommit_count > 0) {
-    report_execution(uncommit_time, uncommit_count);
+  if (num_uncommitted_regions > 0) {
+    report_execution(uncommit_time, num_uncommitted_regions);
   }
 
   // Reschedule if there are more regions to uncommit, otherwise

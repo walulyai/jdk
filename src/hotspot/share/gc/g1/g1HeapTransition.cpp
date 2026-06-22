@@ -29,10 +29,10 @@
 #include "memory/metaspaceUtils.hpp"
 
 G1HeapTransition::Data::Data(G1CollectedHeap* g1_heap) :
-  _num_eden_regions(g1_heap->eden_regions_count()),
-  _num_survivor_regions(g1_heap->survivor_regions_count()),
-  _num_old_regions(g1_heap->old_regions_count()),
-  _num_humongous_regions(g1_heap->humongous_regions_count()),
+  _num_eden_regions(g1_heap->num_eden_regions()),
+  _num_survivor_regions(g1_heap->num_survivor_regions()),
+  _num_old_regions(g1_heap->num_old_regions()),
+  _num_humongous_regions(g1_heap->num_humongous_regions()),
   _meta_sizes(MetaspaceUtils::get_combined_statistics()),
   _num_eden_regions_per_node(nullptr),
   _num_survivor_regions_per_node(nullptr) {
@@ -47,8 +47,8 @@ G1HeapTransition::Data::Data(G1CollectedHeap* g1_heap) :
       _num_survivor_regions_per_node = NEW_C_HEAP_ARRAY(uint, node_count, mtGC);
 
       for (uint i = 0; i < node_count; i++) {
-        _num_eden_regions_per_node[i] = g1_heap->eden_regions_count(i);
-        _num_survivor_regions_per_node[i] = g1_heap->survivor_regions_count(i);
+        _num_eden_regions_per_node[i] = g1_heap->num_eden_regions(i);
+        _num_survivor_regions_per_node[i] = g1_heap->num_survivor_regions(i);
       }
     }
   }

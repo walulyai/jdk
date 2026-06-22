@@ -54,7 +54,7 @@ public:
   }
 
   uint num_regions() const { return _num_regions; }
-  uint regions_on_node(uint node_index) const { return _regions_on_node.count(node_index); }
+  uint regions_on_node(uint node_index) const { return _regions_on_node.num_regions_on_node(node_index); }
 
   size_t used_bytes() const { return _used_bytes; }
 

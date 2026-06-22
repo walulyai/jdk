@@ -55,12 +55,12 @@ class G1AllocRegion : public CHeapObj<mtGC> {
 
   // It keeps track of the distinct number of regions that are used
   // for allocation in the active interval of this object, i.e.,
-  // between a call to init() and a call to release(). The count
+  // between a call to init() and a call to release(). The number
   // mostly includes regions that are freshly allocated, as well as
-  // the region that is re-used using the set() method. This count can
+  // the region that is re-used using the set() method. This number can
   // be used in any heuristics that might want to bound how many
   // distinct regions this object can used during an active interval.
-  uint _count;
+  uint _num_regions;
 
   // Useful for debugging and tracing.
   const char* _name;
@@ -128,7 +128,7 @@ public:
     return (hr == _dummy_region.load_relaxed()) ? nullptr : hr;
   }
 
-  uint count() { return _count; }
+  uint num_regions() { return _num_regions; }
 
   // The following two are the building blocks for the allocation method.
 

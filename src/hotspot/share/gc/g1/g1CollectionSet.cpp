@@ -332,7 +332,7 @@ double G1CollectionSet::finalize_young_part(double target_pause_time_ms, G1Survi
   log_trace(gc, ergo, cset)("Start choosing CSet. Pending cards: %zu target pause time: %1.2fms",
                             pending_cards, target_pause_time_ms);
 
-  uint num_eden_regions = _g1h->eden_regions_count();
+  uint num_eden_regions = _g1h->num_eden_regions();
   uint num_survivor_regions = survivors->length();
   prepare_for_collection(num_eden_regions, num_survivor_regions);
 
