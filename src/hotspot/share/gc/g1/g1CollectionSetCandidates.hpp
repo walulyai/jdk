@@ -31,6 +31,7 @@
 #include "memory/allocation.hpp"
 #include "runtime/globals.hpp"
 #include "utilities/growableArray.hpp"
+#include "utilities/pair.hpp"
 
 class G1CollectionSetCandidates;
 class G1CSetCandidateGroupList;
@@ -117,6 +118,8 @@ public:
   G1CollectionSetCandidateInfo* at(uint i) { return &_candidates.at(i); }
 
   double predict_group_total_time_ms() const;
+
+  Pair<double, size_t> predict_group_stats() const;
 
   G1MonotonicArenaMemoryStats card_set_memory_stats() const {
     return _card_set_mm.memory_stats();

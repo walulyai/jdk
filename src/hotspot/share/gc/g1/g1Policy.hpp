@@ -55,8 +55,55 @@ class G1SurvivorRegions;
 class GCPolicyCounters;
 class STWGCTimer;
 
+
+struct PredictedEvacuationStats {
+  double _time;
+  size_t _bytes_to_copy;
+};
+
 class G1Policy: public CHeapObj<mtGC> {
   using Pause = G1CollectorState::Pause;
+
+  class G1NumYoungRegionsPredictor {
+    double _predicted_base_time_ms;
+    size_t _predicted_bytes_to_copy; // includes survivor and predicted Mixed-GC bytes to copy.
+    const double _base_free_regions;
+    const double _target_pause_time_ms;
+    const uint _min_num_eden_regions;
+    const uint _max_num_eden_regions;
+    const G1Policy* const _policy;
+
+  public:
+    G1NumYoungRegionsPredictor(double base_time_ms,
+                              double base_free_regions,
+                              double target_pause_time_ms,
+                              size_t base_bytes_to_copy,
+                              uint min_num_eden_regions,
+                              uint max_num_eden_regions,
+                              const G1Policy* policy) :
+      _predicted_base_time_ms(base_time_ms),
+      _predicted_bytes_to_copy(base_bytes_to_copy),
+      _base_free_regions(base_free_regions),
+      _target_pause_time_ms(target_pause_time_ms),
+      _min_num_eden_regions(min_num_eden_regions),
+      _max_num_eden_regions(max_num_eden_regions),
+      _policy(policy) {
+        assert(_min_num_eden_regions <= _max_num_eden_regions, "must be %u %u", _min_num_eden_regions, _max_num_eden_regions);
+      }
+
+    void add_to_base_time(double time_ms) {
+      _predicted_base_time_ms += time_ms;
+    }
+
+    uint min_num_eden_regions() const { return _min_num_eden_regions; }
+    uint max_num_eden_regions() const { return _max_num_eden_regions; }
+
+    void add_to_base_bytes_to_copy(size_t predicted_bytes) {
+      _predicted_bytes_to_copy += predicted_bytes;
+    }
+
+    bool will_fit(uint num_eden_regions) const;
+  };
 
   static G1IHOPControl* create_ihop_control(const G1Predictions* predictor);
   // Update the IHOP control with the necessary statistics. Returns true if there
@@ -144,9 +191,11 @@ public:
   // whole young gen, refinement buffers, and copying survivors.
   // Basically everything but copying eden regions.
   double predict_base_time_ms(size_t pending_cards, size_t card_rs_length, size_t code_root_length) const;
+  PredictedEvacuationStats predict_base_stats(size_t pending_cards, size_t card_rs_length, size_t code_root_length) const;
 
   // Copy time for a region is copying live data.
   double predict_region_copy_time_ms(G1HeapRegion* hr, bool for_young_only_phase) const;
+  double predict_copy_time_ms(size_t bytes_to_copy, bool for_young_only_phase) const;
   // Code root scan time prediction for the given region.
   double predict_region_code_root_scan_time(G1HeapRegion* hr, bool for_young_only_phase) const;
 
@@ -205,22 +254,16 @@ private:
   // Calculate the desired number of eden regions meeting the pause time goal.
   // min_num_eden_regions and max_num_eden_regions are the bounds
   // (inclusive) within which eden can grow.
-  uint calculate_desired_num_eden_regions_by_pause(double base_time_ms,
-                                                   uint min_num_eden_regions,
-                                                   uint max_num_eden_regions) const;
+  uint calculate_desired_num_eden_regions_by_pause(G1NumYoungRegionsPredictor& num_young_regions_predictor) const;
 
   // Calculate the desired number of eden regions that can fit into the pause time
   // goal before young only gcs.
-  uint calculate_desired_num_eden_regions_before_young_only(double base_time_ms,
-                                                            uint min_num_eden_regions,
-                                                            uint max_num_eden_regions) const;
+  uint calculate_desired_num_eden_regions_before_young_only(G1NumYoungRegionsPredictor& num_young_regions_predictor) const;
 
   // Calculates the desired number of eden regions before mixed gc so that after adding the
   // minimum amount of old gen regions from the collection set, the eden fits into
   // the pause time goal.
-  uint calculate_desired_num_eden_regions_before_mixed(double base_time_ms,
-                                                       uint min_num_eden_regions,
-                                                       uint max_num_eden_regions) const;
+  uint calculate_desired_num_eden_regions_before_mixed(G1NumYoungRegionsPredictor& num_young_regions_predictor) const;
 
   // Calculate desired number of young regions based on current situation without taking actually
   // available free regions into account.
@@ -234,6 +277,7 @@ private:
                                           uint min_num_young_regions_by_sizer) const;
 
   double predict_survivor_regions_evac_time() const;
+  PredictedEvacuationStats predict_survivor_regions_evac_stats() const;
   double predict_retained_regions_evac_time() const;
 
 public:
