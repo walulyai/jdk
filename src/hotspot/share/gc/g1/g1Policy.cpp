@@ -618,11 +618,18 @@ void G1Policy::try_revise_target_num_young_regions(size_t pending_cards,
                                                    size_t card_rs_length,
                                                    size_t code_root_rs_length) {
   guarantee(use_adaptive_num_young_regions(), "should not call this otherwise" );
-  uint num_humongous_regions_before = 0;
-  {
-    MutexLocker x(Heap_lock);
-    num_humongous_regions_before = _g1h->num_humongous_regions();
+
+  // The service thread must not block on Heap_lock. A GC VMOp may hold Heap_lock
+  // while waiting for suspendible threads to yield or leave, which would deadlock.
+  // We use try_lock() and abandon this best-effort revision if the lock is unavailable.
+
+  if (!Heap_lock->try_lock()) {
+    return;
   }
+
+  uint num_humongous_regions_before = _g1h->num_humongous_regions();
+  uint num_young_regions = _g1h->num_young_regions();
+  Heap_lock->unlock();
 
   G1EvacuationPrediction base_prediction = predict_base_evacuation(pending_cards,
                                                                    card_rs_length,
@@ -631,9 +638,11 @@ void G1Policy::try_revise_target_num_young_regions(size_t pending_cards,
   Pair<uint, uint> young_regions_bounds;
 
   if (calculate_young_regions_bounds(base_prediction, &young_regions_bounds)) {
-    MutexLocker x(Heap_lock);
-    if (_g1h->num_humongous_regions() == num_humongous_regions_before) {
-      update_young_regions_bounds(young_regions_bounds);
+    if (Heap_lock->try_lock()) {
+      if (_g1h->num_humongous_regions() == num_humongous_regions_before) {
+        update_young_regions_bounds(young_regions_bounds);
+      }
+      Heap_lock->unlock();
     }
   }
 }
