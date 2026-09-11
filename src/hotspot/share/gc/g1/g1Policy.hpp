@@ -37,6 +37,7 @@
 #include "gc/g1/g1YoungGenSizer.hpp"
 #include "gc/shared/gcCause.hpp"
 #include "runtime/atomic.hpp"
+#include "utilities/pair.hpp"
 #include "utilities/ticks.hpp"
 
 // A G1Policy makes policy decisions that determine the
@@ -139,6 +140,7 @@ public:
   G1OldGenAllocationTracker* old_gen_alloc_tracker() { return &_old_gen_alloc_tracker; }
 
   void adjust_eden_allocation_budget(uint num_free_regions_before, uint num_free_regions_after);
+  void update_target_num_young_regions();
 
   void set_region_eden(G1HeapRegion* hr) {
     hr->install_surv_rate_group(_eden_surv_rate_group);
@@ -214,8 +216,9 @@ private:
   // If no parameters are passed, predict pending cards, card set remset length and
   // code root remset length using the prediction model.
   void update_young_regions_bounds();
-  void update_young_regions_bounds(size_t pending_cards, size_t card_rs_length, size_t code_root_rs_length);
-  void update_young_regions_bounds(const G1EvacuationPrediction& base_prediction);
+  void update_young_regions_bounds(Pair<uint, uint>& young_regions_bounds);
+  bool calculate_young_regions_bounds(const G1EvacuationPrediction& base_prediction,
+                                      Pair<uint, uint>* young_regions_bounds);
 
   // Calculate and return the minimum desired number of eden regions based on the MMU target.
   uint calculate_desired_num_eden_regions_by_mmu() const;
@@ -223,6 +226,11 @@ private:
   // Limit the given desired number of young regions to available free regions
   // and required evacuation space.
   uint calculate_target_num_young_regions(const G1YoungGenPredictor& predictor,
+                                          uint min_num_young_regions_by_sizer) const;
+
+  uint calculate_target_num_young_regions(uint target_num_young_regions_by_evac_space,
+                                          uint eden_allocation_budget_num_regions,
+                                          uint num_young_regions,
                                           uint min_num_young_regions_by_sizer) const;
 
   G1EvacuationPrediction predict_survivor_regions_evacuation() const;
@@ -284,7 +292,9 @@ public:
   // Check the current value of the young generation RSet length and
   // compare it against the last prediction. If the current value is
   // higher, recalculate the target number of young regions prediction.
-  void revise_target_num_young_regions(size_t pending_cards, size_t card_rs_length, size_t code_root_rs_length);
+  void try_revise_target_num_young_regions(size_t pending_cards,
+                                           size_t card_rs_length,
+                                           size_t code_root_rs_length);
 
   // This should be called after the heap is resized.
   void record_new_heap_size(uint new_num_regions);
